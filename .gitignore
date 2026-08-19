@@ -1,0 +1,63 @@
+# =============================================================================
+# KARYON-CORE OFFICIAL GITIGNORE SPEC
+# Hybrid C++20 / PyTorch / LibTorch / Python / Kaggle Runtime Artifacts
+# =============================================================================
+
+# --- C++ JIT & Build Artifacts ---
+*.so
+*.o
+*.obj
+*.a
+*.lib
+*.dylib
+*.dll
+*.bc
+*.ll
+build/
+dist/
+bin/
+.cpp_extension/
+
+# --- Python Byte-Code & Cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Kaggle & Jupyter Notebook Artifacts ---
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+*.nvvp
+
+# --- Temporary & Local Cache Files ---
+tmp/
+.tmp/
+*.tmp
+*.log
+.cache/
+
+# --- Large Model Checkpoints & Datasets (Keep base karyon_soul.kcore tracked if <100MB) ---
+*.pt
+*.pth
+*.bin
+*.onnx
+*.parquet
+*.tar.gz
+*.zip
+*.h5
+
+# --- IDE & OS System Artifacts ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# --- Secrets & Private Tokens ---
+.env
+*.secret
+hf_token.txt
