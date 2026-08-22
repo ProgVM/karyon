@@ -1,8 +1,8 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v6.5 (PRODUCTION MASTER)
-Continuous-Time Selective SDE State-Space Recurrent Engine (SDE-SSM),
+KARYON AGENT CORE v7.0 (PRODUCTION MASTER)
+Goal-Conditioned Matrix Fast-Weight SDE-SSM Core (32x Memory Capacity),
 Causal N-gram Byte Receptive Field (K=4), Afferent-Efferent Sensory-Motor
 Weight Tying, Desaturated Hopfield Attractors, and Low-Pass Ashby Homeostasis.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
@@ -21,7 +21,7 @@ from karyon_core import (
     SensoryGateway,
     MotorGateway,
     CausalByteReceptiveField,
-    SelectiveSDEStateSpaceCore,
+    GoalConditionedMatrixSDESSMCore,
     DesaturatedHopfieldAttractorHead,
     LatentPredictor,
     BatchedEpisodicMemory
@@ -29,7 +29,7 @@ from karyon_core import (
 
 
 # =============================================================================
-# MODULE 1: POSITIONAL BYTE EMBEDDING WITH NATIVE C++ RECEPTIVE FIELD
+# MODULE 1: POSITIONAL BYTE EMBEDDING WITH RECEPTIVE FIELD
 # =============================================================================
 
 class OffsetPositionalByteEmbedding(nn.Module):
@@ -59,7 +59,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v6.5 PRODUCTION MASTER)
+# MASTER CORE AGENT (v7.0 PRODUCTION MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -74,6 +74,9 @@ class CoREAgent(nn.Module):
         self.action_dim = config.net.action_dim
         self.latent_dim = getattr(config.net, 'latent_dim', 128)
         self.text_gen_dim = getattr(config.net, 'text_gen_dim', 258)
+        self.num_heads = 8
+        self.head_k = 32
+        self.head_v = 64
         self.inv_sqrt_text_dim = 1.0 / math.sqrt(self.text_dim)
         
         self.tokenizer = ByteTokenizer(vocab_size=self.text_gen_dim)
@@ -95,9 +98,13 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        self.sde_ssm = SelectiveSDEStateSpaceCore(
-            hidden_dim=self.hidden_dim,
+        # Goal-Conditioned Matrix Fast-Weight SDE-SSM Core (32x memory capacity)
+        self.matrix_sde_ssm = GoalConditionedMatrixSDESSMCore(
             unified_dim=self.unified_dim,
+            hidden_dim=self.hidden_dim,
+            num_heads=self.num_heads,
+            head_k=self.head_k,
+            head_v=self.head_v,
             homeo_dim=config.net.homeo_dim,
             device=self.device_str
         )
@@ -142,7 +149,7 @@ class CoREAgent(nn.Module):
             list(self.motor_text_proj.parameters()) + 
             list(self.critic.parameters())
         )
-        for submodule in [self.gateway, self.sde_ssm, self.world_model, self.output_gateway, self.attractor_head]:
+        for submodule in [self.gateway, self.matrix_sde_ssm, self.world_model, self.output_gateway, self.attractor_head]:
             if hasattr(submodule, 'parameters'):
                 params.extend(list(submodule.parameters()))
         return params
@@ -160,7 +167,7 @@ class CoREAgent(nn.Module):
         for name, param in self.motor_text_proj.named_parameters():
             sd[f"motor_text_proj.{name}"] = param.detach().cpu()
 
-        for sub_name, sub in [('gateway', self.gateway), ('sde_ssm', self.sde_ssm), 
+        for sub_name, sub in [('gateway', self.gateway), ('matrix_sde_ssm', self.matrix_sde_ssm), 
                               ('world_model', self.world_model), ('output_gateway', self.output_gateway),
                               ('attractor_head', self.attractor_head)]:
             if hasattr(sub, 'named_parameters'):
@@ -214,10 +221,10 @@ class CoREAgent(nn.Module):
             return raw_b.decode('utf-8', errors='replace')
         return self.tokenizer.decode(ids)
 
-    def forward_step(self, sensor_inputs: Dict[str, torch.Tensor], h_prev_fast: torch.Tensor, 
-                     h_prev_slow: torch.Tensor, u_t: torch.Tensor, episodic_memory=None, 
+    def forward_step(self, sensor_inputs: Dict[str, torch.Tensor], m_prev: torch.Tensor, 
+                     h_prev: torch.Tensor, u_t: torch.Tensor, episodic_memory=None, 
                      dt: float = 1.0, attention_temp: float = 0.05):
-        batch_size = h_prev_fast.size(0)
+        batch_size = h_prev.size(0)
         
         text_in = sensor_inputs.get('text', torch.zeros(batch_size, self.config.net.text_dim, device=self.device))
         if text_in.dim() == 3:
@@ -227,7 +234,7 @@ class CoREAgent(nn.Module):
         motor_in = sensor_inputs.get('motor_efference', torch.zeros(batch_size, self.config.net.action_dim, device=self.device))
         
         w_current, attn_weights, channel_names, epistemic_entropy = self.gateway(
-            text_in, vision_in, motor_in, h_prev_fast, u_t
+            text_in, vision_in, motor_in, h_prev, u_t
         )
         
         curiosity     = u_t.select(1, 0).unsqueeze(1)
@@ -237,33 +244,33 @@ class CoREAgent(nn.Module):
         volitional_recall_gate = torch.sigmoid(2.0 * noradrenaline + 1.5 * curiosity - 0.5 * (1.0 - energy))
         
         na_trigger = getattr(self.config.memory, 'volitional_na_trigger', 0.12)
-        should_search_memory = (episodic_memory is not None) and (noradrenaline.mean().item() > na_trigger)
+        should_search_memory = (episodic_memory is not None) and (noradrenaline.mean().item() > na_trigger) and (episodic_memory.size.max().item() > 0)
 
         if should_search_memory:
-            retrieved_memory, max_sim = episodic_memory.read(
-                w_current, 
-                attention_temp, 
-                self.config.memory.default_read_threshold,
-                self.config.memory.sigmoid_gating_beta
-            )
-            if retrieved_memory.dim() > 2:
-                retrieved_memory = retrieved_memory.reshape(batch_size, self.unified_dim)
-            w_integrated = w_current + retrieved_memory * volitional_recall_gate
+            with torch.no_grad():
+                retrieved_memory, max_sim = episodic_memory.read(
+                    w_current.detach(), 
+                    attention_temp, 
+                    self.config.memory.default_read_threshold,
+                    self.config.memory.sigmoid_gating_beta
+                )
+                if retrieved_memory.dim() > 2:
+                    retrieved_memory = retrieved_memory.reshape(batch_size, self.unified_dim)
+            w_integrated = w_current + retrieved_memory.detach() * volitional_recall_gate
         else:
             w_integrated = w_current
             
-        # Native C++ Continuous-Time SDE-SSM Recurrent State-Space Integration
-        sde_out = self.sde_ssm(h_prev_fast, w_integrated, u_t, dt)
-        h_next_fast, y_out, eff_dt = sde_out[0], sde_out[1], sde_out[2]
-        h_next_slow = h_next_fast
+        # Goal-Conditioned Matrix SDE-SSM Recurrent Step
+        sde_out = self.matrix_sde_ssm(m_prev, h_prev, w_integrated, u_t, dt)
+        m_next, h_next, eff_dt = sde_out[0], sde_out[1], sde_out[2]
         
-        w_pred, kl_div, _, z_t = self.world_model(h_prev_fast, h_next_slow, w_current)
+        w_pred, kl_div, _, z_t = self.world_model(h_prev, h_next, w_current)
         
         cosine_sim = F.cosine_similarity(w_current, w_pred, dim=-1, eps=1e-8).unsqueeze(-1)
         rec_loss = 1.0 - cosine_sim
         free_energy = kl_div + rec_loss
 
-        relax_out = self.attractor_head.relax_to_minima(y_out)
+        relax_out = self.attractor_head.relax_to_minima(h_next)
         h_relaxed, basin_energy = relax_out[0], relax_out[1]
         
         outputs = self.output_gateway(h_relaxed)
@@ -273,9 +280,9 @@ class CoREAgent(nn.Module):
         tied_text_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
         outputs["text_generation"] = tied_text_logits
         
-        state_value = self.critic(y_out)
+        state_value = self.critic(h_next)
         
-        return h_next_fast, h_next_slow, outputs, state_value, w_pred, free_energy, kl_div, w_current, attn_weights, channel_names, epistemic_entropy, eff_dt
+        return m_next, h_next, outputs, state_value, w_pred, free_energy, kl_div, w_current, attn_weights, channel_names, epistemic_entropy, eff_dt
 
     def forward(self, *args, **kwargs):
         return self.forward_step(*args, **kwargs)
@@ -290,12 +297,13 @@ class CoREAgent(nn.Module):
         return free_energy_val > dynamic_threshold
 
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, 
-                         criterion_speech: nn.Module, loss_free_energy_weight: float = 0.05, 
+                         criterion_speech: nn.Module, episodic_memory=None, loss_free_energy_weight: float = 0.05, 
                          chunk_size: int = 32, optimizer: torch.optim.Optimizer = None) -> Tuple[float, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size, seq_len = input_seq.size()
         
-        h_fast_curr = torch.zeros(batch_size, self.hidden_dim, device=self.device)
-        h_slow_curr = torch.zeros(batch_size, self.hidden_dim, device=self.device)
+        # Initial 3D Matrix and Context states
+        m_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
+        h_curr = torch.zeros(batch_size, self.hidden_dim, device=self.device)
         curr_prev_action = torch.zeros(batch_size, self.action_dim, device=self.device)
         obs_vision = torch.zeros(batch_size, self.config.net.vision_dim, device=self.device)
         
@@ -330,8 +338,9 @@ class CoREAgent(nn.Module):
                 
                 sensor_inputs = {'text': input_emb, 'vision': obs_vision, 'motor_efference': curr_prev_action}
                 
-                h_fast_curr, h_slow_curr, loop_outputs, _, _, free_energy, _, _, _, _, eps_ent, last_eff_dt = self.forward_step(
-                    sensor_inputs, h_fast_curr, h_slow_curr, curr_u_t, dt=1.0, attention_temp=self.config.memory.default_attention_temp
+                m_curr, h_curr, loop_outputs, _, _, free_energy, _, w_curr, _, _, eps_ent, last_eff_dt = self.forward_step(
+                    sensor_inputs, m_curr, h_curr, curr_u_t, episodic_memory=episodic_memory, dt=1.0, 
+                    attention_temp=self.config.memory.default_attention_temp
                 )
                 
                 speech_logits = loop_outputs["text_generation"]
@@ -340,9 +349,15 @@ class CoREAgent(nn.Module):
                 chunk_speech_losses.append(loss_tok)
                 chunk_fe_losses.append(free_energy.mean())
                 
-                # Low-Pass EMA Somatic Surprisal Filter
+                # Continuous Hippocampal Auto-Writing on Salient Events
                 with torch.no_grad():
                     curr_loss_val = loss_tok.detach().item()
+                    if episodic_memory is not None and curr_loss_val > 1.0:
+                        w_flat = w_curr.detach()
+                        if w_flat.dim() > 2:
+                            w_flat = w_flat.reshape(batch_size, self.unified_dim)
+                        episodic_memory.write(w_flat, w_flat, 3)
+
                     ema_surprise = (1.0 - alpha_ema) * ema_surprise + alpha_ema * (curr_loss_val / 4.0)
                     somatic_surprise = torch.clamp(torch.tensor([[ema_surprise]], device=self.device), 0.0, 0.40).repeat(batch_size, 1)
                     eps_ent_mean = eps_ent.detach().mean(dim=-1, keepdim=True)
@@ -358,26 +373,26 @@ class CoREAgent(nn.Module):
             if optimizer is not None:
                 (chunk_total_loss / float(num_chunks)).backward()
 
-            h_fast_curr = h_fast_curr.detach()
-            h_slow_curr = h_slow_curr.detach()
+            m_curr = m_curr.detach()
+            h_curr = h_curr.detach()
             curr_u_t = curr_u_t.detach()
 
         avg_speech_loss = total_speech_loss_accum / float(num_chunks)
         avg_fe_loss = total_fe_loss_accum / float(num_chunks)
         total_loss_metric = self.config.train.loss_speech_weight * avg_speech_loss + loss_free_energy_weight * avg_fe_loss
 
-        return total_loss_metric, avg_speech_loss, avg_fe_loss, h_fast_curr, h_slow_curr, curr_u_t, last_eff_dt
+        return total_loss_metric, avg_speech_loss, avg_fe_loss, m_curr, h_curr, curr_u_t, last_eff_dt
 
     def generate_thought_and_speech(
-        self, prompt: str, h_fast: torch.Tensor, h_slow: torch.Tensor, hu, episodic_memory, 
+        self, prompt: str, m_state: torch.Tensor, h_state: torch.Tensor, hu, episodic_memory, 
         config, known_priors: List[str] = None, projected_priors: torch.Tensor = None, 
         max_generated_tokens: int = 120, temperature: float = 0.7, top_p: float = 0.90
     ) -> Generator[Dict[str, Any], None, None]:
         prompt_tokens = self.encode_text(prompt).unsqueeze(0)
         prompt_embs = self.pos_embeddings(prompt_tokens, start_pos=0, apply_rf=True).squeeze(0)
         
-        h_f = h_fast.clone()
-        h_s = h_slow.clone()
+        m_curr = m_state.clone()
+        h_curr = h_state.clone()
         
         obs_vis = self._cached_zero_vision
         prev_act = self._cached_zero_motor
@@ -387,10 +402,16 @@ class CoREAgent(nn.Module):
             t_emb = prompt_embs[idx].reshape(1, -1)
             s_in = {'text': t_emb, 'vision': obs_vis, 'motor_efference': prev_act}
             
-            h_f, h_s, _, _, _, _, _, _, attn_w, ch_names, eps_ent, _ = self.forward_step(
-                s_in, h_f, h_s, hu.state, episodic_memory=episodic_memory
+            m_curr, h_curr, _, _, _, _, _, w_curr, attn_w, ch_names, eps_ent, _ = self.forward_step(
+                s_in, m_curr, h_curr, hu.state, episodic_memory=episodic_memory
             )
             
+            # Prompt-time auto-indexing of user entities into episodic memory
+            if episodic_memory is not None:
+                with torch.no_grad():
+                    w_flat = w_curr.detach().reshape(1, self.unified_dim)
+                    episodic_memory.write(w_flat, w_flat, 3)
+
             yield {
                 "status": "reading",
                 "step": idx + 1,
@@ -414,14 +435,13 @@ class CoREAgent(nn.Module):
             t_emb = self.pos_embeddings(curr_token, start_pos=current_pos, apply_rf=False).squeeze(0)
             s_in = {'text': t_emb, 'vision': obs_vis, 'motor_efference': prev_act}
             
-            h_f, h_s, outputs, _, _, fe, _, _, _, _, eps_ent, _ = self.forward_step(
-                s_in, h_f, h_s, hu.state, episodic_memory=episodic_memory
+            m_curr, h_curr, outputs, _, _, fe, _, _, _, _, eps_ent, _ = self.forward_step(
+                s_in, m_curr, h_curr, hu.state, episodic_memory=episodic_memory
             )
             
             logits = outputs["text_generation"] / max(temperature, 1e-4)
             logits[:, 256:] = -1e9
             
-            # Top-p Nucleus Sampling
             sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
             cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
             sorted_indices_to_remove = cumulative_probs > top_p
@@ -450,7 +470,7 @@ class CoREAgent(nn.Module):
             }
             
             if hu.state[0, 1].item() <= 0.05:
-                yield {"status": "exhausted", "text": " [fatigued...]", "h_fast": h_f, "h_slow": h_s}
+                yield {"status": "exhausted", "text": " [fatigued...]", "m_state": m_curr, "h_state": h_curr}
                 return
 
-        yield {"status": "speech_end", "h_fast": h_f, "h_slow": h_s}
+        yield {"status": "speech_end", "m_state": m_curr, "h_state": h_curr}

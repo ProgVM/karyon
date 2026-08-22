@@ -2,8 +2,8 @@
 """
 ===============================================================================
 KARYON SINGLE-PASS CONTINUOUS LEARNING RUNTIME (N=1)
-Integrated with Native C++20 SDE-SSM Recurrence, Causal Receptive Convolutions,
-Afferent-Efferent Weight Tying, KEP Rule #6 Diagnostics, and Top-p Rule #4 Sampling.
+Integrated with Native C++20 Goal-Conditioned Matrix SDE-SSM Recurrence,
+Continuous Hippocampal Memory Writing, KEP Rule #6 Telemetry, and Top-p Sampling.
 ===============================================================================
 """
 
@@ -173,7 +173,6 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     diag_hu.state.copy_(hu_state[0:1])
     
     diag_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=config.net.unified_dim, max_capacity=config.memory.max_capacity, device=agent.device_str)
-    
     k_slice = min(memory.keys.size(1), config.memory.max_capacity)
     diag_mem.keys[:, :k_slice].copy_(memory.keys[:1, :k_slice])
     diag_mem.values[:, :k_slice].copy_(memory.values[:1, :k_slice])
@@ -184,8 +183,8 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     with torch.no_grad():
         gen_stream = agent.generate_thought_and_speech(
             prompt=diag_prompt,
-            h_fast=torch.zeros(1, agent.hidden_dim, device=agent.device),
-            h_slow=torch.zeros(1, agent.hidden_dim, device=agent.device),
+            m_state=torch.zeros(1, agent.num_heads, agent.head_k, agent.head_v, device=agent.device),
+            h_state=torch.zeros(1, agent.hidden_dim, device=agent.device),
             hu=diag_hu,
             episodic_memory=diag_mem,
             config=config,
@@ -219,10 +218,10 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
 
     optimizer.zero_grad()
     
-    # 1. Execution Pass with Native C++ SDE-SSM Micro-Chunking
+    # 1. Execution Pass with Goal-Conditioned Matrix SDE-SSM Micro-Chunking
     t_exec_start = time.perf_counter()
-    total_loss_metric, speech_loss_val, fe_val, h_fast_curr, h_slow_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
-        input_seq, target_seq, hu_batch, criterion_speech, 
+    total_loss_metric, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
+        input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
         loss_free_energy_weight=0.05, chunk_size=32, optimizer=optimizer
     )
     t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
@@ -262,20 +261,7 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
         total_skipped_batches += 1
         status_str = f"RESTING / SKIPPED (0 Backprop FLOPs)"
 
-    # 3. Fast Episodic Memory Write
-    t_mem_start = time.perf_counter()
-    with torch.no_grad():
-        first_emb = agent_brain.pos_embeddings(input_seq[:, 0:1], start_pos=0, apply_rf=False).squeeze(1)
-        s_in_first = {'text': first_emb, 'vision': torch.zeros(current_batch_size, core_config.net.vision_dim, device=device), 'motor_efference': torch.zeros(current_batch_size, core_config.net.action_dim, device=device)}
-        _, _, _, _, _, _, _, w_key, _, _, _, _ = agent_brain(s_in_first, h_fast_curr, h_slow_curr, curr_u_t)
-        
-        last_emb = agent_brain.pos_embeddings(target_seq[:, -1:], start_pos=seq_len-1, apply_rf=False).squeeze(1)
-        s_in_last = {'text': last_emb, 'vision': torch.zeros(current_batch_size, core_config.net.vision_dim, device=device), 'motor_efference': torch.zeros(current_batch_size, core_config.net.action_dim, device=device)}
-        _, _, _, _, _, _, _, w_val, _, _, _, _ = agent_brain(s_in_last, h_fast_curr, h_slow_curr, curr_u_t)
-        
-        episodic_mem.write(w_key, w_val, 3)
-    t_mem_ms = (time.perf_counter() - t_mem_start) * 1000.0
-
+    t_mem_ms = 0.0
     batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
     tokens_per_sec = (current_batch_size * seq_len) / (batch_total_ms / 1000.0)
 
@@ -286,8 +272,6 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
         peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device == 'cuda' else 0.0
 
         grad_embed = agent_brain.pos_embeddings.byte_embed.weight.grad.norm().item() if agent_brain.pos_embeddings.byte_embed.weight.grad is not None else 0.0
-        
-        # Robust gradient norm inspection for native C++ attractor head
         grad_head = 0.0
         if hasattr(agent_brain.attractor_head, 'attractor_basins') and agent_brain.attractor_head.attractor_basins.grad is not None:
             grad_head = agent_brain.attractor_head.attractor_basins.grad.norm().item()
@@ -296,7 +280,7 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
         print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
         print("="*85)
         print(f"Plasticity Gating Status  : {status_str}")
-        print(f"Submodule Timing (ms)     : Micro-Chunk SDE-SSM: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms | Mem Write: {t_mem_ms:.1f}ms")
+        print(f"Submodule Timing (ms)     : Matrix SDE-SSM Chunk: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms")
         print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
         print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
         print(f"Gradient Flow Inspection  : Embeddings Grad Norm = {grad_embed:.6f} | Attractor Head Grad Norm = {grad_head:.6f}")
@@ -309,6 +293,6 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
         logger.info(f"💬 [KEP Rule #4 Diagnostic Speech Sample @ Step {batch_idx+1}] -> \"{diag_sample}\"\n")
 
 logger.info("Persisting final DFET stream state into '.kcore' container...")
-save_karyon(agent_brain, episodic_mem, hu, h_fast_curr[0:1], h_slow_curr[0:1], epoch=1, story_idx=len(stream_loader) * BATCH_SIZE, filepath=kcore_path)
+save_karyon(agent_brain, episodic_mem, hu, h_curr[0:1], h_curr[0:1], epoch=1, story_idx=len(stream_loader) * BATCH_SIZE, filepath=kcore_path)
 
 logger.info(f"Single-Pass Session Complete! Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches}.")

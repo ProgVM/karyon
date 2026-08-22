@@ -263,57 +263,86 @@ public:
 };
 
 // ============================================================================
-// 6. CONTINUOUS-TIME SELECTIVE SDE STATE-SPACE CORE (SDE-SSM)
+// 6. GOAL-CONDITIONED MATRIX FAST-WEIGHT SDE-SSM (32x CAPACITY)
 // ============================================================================
-class SelectiveSDEStateSpaceCoreImpl : public torch::nn::Module {
+class GoalConditionedMatrixSDESSMCoreImpl : public torch::nn::Module {
 public:
-    int64_t hidden_dim;
     int64_t unified_dim;
+    int64_t hidden_dim;
+    int64_t num_heads;
+    int64_t head_k;
+    int64_t head_v;
 
-    torch::nn::Linear in_proj{nullptr};
+    torch::nn::Linear q_proj{nullptr};
+    torch::nn::Linear k_proj{nullptr};
+    torch::nn::Linear v_proj{nullptr};
     torch::nn::Linear decay_proj{nullptr};
     torch::nn::Linear out_gate{nullptr};
     torch::nn::Linear out_proj{nullptr};
-    torch::nn::LayerNorm layer_norm{nullptr};
+    torch::nn::LayerNorm norm{nullptr};
 
-    SelectiveSDEStateSpaceCoreImpl(int64_t hidden_dim = 512, int64_t unified_dim = 256, int64_t homeo_dim = 6,
-                                  std::string device_str = "cpu")
-        : hidden_dim(hidden_dim), unified_dim(unified_dim) {
+    GoalConditionedMatrixSDESSMCoreImpl(int64_t unified_dim = 256, int64_t hidden_dim = 512,
+                                       int64_t num_heads = 8, int64_t head_k = 32, int64_t head_v = 64,
+                                       int64_t homeo_dim = 6, std::string device_str = "cpu")
+        : unified_dim(unified_dim), hidden_dim(hidden_dim), num_heads(num_heads), head_k(head_k), head_v(head_v) {
 
-        in_proj = register_module("in_proj", torch::nn::Linear(unified_dim, hidden_dim));
-        decay_proj = register_module("decay_proj", torch::nn::Linear(unified_dim + homeo_dim, hidden_dim));
-        out_gate = register_module("out_gate", torch::nn::Linear(unified_dim, hidden_dim));
+        q_proj = register_module("q_proj", torch::nn::Linear(unified_dim + hidden_dim, num_heads * head_k));
+        k_proj = register_module("k_proj", torch::nn::Linear(unified_dim, num_heads * head_k));
+        v_proj = register_module("v_proj", torch::nn::Linear(unified_dim, num_heads * head_v));
+        
+        decay_proj = register_module("decay_proj", torch::nn::Linear(unified_dim + homeo_dim, num_heads));
+        out_gate = register_module("out_gate", torch::nn::Linear(unified_dim + hidden_dim, hidden_dim));
         out_proj = register_module("out_proj", torch::nn::Linear(hidden_dim, hidden_dim));
-        layer_norm = register_module("layer_norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
+        norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
 
         if (device_str.find("cuda") != std::string::npos) {
             this->to(torch::kCUDA);
         }
     }
 
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward(
-        torch::Tensor h_prev, torch::Tensor w_t, torch::Tensor u_t, float dt = 1.0f) {
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_step(
+        torch::Tensor m_prev, torch::Tensor h_prev, torch::Tensor w_t, torch::Tensor u_t, float dt = 1.0f) {
 
+        int64_t batch_size = w_t.size(0);
         auto na = u_t.slice(1, 4, 5);
         auto da = u_t.slice(1, 5, 6);
 
-        auto eff_dt = torch::clamp(dt * (1.0f - 0.4f * na + 0.4f * da), 0.30f, 2.00f);
+        auto eff_dt_raw = torch::clamp(dt * (1.0f - 0.4f * na + 0.4f * da), 0.30f, 2.00f);
+        auto eff_dt_4d = eff_dt_raw.view({batch_size, 1, 1, 1});
 
+        // 1. Goal-Conditioned Query: W_q [w_t, h_{t-1}]
+        auto q_input = torch::cat({w_t, h_prev}, -1);
+        auto q = q_proj->forward(q_input).view({batch_size, num_heads, 1, head_k});
+        q = torch::nn::functional::normalize(q, torch::nn::functional::NormalizeFuncOptions().p(2).dim(-1));
+
+        // 2. Key & Value Projections
+        auto k = k_proj->forward(w_t).view({batch_size, num_heads, head_k, 1});
+        k = torch::nn::functional::normalize(k, torch::nn::functional::NormalizeFuncOptions().p(2).dim(-2));
+
+        auto v = v_proj->forward(w_t).view({batch_size, num_heads, 1, head_v});
+
+        // 3. Multi-Head Selective Decay
         auto decay_in = torch::cat({w_t, u_t}, -1);
-        auto decay_logits = decay_proj->forward(decay_in);
-        auto alpha = torch::pow(torch::sigmoid(decay_logits), eff_dt);
+        auto alpha = torch::pow(torch::sigmoid(decay_proj->forward(decay_in)).view({batch_size, num_heads, 1, 1}), eff_dt_4d);
 
-        auto b_input = in_proj->forward(w_t);
+        // 4. Outer Product Associative Write (k @ v)
+        auto kv_assoc = torch::matmul(k, v);
 
+        // 5. Stratonovich-Heun Wiener Diffusion
         constexpr float sigma = 1e-3f;
-        auto dW = torch::randn_like(h_prev) * torch::sqrt(eff_dt) * sigma;
+        auto dW = torch::randn_like(m_prev) * torch::sqrt(eff_dt_4d) * sigma;
 
-        auto h_next = alpha * h_prev + (1.0f - alpha) * b_input + dW;
+        // 6. Matrix Recurrence State Space Update
+        auto m_next = alpha * m_prev + (1.0f - alpha) * kv_assoc + dW;
 
-        auto gate = torch::silu(out_gate->forward(w_t));
-        auto y_t = layer_norm->forward(out_proj->forward(h_next * gate) + h_next);
+        // 7. Goal-Directed Associative Readout: q @ M_next
+        auto readout = torch::matmul(q, m_next).view({batch_size, hidden_dim});
 
-        return std::make_tuple(h_next, y_t, eff_dt);
+        // 8. Gated Outflow & Residual Integration
+        auto gate = torch::silu(out_gate->forward(q_input));
+        auto h_next = norm->forward(out_proj->forward(readout * gate) + readout);
+
+        return std::make_tuple(m_next, h_next, eff_dt_raw);
     }
 };
 
@@ -501,22 +530,21 @@ public:
         auto q_norm = torch::nn::functional::normalize(query.unsqueeze(1), torch::nn::functional::NormalizeFuncOptions().p(2).dim(-1));
         auto k_norm = torch::nn::functional::normalize(active_keys, torch::nn::functional::NormalizeFuncOptions().p(2).dim(-1));
 
-        auto sim = torch::bmm(q_norm, k_norm.transpose(1, 2)); // [Batch, 1, max_active]
+        auto sim = torch::bmm(q_norm, k_norm.transpose(1, 2));
 
         auto seq_range = torch::arange(max_active, query.options()).unsqueeze(0);
         auto invalid_mask = (seq_range >= active_size.unsqueeze(1)).unsqueeze(1);
 
-        auto sim_masked = sim.masked_fill(invalid_mask, -1e9f); // [Batch, 1, max_active]
+        auto sim_masked = sim.masked_fill(invalid_mask, -1e9f);
 
-        // Strict 2D shape extraction: max_sim [Batch, 1] without extra singleton dimensions
-        auto max_sim = std::get<0>(sim_masked.max(-1)); // Shape: [Batch, 1]
-        auto max_sim_valid = torch::where(active_size.unsqueeze(-1) > 0, max_sim, torch::zeros_like(max_sim)); // [Batch, 1]
+        auto max_sim = std::get<0>(sim_masked.max(-1));
+        auto max_sim_valid = torch::where(active_size.unsqueeze(-1) > 0, max_sim, torch::zeros_like(max_sim));
 
-        auto gate = torch::sigmoid((max_sim_valid - threshold) * sigmoid_beta); // Shape: [Batch, 1]
-        auto attn_weights = torch::softmax(sim_masked / temperature, -1);       // Shape: [Batch, 1, max_active]
+        auto gate = torch::sigmoid((max_sim_valid - threshold) * sigmoid_beta);
+        auto attn_weights = torch::softmax(sim_masked / temperature, -1);
 
-        auto retrieved_val = torch::bmm(attn_weights, active_values).squeeze(1); // Shape: [Batch, memory_dim]
-        auto gated_retrieved = retrieved_val * gate;                             // Shape: [Batch, memory_dim] (Strict 2D)
+        auto retrieved_val = torch::bmm(attn_weights, active_values).squeeze(1);
+        auto gated_retrieved = retrieved_val * gate;
 
         return std::make_tuple(gated_retrieved, max_sim_valid);
     }
@@ -588,14 +616,14 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("named_parameters", [](std::shared_ptr<CausalByteReceptiveFieldImpl> m) { return m->named_parameters(); })
         .def("__call__", &CausalByteReceptiveFieldImpl::forward);
 
-    py::class_<SelectiveSDEStateSpaceCoreImpl, torch::nn::Module, std::shared_ptr<SelectiveSDEStateSpaceCoreImpl>>(m, "SelectiveSDEStateSpaceCore")
-        .def(py::init<int64_t, int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 512, py::arg("unified_dim") = 256, py::arg("homeo_dim") = 6,
-             py::arg("device") = "cpu")
-        .def("forward", &SelectiveSDEStateSpaceCoreImpl::forward)
-        .def("parameters", [](std::shared_ptr<SelectiveSDEStateSpaceCoreImpl> m) { return m->parameters(); })
-        .def("named_parameters", [](std::shared_ptr<SelectiveSDEStateSpaceCoreImpl> m) { return m->named_parameters(); })
-        .def("__call__", &SelectiveSDEStateSpaceCoreImpl::forward);
+    py::class_<GoalConditionedMatrixSDESSMCoreImpl, torch::nn::Module, std::shared_ptr<GoalConditionedMatrixSDESSMCoreImpl>>(m, "GoalConditionedMatrixSDESSMCore")
+        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
+             py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512, py::arg("num_heads") = 8,
+             py::arg("head_k") = 32, py::arg("head_v") = 64, py::arg("homeo_dim") = 6, py::arg("device") = "cpu")
+        .def("forward_step", &GoalConditionedMatrixSDESSMCoreImpl::forward_step)
+        .def("parameters", [](std::shared_ptr<GoalConditionedMatrixSDESSMCoreImpl> m) { return m->parameters(); })
+        .def("named_parameters", [](std::shared_ptr<GoalConditionedMatrixSDESSMCoreImpl> m) { return m->named_parameters(); })
+        .def("__call__", &GoalConditionedMatrixSDESSMCoreImpl::forward_step);
 
     py::class_<DesaturatedHopfieldAttractorHeadImpl, torch::nn::Module, std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl>>(m, "DesaturatedHopfieldAttractorHead")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
