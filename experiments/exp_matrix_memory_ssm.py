@@ -156,7 +156,9 @@ class MatrixFastWeightSDESSMCore(nn.Module):
         na = u_t[:, 4:5]
         da = u_t[:, 5:6]
 
-        eff_dt = torch.clamp(dt * (1.0 - 0.4 * na + 0.4 * da), 0.30, 2.00)
+        # 4D Shape-aligned eff_dt tensor for proper broadcasting
+        eff_dt_raw = torch.clamp(dt * (1.0 - 0.4 * na + 0.4 * da), 0.30, 2.00)
+        eff_dt_4d = eff_dt_raw.view(batch_size, 1, 1, 1)
 
         # Projections: [Batch, NumHeads, HeadDim]
         q = self.q_proj(w_t).view(batch_size, self.num_heads, 1, self.head_k)
@@ -169,14 +171,14 @@ class MatrixFastWeightSDESSMCore(nn.Module):
 
         # Multi-Head Selective Decay: alpha [Batch, NumHeads, 1, 1]
         decay_in = torch.cat([w_t, u_t], dim=-1)
-        alpha = (torch.sigmoid(self.decay_proj(decay_in)) ** eff_dt).view(batch_size, self.num_heads, 1, 1)
+        alpha = (torch.sigmoid(self.decay_proj(decay_in)).view(batch_size, self.num_heads, 1, 1) ** eff_dt_4d)
 
         # Outer Product Key-Value Associative Write: (k @ v) [Batch, NumHeads, HeadK, HeadV]
         kv_assoc = torch.matmul(k, v)
 
         # Stratonovich-Heun Wiener Diffusion on Synaptic Fast-Weights
         sigma = 1e-3
-        dW = torch.randn_like(m_prev) * torch.sqrt(eff_dt) * sigma
+        dW = torch.randn_like(m_prev) * torch.sqrt(eff_dt_4d) * sigma
 
         # Matrix State Space Associative Recurrence Update
         m_next = alpha * m_prev + (1.0 - alpha) * kv_assoc + dW
@@ -188,7 +190,7 @@ class MatrixFastWeightSDESSMCore(nn.Module):
         gate = F.silu(self.out_gate(w_t))
         y_t = self.norm(self.out_proj(readout * gate) + readout)
 
-        return m_next, y_t, eff_dt
+        return m_next, y_t, eff_dt_raw
 
 
 # =============================================================================
@@ -421,11 +423,11 @@ def run_isolated_benchmark():
                 loss_t = criterion(logits, chunk_targets[:, t])
                 chunk_losses.append(loss_t)
 
-                # Continuous Hippocampal Auto-Writing on Salient Surprise Events
+                # Continuous Hippocampal Auto-Writing on Salient Surprise Events (Unified Dim 256)
                 with torch.no_grad():
                     curr_loss_val = loss_t.detach().item()
-                    if curr_loss_val > 1.2: # Salient event detection
-                        mem_prop.write(w_t.detach(), y_t.detach(), 3)
+                    if curr_loss_val > 1.2:
+                        mem_prop.write(w_t.detach(), w_t.detach(), 3)
 
                     ema_surprise = (1.0 - alpha_ema) * ema_surprise + alpha_ema * (curr_loss_val / 4.0)
                     somatic_surprise = torch.clamp(torch.tensor([[ema_surprise]], device=device), 0.0, 0.40).repeat(batch_size, 1)
@@ -490,15 +492,22 @@ def run_isolated_benchmark():
                     chars.append(chr(next_id) if 32 <= next_id <= 126 else ' ')
                     curr_tok = torch.tensor([[next_id]], device=device)
             else:
+                diag_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=config.net.unified_dim, max_capacity=200, device=device_str)
+                k_slice = min(mem_prop.keys.size(1), 200)
+                diag_mem.keys[:, :k_slice].copy_(mem_prop.keys[:1, :k_slice])
+                diag_mem.values[:, :k_slice].copy_(mem_prop.values[:1, :k_slice])
+                diag_mem.pointer.copy_(mem_prop.pointer[:1])
+                diag_mem.size.copy_(mem_prop.size[:1])
+
                 m_state = torch.zeros(1, 8, 32, 64, device=device)
                 h_proxy = torch.zeros(1, config.net.hidden_dim, device=device)
                 for t in range(p_emb.size(1)):
-                    m_state, h_proxy, _, _, _ = model.forward_step(p_emb[:, t], m_state, h_proxy, u_t, episodic_memory=mem_prop)
+                    m_state, h_proxy, _, _, _ = model.forward_step(p_emb[:, t], m_state, h_proxy, u_t, episodic_memory=diag_mem)
                 curr_tok = p_ids[:, -1:]
                 chars = []
                 for s in range(50):
                     t_emb = model.pos_embeddings(curr_tok, start_pos=p_emb.size(1) + s, apply_rf=False)[:, 0]
-                    m_state, h_proxy, logits, _, _ = model.forward_step(t_emb, m_state, h_proxy, u_t, episodic_memory=mem_prop)
+                    m_state, h_proxy, logits, _, _ = model.forward_step(t_emb, m_state, h_proxy, u_t, episodic_memory=diag_mem)
                     probs = F.softmax(logits / 0.7, dim=-1)
                     next_id = torch.multinomial(probs, 1).item()
                     if next_id == 257: break
