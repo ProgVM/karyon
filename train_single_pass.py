@@ -2,8 +2,8 @@
 """
 ===============================================================================
 KARYON SINGLE-PASS CONTINUOUS LEARNING RUNTIME (N=1)
-Integrated with KEP Rule #6 Universal Deep Process Diagnostics,
-Gradient Flow Inspection, Microsecond CUDA Profiling, and KEP Rule #4 Sampling.
+Integrated with Fused Micro-Chunked Recurrent Execution, Tied Head Architecture,
+KEP Rule #6 Universal Deep Process Diagnostics, and KEP Rule #4 Speech Sampling.
 ===============================================================================
 """
 
@@ -201,10 +201,6 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
 
 logger.info("Starting High-Speed Session with KEP Rule #6 Universal Deep Diagnostics...")
 
-# CUDA Event Timers for Process Profiling
-start_event = torch.cuda.Event(enable_timing=True) if device == 'cuda' else None
-end_event = torch.cuda.Event(enable_timing=True) if device == 'cuda' else None
-
 for batch_idx, batch_tokens in enumerate(stream_loader):
     t_batch_start = time.perf_counter()
     
@@ -220,17 +216,19 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
     input_seq = batch_tokens[:, :-1]
     target_seq = batch_tokens[:, 1:]
 
-    # 1. Forward Pass Timing
-    t_fwd_start = time.perf_counter()
-    total_loss, speech_loss_total, free_energy_total, h_fast_curr, h_slow_curr, curr_u_t, eff_dt, last_attn, last_names = agent_brain.forward_sequence(
-        input_seq, target_seq, hu_batch, criterion_speech, loss_free_energy_weight=0.05, chunk_size=32
+    optimizer.zero_grad()
+    
+    # 1. Execution Pass with Fused Micro-Chunking
+    t_exec_start = time.perf_counter()
+    total_loss_metric, speech_loss_val, fe_val, h_fast_curr, h_slow_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
+        input_seq, target_seq, hu_batch, criterion_speech, 
+        loss_free_energy_weight=0.05, chunk_size=32, optimizer=optimizer
     )
-    t_fwd_ms = (time.perf_counter() - t_fwd_start) * 1000.0
+    t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
-    fe_val = free_energy_total.item()
-    speech_loss_val = speech_loss_total.item()
     na_val = curr_u_t.select(1, 4).mean().item()
 
+    # 2. Plasticity and Adaptation Step
     moving_mean_fe = (1.0 - alpha_ma) * moving_mean_fe + alpha_ma * fe_val
     moving_var_fe = (1.0 - alpha_ma) * moving_var_fe + alpha_ma * ((fe_val - moving_mean_fe)**2)
     moving_std_fe = math.sqrt(max(1e-6, moving_var_fe))
@@ -241,23 +239,21 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
     
     should_adapt = is_fe_unmastered or is_speech_unmastered or is_statistical_outlier
 
-    # 2. Backward Pass Timing
-    t_bwd_ms = 0.0
+    t_opt_ms = 0.0
     if should_adapt:
         effective_lr = 3e-3 * (1.0 + 1.0 * na_val)
         for param_group in optimizer.param_groups:
             param_group['lr'] = effective_lr
 
-        t_bwd_start = time.perf_counter()
-        optimizer.zero_grad()
-        total_loss.backward()
+        t_opt_start = time.perf_counter()
         torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=3.0)
         optimizer.step()
-        t_bwd_ms = (time.perf_counter() - t_bwd_start) * 1000.0
+        t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
         
         total_adapted_batches += 1
         status_str = f"ADAPTED (lr={effective_lr:.5f})"
     else:
+        optimizer.zero_grad()
         rest_recovery_rate = getattr(core_config.homeo, 'energy_recovery_rate', 0.0012)
         with torch.no_grad():
             curr_u_t[:, 1] = torch.clamp(curr_u_t[:, 1] + rest_recovery_rate, 0.0, 1.0)
@@ -265,14 +261,14 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
         total_skipped_batches += 1
         status_str = f"RESTING / SKIPPED (0 Backprop FLOPs)"
 
-    # 3. Fast In-Memory Fast-Weights Write
+    # 3. Fast Episodic Memory Write
     t_mem_start = time.perf_counter()
     with torch.no_grad():
-        first_emb = agent_brain.pos_embeddings(input_seq[:, 0:1]).squeeze(1)
+        first_emb = agent_brain.pos_embeddings(input_seq[:, 0:1], start_pos=0).squeeze(1)
         s_in_first = {'text': first_emb, 'vision': torch.zeros(current_batch_size, core_config.net.vision_dim, device=device), 'motor_efference': torch.zeros(current_batch_size, core_config.net.action_dim, device=device)}
         _, _, _, _, _, _, _, w_key, _, _, _, _ = agent_brain(s_in_first, h_fast_curr, h_slow_curr, curr_u_t)
         
-        last_emb = agent_brain.pos_embeddings(target_seq[:, -1:]).squeeze(1)
+        last_emb = agent_brain.pos_embeddings(target_seq[:, -1:], start_pos=seq_len-1).squeeze(1)
         s_in_last = {'text': last_emb, 'vision': torch.zeros(current_batch_size, core_config.net.vision_dim, device=device), 'motor_efference': torch.zeros(current_batch_size, core_config.net.action_dim, device=device)}
         _, _, _, _, _, _, _, w_val, _, _, _, _ = agent_brain(s_in_last, h_fast_curr, h_slow_curr, curr_u_t)
         
@@ -282,13 +278,13 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
     batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
     tokens_per_sec = (current_batch_size * seq_len) / (batch_total_ms / 1000.0)
 
-    # KEP Rule #6: Deep Non-Superficial Process Diagnostics Dashboard
+    # KEP Rule #6: Deep Process Diagnostics Dashboard
     if (batch_idx + 1) % 10 == 0 or batch_idx == len(stream_loader) - 1:
-        perplexity = math.exp(min(speech_loss_total.item(), 20.0))
+        perplexity = math.exp(min(speech_loss_val, 20.0))
         curiosity, energy, stability, health, na, da = curr_u_t[0].tolist()
         peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device == 'cuda' else 0.0
 
-        # Gradient Norm Inspection
+        # Gradient Norm Verification
         grad_embed = agent_brain.pos_embeddings.byte_embed.weight.grad.norm().item() if agent_brain.pos_embeddings.byte_embed.weight.grad is not None else 0.0
         grad_head = agent_brain.attractor_head.attractor_basins.grad.norm().item() if agent_brain.attractor_head.attractor_basins.grad is not None else 0.0
 
@@ -296,9 +292,9 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
         print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
         print("="*85)
         print(f"Plasticity Gating Status  : {status_str}")
-        print(f"Submodule Timing (ms)     : Forward: {t_fwd_ms:.1f}ms | Backward: {t_bwd_ms:.1f}ms | Memory Write: {t_mem_ms:.1f}ms")
+        print(f"Submodule Timing (ms)     : Micro-Chunk Execution: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms | Mem Write: {t_mem_ms:.1f}ms")
         print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
-        print(f"Metrics Progress          : Speech Loss = {speech_loss_total.item():.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
+        print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
         print(f"Gradient Flow Inspection  : Embeddings Grad Norm = {grad_embed:.6f} | Attractor Head Grad Norm = {grad_head:.6f}")
         print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy:.3f} | Arousal(NA): {na:.3f}")
         print("="*85)
