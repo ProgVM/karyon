@@ -416,7 +416,7 @@ public:
 };
 
 // ============================================================================
-// 9. HIGH-VELOCITY BATCHED EPISODIC MEMORY (DYNAMIC SLICING)
+// 9. HIGH-VELOCITY BATCHED EPISODIC MEMORY (STRICT 2D SHAPE-ALIGNED READ)
 // ============================================================================
 class BatchedEpisodicMemoryImpl : public torch::nn::Module {
 public:
@@ -501,21 +501,22 @@ public:
         auto q_norm = torch::nn::functional::normalize(query.unsqueeze(1), torch::nn::functional::NormalizeFuncOptions().p(2).dim(-1));
         auto k_norm = torch::nn::functional::normalize(active_keys, torch::nn::functional::NormalizeFuncOptions().p(2).dim(-1));
 
-        auto sim = torch::bmm(q_norm, k_norm.transpose(1, 2));
+        auto sim = torch::bmm(q_norm, k_norm.transpose(1, 2)); // [Batch, 1, max_active]
 
         auto seq_range = torch::arange(max_active, query.options()).unsqueeze(0);
         auto invalid_mask = (seq_range >= active_size.unsqueeze(1)).unsqueeze(1);
 
-        auto sim_masked = sim.masked_fill(invalid_mask, -1e9f);
+        auto sim_masked = sim.masked_fill(invalid_mask, -1e9f); // [Batch, 1, max_active]
 
-        auto max_sim = std::get<0>(sim_masked.max(-1)).unsqueeze(-1);
-        auto max_sim_valid = torch::where(active_size.unsqueeze(-1) > 0, max_sim, torch::zeros_like(max_sim));
+        // Strict 2D shape extraction: max_sim [Batch, 1] without extra singleton dimensions
+        auto max_sim = std::get<0>(sim_masked.max(-1)); // Shape: [Batch, 1]
+        auto max_sim_valid = torch::where(active_size.unsqueeze(-1) > 0, max_sim, torch::zeros_like(max_sim)); // [Batch, 1]
 
-        auto gate = torch::sigmoid((max_sim_valid - threshold) * sigmoid_beta);
-        auto attn_weights = torch::softmax(sim_masked / temperature, -1);
+        auto gate = torch::sigmoid((max_sim_valid - threshold) * sigmoid_beta); // Shape: [Batch, 1]
+        auto attn_weights = torch::softmax(sim_masked / temperature, -1);       // Shape: [Batch, 1, max_active]
 
-        auto retrieved_val = torch::bmm(attn_weights, active_values).squeeze(1);
-        auto gated_retrieved = retrieved_val * gate;
+        auto retrieved_val = torch::bmm(attn_weights, active_values).squeeze(1); // Shape: [Batch, memory_dim]
+        auto gated_retrieved = retrieved_val * gate;                             // Shape: [Batch, memory_dim] (Strict 2D)
 
         return std::make_tuple(gated_retrieved, max_sim_valid);
     }
@@ -589,13 +590,13 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<SelectiveSDEStateSpaceCoreImpl, torch::nn::Module, std::shared_ptr<SelectiveSDEStateSpaceCoreImpl>>(m, "SelectiveSDEStateSpaceCore")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 512, py::arg("unified_dim") = 256, py::arg("homeo_dim") = 6, py::arg("device") = "cpu")
+             py::arg("hidden_dim") = 512, py::arg("unified_dim") = 256, py::arg("homeo_dim") = 6,
+             py::arg("device") = "cpu")
         .def("forward", &SelectiveSDEStateSpaceCoreImpl::forward)
         .def("parameters", [](std::shared_ptr<SelectiveSDEStateSpaceCoreImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<SelectiveSDEStateSpaceCoreImpl> m) { return m->named_parameters(); })
         .def("__call__", &SelectiveSDEStateSpaceCoreImpl::forward);
 
-    // FIXED: Explicitly bind attractor_basins parameter for Python diagnostics access
     py::class_<DesaturatedHopfieldAttractorHeadImpl, torch::nn::Module, std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl>>(m, "DesaturatedHopfieldAttractorHead")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
              py::arg("hidden_dim") = 512, py::arg("vocab_size") = 258, py::arg("num_attractors") = 64, py::arg("device") = "cpu")
