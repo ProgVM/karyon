@@ -1,4 +1,4 @@
-# exp_predictive_coding_bidirectional.py
+# experiments/exp_predictive_coding_bidirectional.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #11.1 (ITERATION 2)

@@ -1,4 +1,4 @@
-# exp_system2_active_thinking.py
+# experiments/exp_system2_active_thinking.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #5 (CACHE-PROOF CONTAINER EVAL)

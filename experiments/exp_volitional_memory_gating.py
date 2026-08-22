@@ -1,4 +1,4 @@
-# exp_volitional_memory_gating.py
+# experiments/exp_volitional_memory_gating.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #8

@@ -1,4 +1,4 @@
-# exp_predictive_coding_online.py
+# experiments/exp_predictive_coding_online.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #11

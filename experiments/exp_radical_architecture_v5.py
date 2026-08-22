@@ -1,4 +1,4 @@
-# exp_radical_architecture_v5.py
+# experiments/exp_radical_architecture_v5.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #6

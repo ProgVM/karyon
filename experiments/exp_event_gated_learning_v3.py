@@ -1,4 +1,4 @@
-# exp_event_gated_learning_v3.py
+# experiments/exp_event_gated_learning_v3.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #2.2 (ITERATION 3)

@@ -1,4 +1,4 @@
-# exp_gateway_attention_fix.py
+# experiments/exp_gateway_attention_fix.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #7

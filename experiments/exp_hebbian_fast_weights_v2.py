@@ -1,4 +1,4 @@
-# exp_hebbian_fast_weights_v2.py
+# experiments/exp_hebbian_fast_weights_v2.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #4.1 (ITERATION 2)

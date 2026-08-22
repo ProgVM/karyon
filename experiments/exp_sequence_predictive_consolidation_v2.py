@@ -1,4 +1,4 @@
-# exp_sequence_predictive_consolidation_v2.py
+# experiments/exp_sequence_predictive_consolidation_v2.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #10.1 (ITERATION 2)

@@ -1,4 +1,4 @@
-# exp_wakesleep_active_inference.py
+# experiments/exp_wakesleep_active_inference.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #9

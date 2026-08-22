@@ -1,4 +1,4 @@
-# exp_event_driven_dt_v2.py
+# experiments/exp_event_driven_dt_v2.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #3.1 (ITERATION 2)

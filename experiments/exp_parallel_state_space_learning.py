@@ -1,4 +1,4 @@
-# exp_parallel_state_space_learning.py
+# experiments/exp_parallel_state_space_learning.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #12

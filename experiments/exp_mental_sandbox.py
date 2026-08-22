@@ -1,4 +1,4 @@
-# exp_mental_sandbox.py
+# experiments/exp_mental_sandbox.py
 """
 ===============================================================================
 KARYON ENGINEERING PROTOCOL (KEP) EXPERIMENT #1
