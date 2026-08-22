@@ -2,8 +2,8 @@
 """
 ===============================================================================
 KARYON SINGLE-PASS CONTINUOUS LEARNING RUNTIME (N=1)
-Integrated with Fused Micro-Chunked Recurrent Execution, Tied Head Architecture,
-KEP Rule #6 Universal Deep Process Diagnostics, and KEP Rule #4 Speech Sampling.
+Integrated with Native C++20 SDE-SSM Recurrence, Causal Receptive Convolutions,
+Afferent-Efferent Weight Tying, KEP Rule #6 Diagnostics, and Top-p Rule #4 Sampling.
 ===============================================================================
 """
 
@@ -65,7 +65,6 @@ from init_priors import initialize_priors
 
 logger = get_logger()
 
-# Ensure global autograd gradient tracking is explicitly enabled
 torch.set_grad_enabled(True)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -167,7 +166,7 @@ total_skipped_batches = 0
 total_adapted_batches = 0
 
 def run_diagnostic_text_sample(agent, memory, hu_state, config):
-    """KEP Rule #4: Generates a live diagnostic text sample with shape-safe memory buffers."""
+    """KEP Rule #4: Generates a live diagnostic text sample with Top-p nucleus sampling."""
     agent.eval()
     diag_prompt = "User: What is the primary source of energy for Earth?\nKaryon:"
     diag_hu = HomeostaticUnit(batch_size=1, device=agent.device_str)
@@ -190,7 +189,9 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
             hu=diag_hu,
             episodic_memory=diag_mem,
             config=config,
-            max_generated_tokens=40
+            max_generated_tokens=50,
+            temperature=0.7,
+            top_p=0.90
         )
         for event in gen_stream:
             if event["status"] == "token":
@@ -218,7 +219,7 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
 
     optimizer.zero_grad()
     
-    # 1. Execution Pass with Fused Micro-Chunking
+    # 1. Execution Pass with Native C++ SDE-SSM Micro-Chunking
     t_exec_start = time.perf_counter()
     total_loss_metric, speech_loss_val, fe_val, h_fast_curr, h_slow_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
         input_seq, target_seq, hu_batch, criterion_speech, 
@@ -264,11 +265,11 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
     # 3. Fast Episodic Memory Write
     t_mem_start = time.perf_counter()
     with torch.no_grad():
-        first_emb = agent_brain.pos_embeddings(input_seq[:, 0:1], start_pos=0).squeeze(1)
+        first_emb = agent_brain.pos_embeddings(input_seq[:, 0:1], start_pos=0, apply_rf=False).squeeze(1)
         s_in_first = {'text': first_emb, 'vision': torch.zeros(current_batch_size, core_config.net.vision_dim, device=device), 'motor_efference': torch.zeros(current_batch_size, core_config.net.action_dim, device=device)}
         _, _, _, _, _, _, _, w_key, _, _, _, _ = agent_brain(s_in_first, h_fast_curr, h_slow_curr, curr_u_t)
         
-        last_emb = agent_brain.pos_embeddings(target_seq[:, -1:], start_pos=seq_len-1).squeeze(1)
+        last_emb = agent_brain.pos_embeddings(target_seq[:, -1:], start_pos=seq_len-1, apply_rf=False).squeeze(1)
         s_in_last = {'text': last_emb, 'vision': torch.zeros(current_batch_size, core_config.net.vision_dim, device=device), 'motor_efference': torch.zeros(current_batch_size, core_config.net.action_dim, device=device)}
         _, _, _, _, _, _, _, w_val, _, _, _, _ = agent_brain(s_in_last, h_fast_curr, h_slow_curr, curr_u_t)
         
@@ -284,7 +285,6 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
         curiosity, energy, stability, health, na, da = curr_u_t[0].tolist()
         peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device == 'cuda' else 0.0
 
-        # Gradient Norm Verification
         grad_embed = agent_brain.pos_embeddings.byte_embed.weight.grad.norm().item() if agent_brain.pos_embeddings.byte_embed.weight.grad is not None else 0.0
         grad_head = agent_brain.attractor_head.attractor_basins.grad.norm().item() if agent_brain.attractor_head.attractor_basins.grad is not None else 0.0
 
@@ -292,14 +292,14 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
         print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
         print("="*85)
         print(f"Plasticity Gating Status  : {status_str}")
-        print(f"Submodule Timing (ms)     : Micro-Chunk Execution: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms | Mem Write: {t_mem_ms:.1f}ms")
+        print(f"Submodule Timing (ms)     : Micro-Chunk SDE-SSM: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms | Mem Write: {t_mem_ms:.1f}ms")
         print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
         print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
         print(f"Gradient Flow Inspection  : Embeddings Grad Norm = {grad_embed:.6f} | Attractor Head Grad Norm = {grad_head:.6f}")
         print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy:.3f} | Arousal(NA): {na:.3f}")
         print("="*85)
 
-    # KEP Rule #4: Print live diagnostic speech sample every 30 batches
+    # KEP Rule #4: Live Diagnostic Speech Sample every 30 batches
     if (batch_idx + 1) % 30 == 0:
         diag_sample = run_diagnostic_text_sample(agent_brain, episodic_mem, curr_u_t, core_config)
         logger.info(f"💬 [KEP Rule #4 Diagnostic Speech Sample @ Step {batch_idx+1}] -> \"{diag_sample}\"\n")

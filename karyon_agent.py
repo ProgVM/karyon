@@ -1,10 +1,10 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v6.1 (PRODUCTION MASTER)
-Active Inference Engine with Fused Micro-Chunked Recurrent Execution,
-Afferent-Efferent Sensory-Motor Weight Tying, Desaturated Hopfield Attractors,
-and Isolated Interoceptive Somatic State Dynamics.
+KARYON AGENT CORE v6.5 (PRODUCTION MASTER)
+Continuous-Time Selective SDE State-Space Recurrent Engine (SDE-SSM),
+Causal N-gram Byte Receptive Field (K=4), Afferent-Efferent Sensory-Motor
+Weight Tying, Desaturated Hopfield Attractors, and Low-Pass Ashby Homeostasis.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -15,21 +15,30 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from karyon_core import (
+    ByteTokenizer,
+    HomeostaticUnit,
+    SensoryGateway,
+    MotorGateway,
+    CausalByteReceptiveField,
+    SelectiveSDEStateSpaceCore,
+    DesaturatedHopfieldAttractorHead,
+    LatentPredictor,
+    BatchedEpisodicMemory
+)
+
 
 # =============================================================================
-# MODULE 1: POSITIONAL BYTE EMBEDDING WITH CHUNK OFFSET (KEP #7 / #13)
+# MODULE 1: POSITIONAL BYTE EMBEDDING WITH NATIVE C++ RECEPTIVE FIELD
 # =============================================================================
 
 class OffsetPositionalByteEmbedding(nn.Module):
-    """
-    Sinusoidal Positional Encoding with start_pos offset support.
-    Enables independent per-chunk Autograd execution without graph collisions.
-    """
-    def __init__(self, vocab_size=258, text_dim=128, max_len=4096):
+    def __init__(self, vocab_size=258, text_dim=128, max_len=4096, device_str='cpu'):
         super().__init__()
         self.vocab_size = vocab_size
         self.text_dim = text_dim
         self.byte_embed = nn.Embedding(vocab_size, text_dim)
+        self.receptive_field = CausalByteReceptiveField(text_dim=text_dim, kernel_size=4, device=device_str)
         
         pe = torch.zeros(max_len, text_dim)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
@@ -39,43 +48,18 @@ class OffsetPositionalByteEmbedding(nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer('pe', pe.unsqueeze(0))
 
-    def forward(self, input_ids: torch.Tensor, start_pos: int = 0) -> torch.Tensor:
+    def forward(self, input_ids: torch.Tensor, start_pos: int = 0, apply_rf: bool = True) -> torch.Tensor:
         seq_len = input_ids.size(1)
         tok_emb = self.byte_embed(input_ids)
         pos_emb = self.pe[:, start_pos : start_pos + seq_len, :]
-        return tok_emb + pos_emb
+        embedded = tok_emb + pos_emb
+        if apply_rf and seq_len > 1:
+            embedded = self.receptive_field(embedded)
+        return embedded
 
 
 # =============================================================================
-# MODULE 2: DESATURATED HOPFIELD ATTRACTOR MEMORY LANDSCAPE
-# =============================================================================
-
-class DesaturatedHopfieldAttractorHead(nn.Module):
-    """
-    Desaturated Hopfield Attractor Memory.
-    Uses 1/sqrt(D) scaling to prevent softmax saturation and preserve gradient flow.
-    """
-    def __init__(self, hidden_dim=512, vocab_size=258, num_attractors=64):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.vocab_size = vocab_size
-        self.num_attractors = num_attractors
-        self.scale = 1.0 / math.sqrt(hidden_dim)
-        
-        self.attractor_basins = nn.Parameter(torch.randn(num_attractors, hidden_dim) * 0.05)
-
-    def relax_to_minima(self, h_state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        norm_dist_sq = (torch.cdist(h_state, self.attractor_basins, p=2)**2) * self.scale
-        attn_weights = F.softmax(-norm_dist_sq, dim=-1)
-        attractor_shift = torch.matmul(attn_weights, self.attractor_basins)
-        h_relaxed = h_state + 0.25 * attractor_shift
-        
-        energy = -torch.logsumexp(-norm_dist_sq, dim=-1, keepdim=True)
-        return h_relaxed, energy
-
-
-# =============================================================================
-# MASTER CORE AGENT (v6.1 PRODUCTION MASTER)
+# MASTER CORE AGENT (v6.5 PRODUCTION MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -92,12 +76,12 @@ class CoREAgent(nn.Module):
         self.text_gen_dim = getattr(config.net, 'text_gen_dim', 258)
         self.inv_sqrt_text_dim = 1.0 / math.sqrt(self.text_dim)
         
-        from karyon_core import ByteTokenizer, SensoryGateway, MotorGateway, DynamicRecurrentCore, LatentPredictor
         self.tokenizer = ByteTokenizer(vocab_size=self.text_gen_dim)
         
         self.pos_embeddings = OffsetPositionalByteEmbedding(
             vocab_size=self.text_gen_dim, 
-            text_dim=self.text_dim
+            text_dim=self.text_dim,
+            device_str=self.device_str
         ).to(self.device)
         self.text_embeddings = self.pos_embeddings.byte_embed
         
@@ -111,11 +95,10 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        self.core = DynamicRecurrentCore(
-            self.hidden_dim, 
-            self.unified_dim, 
-            homeo_dim=config.net.homeo_dim, 
-            gamma=config.sde.gamma_drift,
+        self.sde_ssm = SelectiveSDEStateSpaceCore(
+            hidden_dim=self.hidden_dim,
+            unified_dim=self.unified_dim,
+            homeo_dim=config.net.homeo_dim,
             device=self.device_str
         )
         
@@ -134,7 +117,11 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        self.attractor_head = DesaturatedHopfieldAttractorHead(self.hidden_dim, self.text_gen_dim).to(self.device)
+        self.attractor_head = DesaturatedHopfieldAttractorHead(
+            hidden_dim=self.hidden_dim, 
+            vocab_size=self.text_gen_dim,
+            device=self.device_str
+        )
         
         # Sensory-Motor Afferent-Efferent Tied Projection Head
         self.motor_text_proj = nn.Sequential(
@@ -149,14 +136,13 @@ class CoREAgent(nn.Module):
         self._cached_zero_motor = torch.zeros(1, config.net.action_dim, device=self.device)
 
     def get_all_parameters(self) -> List[nn.Parameter]:
-        """Gathers all trainable parameters across PyTorch layers and native C++ LibTorch extensions."""
+        """Gathers all trainable parameters across Python and native C++ LibTorch extensions."""
         params = (
             list(self.pos_embeddings.parameters()) + 
             list(self.motor_text_proj.parameters()) + 
-            list(self.critic.parameters()) + 
-            list(self.attractor_head.parameters())
+            list(self.critic.parameters())
         )
-        for submodule in [self.gateway, self.core, self.world_model, self.output_gateway]:
+        for submodule in [self.gateway, self.sde_ssm, self.world_model, self.output_gateway, self.attractor_head]:
             if hasattr(submodule, 'parameters'):
                 params.extend(list(submodule.parameters()))
         return params
@@ -168,14 +154,15 @@ class CoREAgent(nn.Module):
             'critic.weight': self.critic.weight.detach().cpu(),
             'critic.bias': self.critic.bias.detach().cpu()
         }
+        for name, param in self.pos_embeddings.named_parameters():
+            sd[f"pos_embeddings.{name}"] = param.detach().cpu()
+
         for name, param in self.motor_text_proj.named_parameters():
             sd[f"motor_text_proj.{name}"] = param.detach().cpu()
 
-        for name, param in self.attractor_head.named_parameters():
-            sd[f"attractor_head.{name}"] = param.detach().cpu()
-
-        for sub_name, sub in [('gateway', self.gateway), ('core', self.core), 
-                              ('world_model', self.world_model), ('output_gateway', self.output_gateway)]:
+        for sub_name, sub in [('gateway', self.gateway), ('sde_ssm', self.sde_ssm), 
+                              ('world_model', self.world_model), ('output_gateway', self.output_gateway),
+                              ('attractor_head', self.attractor_head)]:
             if hasattr(sub, 'named_parameters'):
                 for p_name, p_val in sub.named_parameters():
                     sd[f"{sub_name}.{p_name}"] = p_val.detach().cpu()
@@ -193,6 +180,11 @@ class CoREAgent(nn.Module):
             tensor = tensor.to(device)
             if name == "text_embeddings.weight":
                 self._safe_copy_param(self.pos_embeddings.byte_embed.weight.data, tensor)
+            elif name.startswith("pos_embeddings."):
+                p_name = name.replace("pos_embeddings.", "")
+                for sub_p_name, sub_p in self.pos_embeddings.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
             elif name == "critic.weight":
                 self._safe_copy_param(self.critic.weight.data, tensor)
             elif name == "critic.bias":
@@ -202,10 +194,6 @@ class CoREAgent(nn.Module):
                 for sub_p_name, sub_p in self.motor_text_proj.named_parameters():
                     if sub_p_name == p_name:
                         self._safe_copy_param(sub_p.data, tensor)
-            elif name.startswith("attractor_head."):
-                param_name = name.replace("attractor_head.", "")
-                if hasattr(self.attractor_head, param_name):
-                    self._safe_copy_param(getattr(self.attractor_head, param_name).data, tensor)
             else:
                 parts = name.split(".", 1)
                 if len(parts) == 2:
@@ -264,8 +252,10 @@ class CoREAgent(nn.Module):
         else:
             w_integrated = w_current
             
-        core_outputs = self.core(h_prev_fast, h_prev_slow, w_integrated, u_t, dt)
-        h_next_fast, h_next_slow, eff_dt = core_outputs[0], core_outputs[1], core_outputs[2]
+        # Native C++ Continuous-Time SDE-SSM Recurrent State-Space Integration
+        sde_out = self.sde_ssm(h_prev_fast, w_integrated, u_t, dt)
+        h_next_fast, y_out, eff_dt = sde_out[0], sde_out[1], sde_out[2]
+        h_next_slow = h_next_fast
         
         w_pred, kl_div, _, z_t = self.world_model(h_prev_fast, h_next_slow, w_current)
         
@@ -273,10 +263,9 @@ class CoREAgent(nn.Module):
         rec_loss = 1.0 - cosine_sim
         free_energy = kl_div + rec_loss
 
-        h_integrated = h_next_fast + h_next_slow
-        h_relaxed, basin_energy = self.attractor_head.relax_to_minima(h_integrated)
+        relax_out = self.attractor_head.relax_to_minima(y_out)
+        h_relaxed, basin_energy = relax_out[0], relax_out[1]
         
-        # Efference motor actions
         outputs = self.output_gateway(h_relaxed)
         
         # Sensory-Motor Weight Tying: Direct Scaled Lexical Readout
@@ -284,7 +273,7 @@ class CoREAgent(nn.Module):
         tied_text_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
         outputs["text_generation"] = tied_text_logits
         
-        state_value = self.critic(h_integrated)
+        state_value = self.critic(y_out)
         
         return h_next_fast, h_next_slow, outputs, state_value, w_pred, free_energy, kl_div, w_current, attn_weights, channel_names, epistemic_entropy, eff_dt
 
@@ -303,11 +292,6 @@ class CoREAgent(nn.Module):
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, 
                          criterion_speech: nn.Module, loss_free_energy_weight: float = 0.05, 
                          chunk_size: int = 32, optimizer: torch.optim.Optimizer = None) -> Tuple[float, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Micro-Chunked Sequential Execution with Clean Autograd Isolation:
-        Somatic homeostasis updates are detached from backprop graphs, guaranteeing
-        zero backward collisions and instant memory reclamation.
-        """
         batch_size, seq_len = input_seq.size()
         
         h_fast_curr = torch.zeros(batch_size, self.hidden_dim, device=self.device)
@@ -323,6 +307,9 @@ class CoREAgent(nn.Module):
         total_speech_loss_accum = 0.0
         total_fe_loss_accum = 0.0
         last_eff_dt = torch.tensor([[1.0]], device=self.device)
+        
+        ema_surprise = 0.0
+        alpha_ema = 0.05
 
         for chunk_idx in range(num_chunks):
             c_start = chunk_idx * chunk_size
@@ -332,7 +319,7 @@ class CoREAgent(nn.Module):
             chunk_input_tokens = input_seq[:, c_start:c_end]
             chunk_target_tokens = target_seq[:, c_start:c_end]
 
-            chunk_emb = self.pos_embeddings(chunk_input_tokens, start_pos=c_start)
+            chunk_emb = self.pos_embeddings(chunk_input_tokens, start_pos=c_start, apply_rf=True)
 
             chunk_speech_losses = []
             chunk_fe_losses = []
@@ -353,11 +340,13 @@ class CoREAgent(nn.Module):
                 chunk_speech_losses.append(loss_tok)
                 chunk_fe_losses.append(free_energy.mean())
                 
-                # Biological Interoceptive Update: Detached from neural autograd graph
+                # Low-Pass EMA Somatic Surprisal Filter
                 with torch.no_grad():
-                    somatic_pred_err = torch.clamp(free_energy.detach() * 3.0 / self.unified_dim, 0.0, 1.0)
+                    curr_loss_val = loss_tok.detach().item()
+                    ema_surprise = (1.0 - alpha_ema) * ema_surprise + alpha_ema * (curr_loss_val / 4.0)
+                    somatic_surprise = torch.clamp(torch.tensor([[ema_surprise]], device=self.device), 0.0, 0.40).repeat(batch_size, 1)
                     eps_ent_mean = eps_ent.detach().mean(dim=-1, keepdim=True)
-                    curr_u_t = hu_batch.update(action_cost_tensor, somatic_pred_err, eps_ent_mean, cog_action_tensor).detach()
+                    curr_u_t = hu_batch.update(action_cost_tensor, somatic_surprise, eps_ent_mean, cog_action_tensor).detach()
 
             chunk_speech_loss = torch.stack(chunk_speech_losses).mean()
             chunk_fe_loss = torch.stack(chunk_fe_losses).mean()
@@ -366,7 +355,6 @@ class CoREAgent(nn.Module):
             total_speech_loss_accum += chunk_speech_loss.item()
             total_fe_loss_accum += chunk_fe_loss.item()
 
-            # Execute backward on chunk and detach continuous states
             if optimizer is not None:
                 (chunk_total_loss / float(num_chunks)).backward()
 
@@ -386,7 +374,7 @@ class CoREAgent(nn.Module):
         max_generated_tokens: int = 120, temperature: float = 0.7, top_p: float = 0.90
     ) -> Generator[Dict[str, Any], None, None]:
         prompt_tokens = self.encode_text(prompt).unsqueeze(0)
-        prompt_embs = self.pos_embeddings(prompt_tokens, start_pos=0).squeeze(0)
+        prompt_embs = self.pos_embeddings(prompt_tokens, start_pos=0, apply_rf=True).squeeze(0)
         
         h_f = h_fast.clone()
         h_s = h_slow.clone()
@@ -419,11 +407,11 @@ class CoREAgent(nn.Module):
         curr_token = prompt_tokens[0, -1].reshape(1, 1)
         energy_action_cost = torch.tensor([[0.002]], device=self.device)
         zero_pred_err = torch.tensor([[0.0]], device=self.device)
-        cog_act = torch.tensor([[0]], dtype=torch.int64, device=self.device)
+        cog_action = torch.tensor([[0]], dtype=torch.int64, device=self.device)
 
         for step in range(max_generated_tokens):
             current_pos = total_prompt_steps + step
-            t_emb = self.pos_embeddings(curr_token, start_pos=current_pos).squeeze(0)
+            t_emb = self.pos_embeddings(curr_token, start_pos=current_pos, apply_rf=False).squeeze(0)
             s_in = {'text': t_emb, 'vision': obs_vis, 'motor_efference': prev_act}
             
             h_f, h_s, outputs, _, _, fe, _, _, _, _, eps_ent, _ = self.forward_step(
@@ -433,6 +421,7 @@ class CoREAgent(nn.Module):
             logits = outputs["text_generation"] / max(temperature, 1e-4)
             logits[:, 256:] = -1e9
             
+            # Top-p Nucleus Sampling
             sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
             cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
             sorted_indices_to_remove = cumulative_probs > top_p
@@ -446,7 +435,7 @@ class CoREAgent(nn.Module):
             next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
             next_token_id = next_token.item()
 
-            hu.update(energy_action_cost, zero_pred_err, eps_ent.mean(dim=-1, keepdim=True), cog_act)
+            hu.update(energy_action_cost, zero_pred_err, eps_ent.mean(dim=-1, keepdim=True), cog_action)
             
             if next_token_id == 257 or next_token_id == 10:
                 break

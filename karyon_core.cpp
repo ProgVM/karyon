@@ -119,7 +119,7 @@ public:
     torch::nn::LayerNorm channel_norm{nullptr};
     torch::nn::LayerNorm query_norm{nullptr};
 
-    SensoryGatewayImpl(int64_t unified_dim = 128, int64_t hidden_dim = 256, int64_t homeo_dim = 6,
+    SensoryGatewayImpl(int64_t unified_dim = 256, int64_t hidden_dim = 512, int64_t homeo_dim = 6,
                        int64_t text_dim = 128, int64_t vision_dim = 256, int64_t action_dim = 3,
                        std::string device_str = "cpu")
         : unified_dim(unified_dim), hidden_dim(hidden_dim), homeo_dim(homeo_dim) {
@@ -207,7 +207,7 @@ public:
     torch::nn::Linear cognitive_gating{nullptr};
     torch::nn::Linear text_generation{nullptr};
 
-    MotorGatewayImpl(int64_t hidden_dim = 256, int64_t action_dim = 3, int64_t cog_action_dim = 3, int64_t text_gen_dim = 258,
+    MotorGatewayImpl(int64_t hidden_dim = 512, int64_t action_dim = 3, int64_t cog_action_dim = 3, int64_t text_gen_dim = 258,
                      std::string device_str = "cpu") {
         motor_action = register_module("motor_action", torch::nn::Linear(hidden_dim, action_dim));
         cognitive_gating = register_module("cognitive_gating", torch::nn::Linear(hidden_dim, cog_action_dim));
@@ -228,85 +228,137 @@ public:
 };
 
 // ============================================================================
-// 5. STOCHASTIC HEUN 2ND-ORDER SDE RECURRENT CORE (REACTIVE DT)
+// 5. CAUSAL BYTE RECEPTIVE FIELD (NATIVE C++ K=4 DEPTHWISE CONV1D)
 // ============================================================================
-class DynamicRecurrentCore : public torch::nn::Module {
+class CausalByteReceptiveFieldImpl : public torch::nn::Module {
 public:
-    int64_t hidden_dim;
-    float gamma;
-    torch::nn::Sequential slow_f{nullptr}, fast_f{nullptr};
+    int64_t text_dim;
+    int64_t kernel_size;
+    torch::nn::Conv1d conv{nullptr};
+    torch::nn::LayerNorm norm{nullptr};
 
-    DynamicRecurrentCore(int64_t hidden_dim = 256, int64_t unified_dim = 128, int64_t homeo_dim = 6, float gamma = 0.1f,
-                         std::string device_str = "cpu")
-        : hidden_dim(hidden_dim), gamma(gamma) {
+    CausalByteReceptiveFieldImpl(int64_t text_dim = 128, int64_t kernel_size = 4, std::string device_str = "cpu")
+        : text_dim(text_dim), kernel_size(kernel_size) {
         
-        slow_f = register_module("slow_f", torch::nn::Sequential(
-            torch::nn::Linear(hidden_dim + homeo_dim, hidden_dim),
-            torch::nn::SiLU(),
-            torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim}))
-        ));
-
-        fast_f = register_module("fast_f", torch::nn::Sequential(
-            torch::nn::Linear(hidden_dim + unified_dim + hidden_dim, hidden_dim * 2),
-            torch::nn::SiLU(),
-            torch::nn::Linear(hidden_dim * 2, hidden_dim),
-            torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim}))
-        ));
+        auto conv_opts = torch::nn::Conv1dOptions(text_dim, text_dim, kernel_size)
+            .groups(text_dim)
+            .bias(false);
+        conv = register_module("conv", torch::nn::Conv1d(conv_opts));
+        norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({text_dim})));
 
         if (device_str.find("cuda") != std::string::npos) {
             this->to(torch::kCUDA);
         }
     }
 
-    inline torch::Tensor compute_slow_drift(const torch::Tensor& h_slow, const torch::Tensor& u_t, const torch::Tensor& eff_gamma) {
-        return -eff_gamma * h_slow + slow_f->forward(torch::cat({h_slow, u_t}, -1));
-    }
-
-    inline torch::Tensor compute_fast_drift(const torch::Tensor& h_fast, const torch::Tensor& w_t_mod, const torch::Tensor& h_slow) {
-        return -gamma * h_fast + fast_f->forward(torch::cat({h_fast, w_t_mod, h_slow}, -1));
-    }
-
-    std::vector<torch::Tensor> forward(
-        torch::Tensor h_fast_prev, 
-        torch::Tensor h_slow_prev, 
-        torch::Tensor w_t, 
-        torch::Tensor u_t, 
-        float dt = 1.0f) {
-
-        auto na = u_t.index({torch::indexing::Slice(), torch::indexing::Slice(4, 5)});
-        auto da = u_t.index({torch::indexing::Slice(), torch::indexing::Slice(5, 6)});
-
-        // Reactive dt: High arousal (NA) compresses step for precision, Dopamine (DA) expands step
-        auto effective_dt = torch::clamp(dt * (1.0f - 0.7f * na + 0.8f * da), 0.20f, 2.50f);
-        auto effective_gamma_slow = gamma * (1.0f - 0.3f * da);
-
-        constexpr float sigma = 1e-3f;
-        auto sqrt_dt = torch::sqrt(effective_dt);
-        auto dW_slow = torch::randn_like(h_slow_prev) * sqrt_dt * sigma;
-        auto dW_fast = torch::randn_like(h_fast_prev) * sqrt_dt * sigma;
-
-        // Predictor step (Stratonovich-Heun SDE)
-        auto k1_slow = compute_slow_drift(h_slow_prev, u_t, effective_gamma_slow);
-        auto h_slow_pred = h_slow_prev + effective_dt * k1_slow + dW_slow;
-
-        // Corrector step
-        auto k2_slow = compute_slow_drift(h_slow_pred, u_t, effective_gamma_slow);
-        auto h_slow_next = torch::tanh(h_slow_prev + 0.5f * effective_dt * (k1_slow + k2_slow) + dW_slow);
-
-        auto w_t_mod = w_t * (1.0f + 0.5f * na);
-
-        auto k1_fast = compute_fast_drift(h_fast_prev, w_t_mod, h_slow_next);
-        auto h_fast_pred = h_fast_prev + effective_dt * k1_fast + dW_fast;
-
-        auto k2_fast = compute_fast_drift(h_fast_pred, w_t_mod, h_slow_next);
-        auto h_fast_next = torch::tanh(h_fast_prev + 0.5f * effective_dt * (k1_fast + k2_fast) + dW_fast);
-
-        return {h_fast_next, h_slow_next, effective_dt};
+    torch::Tensor forward(torch::Tensor x_seq) {
+        // x_seq shape: [Batch, SeqLen, TextDim]
+        auto x_trans = x_seq.transpose(1, 2); // [Batch, TextDim, SeqLen]
+        auto x_padded = torch::nn::functional::pad(
+            x_trans, 
+            torch::nn::functional::PadFuncOptions({kernel_size - 1, 0}).mode(torch::kConstant).value(0.0)
+        );
+        auto conv_out = conv->forward(x_padded);
+        auto out = norm->forward(conv_out.transpose(1, 2) + x_seq);
+        return out;
     }
 };
 
 // ============================================================================
-// 6. ACTIVE INFERENCE LATENT WORLD MODEL
+// 6. CONTINUOUS-TIME SELECTIVE SDE STATE-SPACE CORE (SDE-SSM)
+// ============================================================================
+class SelectiveSDEStateSpaceCoreImpl : public torch::nn::Module {
+public:
+    int64_t hidden_dim;
+    int64_t unified_dim;
+
+    torch::nn::Linear in_proj{nullptr};
+    torch::nn::Linear decay_proj{nullptr};
+    torch::nn::Linear out_gate{nullptr};
+    torch::nn::Linear out_proj{nullptr};
+    torch::nn::LayerNorm layer_norm{nullptr};
+
+    SelectiveSDEStateSpaceCoreImpl(int64_t hidden_dim = 512, int64_t unified_dim = 256, int64_t homeo_dim = 6,
+                                  std::string device_str = "cpu")
+        : hidden_dim(hidden_dim), unified_dim(unified_dim) {
+
+        in_proj = register_module("in_proj", torch::nn::Linear(unified_dim, hidden_dim));
+        decay_proj = register_module("decay_proj", torch::nn::Linear(unified_dim + homeo_dim, hidden_dim));
+        out_gate = register_module("out_gate", torch::nn::Linear(unified_dim, hidden_dim));
+        out_proj = register_module("out_proj", torch::nn::Linear(hidden_dim, hidden_dim));
+        layer_norm = register_module("layer_norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
+
+        if (device_str.find("cuda") != std::string::npos) {
+            this->to(torch::kCUDA);
+        }
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward(
+        torch::Tensor h_prev, torch::Tensor w_t, torch::Tensor u_t, float dt = 1.0f) {
+
+        auto na = u_t.slice(1, 4, 5);
+        auto da = u_t.slice(1, 5, 6);
+
+        // Reactive time delta
+        auto eff_dt = torch::clamp(dt * (1.0f - 0.4f * na + 0.4f * da), 0.30f, 2.00f);
+
+        // Selective Continuous Decay Factor
+        auto decay_in = torch::cat({w_t, u_t}, -1);
+        auto decay_logits = decay_proj->forward(decay_in);
+        auto alpha = torch::pow(torch::sigmoid(decay_logits), eff_dt);
+
+        // Continuous Input Drive B(w_t)
+        auto b_input = in_proj->forward(w_t);
+
+        // Wiener Stochastic Diffusion
+        constexpr float sigma = 1e-3f;
+        auto dW = torch::randn_like(h_prev) * torch::sqrt(eff_dt) * sigma;
+
+        // Exact Langevin Selective State Space Update (Linear Highway)
+        auto h_next = alpha * h_prev + (1.0f - alpha) * b_input + dW;
+
+        // Gated Motor Outflow
+        auto gate = torch::silu(out_gate->forward(w_t));
+        auto y_t = layer_norm->forward(out_proj->forward(h_next * gate) + h_next);
+
+        return std::make_tuple(h_next, y_t, eff_dt);
+    }
+};
+
+// ============================================================================
+// 7. DESATURATED HOPFIELD ATTRACTOR HEAD (NATIVE C++)
+// ============================================================================
+class DesaturatedHopfieldAttractorHeadImpl : public torch::nn::Module {
+public:
+    int64_t hidden_dim;
+    int64_t num_attractors;
+    float scale;
+    torch::Tensor attractor_basins;
+
+    DesaturatedHopfieldAttractorHeadImpl(int64_t hidden_dim = 512, int64_t vocab_size = 258, 
+                                         int64_t num_attractors = 64, std::string device_str = "cpu")
+        : hidden_dim(hidden_dim), num_attractors(num_attractors) {
+        scale = 1.0f / std::sqrt(static_cast<float>(hidden_dim));
+        
+        auto opts = torch::TensorOptions().dtype(torch::kFloat32);
+        if (device_str.find("cuda") != std::string::npos) {
+            opts = opts.device(torch::kCUDA);
+        }
+        attractor_basins = register_parameter("attractor_basins", torch::randn({num_attractors, hidden_dim}, opts) * 0.05f);
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor> relax_to_minima(torch::Tensor h_state) {
+        auto norm_dist_sq = torch::cdist(h_state, attractor_basins, 2).pow(2) * scale;
+        auto attn_weights = torch::softmax(-norm_dist_sq, -1);
+        auto attractor_shift = torch::matmul(attn_weights, attractor_basins);
+        auto h_relaxed = h_state + 0.25f * attractor_shift;
+        auto energy = -torch::logsumexp(-norm_dist_sq, -1, true);
+        return std::make_tuple(h_relaxed, energy);
+    }
+};
+
+// ============================================================================
+// 8. ACTIVE INFERENCE LATENT WORLD MODEL
 // ============================================================================
 class LatentPredictorImpl : public torch::nn::Module {
 public:
@@ -318,7 +370,7 @@ public:
     torch::nn::Linear posterior_net{nullptr};
     torch::nn::Sequential decoder_net{nullptr};
 
-    LatentPredictorImpl(int64_t hidden_dim = 256, int64_t unified_dim = 128, int64_t latent_dim = 64, std::string device_str = "cpu")
+    LatentPredictorImpl(int64_t hidden_dim = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
         : hidden_dim(hidden_dim), unified_dim(unified_dim), latent_dim(latent_dim) {
         
         prior_net = register_module("prior_net", torch::nn::Linear(hidden_dim, latent_dim * 2));
@@ -372,7 +424,7 @@ public:
 };
 
 // ============================================================================
-// 7. HIGH-VELOCITY BATCHED EPISODIC MEMORY (ACTIVE-CAPACITY DYNAMIC SLICING)
+// 9. HIGH-VELOCITY BATCHED EPISODIC MEMORY (ACTIVE-CAPACITY DYNAMIC SLICING)
 // ============================================================================
 class BatchedEpisodicMemoryImpl : public torch::nn::Module {
 public:
@@ -385,7 +437,7 @@ public:
     torch::Tensor pointer;
     torch::Tensor size;
 
-    BatchedEpisodicMemoryImpl(int64_t batch_size = 1, int64_t memory_dim = 128, int64_t max_capacity = 1000, std::string device_str = "cpu")
+    BatchedEpisodicMemoryImpl(int64_t batch_size = 1, int64_t memory_dim = 256, int64_t max_capacity = 1000, std::string device_str = "cpu")
         : batch_size(batch_size), memory_dim(memory_dim), max_capacity(max_capacity) {
         
         auto opts = torch::TensorOptions().dtype(torch::kFloat32);
@@ -430,14 +482,12 @@ public:
         int64_t q_b = query.size(0);
         int64_t max_active = size.max().item<int64_t>();
 
-        // Zero-cost return if memory is completely empty
         if (max_active == 0) {
             auto empty_val = torch::zeros({q_b, memory_dim}, query.options());
             auto empty_sim = torch::zeros({q_b, 1}, query.options());
             return std::make_tuple(empty_val, empty_sim);
         }
 
-        // Active Dynamic Capacity Slicing (10x-30x CPU Acceleration)
         auto active_keys = keys.slice(1, 0, max_active);
         auto active_values = values.slice(1, 0, max_active);
         auto active_size = size;
@@ -498,7 +548,7 @@ public:
 };
 
 // ============================================================================
-// 8. PYBIND11 MODULE BINDINGS
+// 10. PYBIND11 MODULE BINDINGS
 // ============================================================================
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::class_<ByteTokenizer>(m, "ByteTokenizer")
@@ -520,7 +570,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<SensoryGatewayImpl, torch::nn::Module, std::shared_ptr<SensoryGatewayImpl>>(m, "SensoryGateway")
         .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
-             py::arg("unified_dim") = 128, py::arg("hidden_dim") = 256, py::arg("homeo_dim") = 6,
+             py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512, py::arg("homeo_dim") = 6,
              py::arg("text_dim") = 128, py::arg("vision_dim") = 256, py::arg("action_dim") = 3,
              py::arg("device") = "cpu")
         .def("forward", &SensoryGatewayImpl::forward)
@@ -530,25 +580,39 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<MotorGatewayImpl, torch::nn::Module, std::shared_ptr<MotorGatewayImpl>>(m, "MotorGateway")
         .def(py::init<int64_t, int64_t, int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 256, py::arg("action_dim") = 3, py::arg("cog_action_dim") = 3, py::arg("text_gen_dim") = 258,
+             py::arg("hidden_dim") = 512, py::arg("action_dim") = 3, py::arg("cog_action_dim") = 3, py::arg("text_gen_dim") = 258,
              py::arg("device") = "cpu")
         .def("forward", &MotorGatewayImpl::forward)
         .def("parameters", [](std::shared_ptr<MotorGatewayImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<MotorGatewayImpl> m) { return m->named_parameters(); })
         .def("__call__", &MotorGatewayImpl::forward);
 
-    py::class_<DynamicRecurrentCore, torch::nn::Module, std::shared_ptr<DynamicRecurrentCore>>(m, "DynamicRecurrentCore")
-        .def(py::init<int64_t, int64_t, int64_t, float, std::string>(),
-             py::arg("hidden_dim"), py::arg("unified_dim"), py::arg("homeo_dim") = 6, py::arg("gamma") = 0.1f,
-             py::arg("device") = "cpu")
-        .def("forward", &DynamicRecurrentCore::forward)
-        .def("parameters", [](std::shared_ptr<DynamicRecurrentCore> m) { return m->parameters(); })
-        .def("named_parameters", [](std::shared_ptr<DynamicRecurrentCore> m) { return m->named_parameters(); })
-        .def("__call__", &DynamicRecurrentCore::forward);
+    py::class_<CausalByteReceptiveFieldImpl, torch::nn::Module, std::shared_ptr<CausalByteReceptiveFieldImpl>>(m, "CausalByteReceptiveField")
+        .def(py::init<int64_t, int64_t, std::string>(),
+             py::arg("text_dim") = 128, py::arg("kernel_size") = 4, py::arg("device") = "cpu")
+        .def("forward", &CausalByteReceptiveFieldImpl::forward)
+        .def("parameters", [](std::shared_ptr<CausalByteReceptiveFieldImpl> m) { return m->parameters(); })
+        .def("named_parameters", [](std::shared_ptr<CausalByteReceptiveFieldImpl> m) { return m->named_parameters(); })
+        .def("__call__", &CausalByteReceptiveFieldImpl::forward);
+
+    py::class_<SelectiveSDEStateSpaceCoreImpl, torch::nn::Module, std::shared_ptr<SelectiveSDEStateSpaceCoreImpl>>(m, "SelectiveSDEStateSpaceCore")
+        .def(py::init<int64_t, int64_t, int64_t, std::string>(),
+             py::arg("hidden_dim") = 512, py::arg("unified_dim") = 256, py::arg("homeo_dim") = 6, py::arg("device") = "cpu")
+        .def("forward", &SelectiveSDEStateSpaceCoreImpl::forward)
+        .def("parameters", [](std::shared_ptr<SelectiveSDEStateSpaceCoreImpl> m) { return m->parameters(); })
+        .def("named_parameters", [](std::shared_ptr<SelectiveSDEStateSpaceCoreImpl> m) { return m->named_parameters(); })
+        .def("__call__", &SelectiveSDEStateSpaceCoreImpl::forward);
+
+    py::class_<DesaturatedHopfieldAttractorHeadImpl, torch::nn::Module, std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl>>(m, "DesaturatedHopfieldAttractorHead")
+        .def(py::init<int64_t, int64_t, int64_t, std::string>(),
+             py::arg("hidden_dim") = 512, py::arg("vocab_size") = 258, py::arg("num_attractors") = 64, py::arg("device") = "cpu")
+        .def("relax_to_minima", &DesaturatedHopfieldAttractorHeadImpl::relax_to_minima)
+        .def("parameters", [](std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl> m) { return m->parameters(); })
+        .def("named_parameters", [](std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl> m) { return m->named_parameters(); });
 
     py::class_<LatentPredictorImpl, torch::nn::Module, std::shared_ptr<LatentPredictorImpl>>(m, "LatentPredictor")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 256, py::arg("unified_dim") = 128, py::arg("latent_dim") = 64, py::arg("device") = "cpu")
+             py::arg("hidden_dim") = 512, py::arg("unified_dim") = 256, py::arg("latent_dim") = 128, py::arg("device") = "cpu")
         .def("forward", &LatentPredictorImpl::forward)
         .def("parameters", [](std::shared_ptr<LatentPredictorImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<LatentPredictorImpl> m) { return m->named_parameters(); })
@@ -556,7 +620,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<BatchedEpisodicMemoryImpl, torch::nn::Module, std::shared_ptr<BatchedEpisodicMemoryImpl>>(m, "BatchedEpisodicMemory")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
-             py::arg("batch_size") = 1, py::arg("memory_dim") = 128, py::arg("max_capacity") = 1000, py::arg("device") = "cpu")
+             py::arg("batch_size") = 1, py::arg("memory_dim") = 256, py::arg("max_capacity") = 1000, py::arg("device") = "cpu")
         .def_readwrite("batch_size", &BatchedEpisodicMemoryImpl::batch_size)
         .def_readwrite("memory_dim", &BatchedEpisodicMemoryImpl::memory_dim)
         .def_readwrite("max_capacity", &BatchedEpisodicMemoryImpl::max_capacity)
