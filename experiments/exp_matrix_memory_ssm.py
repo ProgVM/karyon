@@ -152,7 +152,6 @@ class MatrixFastWeightSDESSMCore(nn.Module):
         self.norm = nn.LayerNorm(self.hidden_dim)
 
     def forward(self, m_prev, w_t, u_t, dt=1.0):
-        # Guarantee strict 2D shape [Batch, UnifiedDim]
         batch_size = w_t.size(0)
         if w_t.dim() > 2:
             w_t = w_t.reshape(batch_size, self.unified_dim)
@@ -250,7 +249,7 @@ class Vector1DSDESSMAgent(nn.Module):
 
 
 class ProposedMatrixSDESSMAgent(nn.Module):
-    """Proposed Agent (Matrix State [Batch, 8, 32, 64] + Event-Driven Episodic Memory)."""
+    """Proposed Agent (Matrix State [Batch, 8, 32, 64] + Hippocampal Memory)."""
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -286,13 +285,14 @@ class ProposedMatrixSDESSMAgent(nn.Module):
 
         w_t, attn, _, eps_ent = self.gateway(t_emb, obs_vis, prev_act, h_query_proxy, u_t)
         
-        # Continuous Hippocampal Recall with shape-safe dimensional guard
+        # Continuous Hippocampal Recall with detached autograd isolation
         na = u_t[:, 4:5]
         if episodic_memory is not None and na.mean().item() > 0.15 and episodic_memory.size.max().item() > 0:
-            retrieved, _ = episodic_memory.read(w_t, 0.05, 0.40, 15.0)
-            if retrieved.dim() > 2:
-                retrieved = retrieved.reshape(batch_size, self.unified_dim)
-            w_integrated = w_t + retrieved * 0.5
+            with torch.no_grad():
+                retrieved, _ = episodic_memory.read(w_t.detach(), 0.05, 0.40, 15.0)
+                if retrieved.dim() > 2:
+                    retrieved = retrieved.reshape(batch_size, self.unified_dim)
+            w_integrated = w_t + retrieved.detach() * 0.5
         else:
             w_integrated = w_t
 
@@ -425,7 +425,7 @@ def run_isolated_benchmark():
                 loss_t = criterion(logits, chunk_targets[:, t])
                 chunk_losses.append(loss_t)
 
-                # Continuous Hippocampal Auto-Writing on Salient Surprise Events
+                # Continuous Hippocampal Auto-Writing on Salient Surprise Events (Non-Differentiable)
                 with torch.no_grad():
                     curr_loss_val = loss_t.detach().item()
                     if curr_loss_val > 1.0:
