@@ -3,10 +3,10 @@ import os
 import torch
 from torch.utils.cpp_extension import load
 
-print("[C++ JIT] Compiling and linking native Karyon architecture (v7 SDE-SSM)...")
+print("[C++ JIT] Compiling and linking native Karyon architecture (v8 SDE-SSM Master)...")
 
 karyon_cpp = load(
-    name="karyon_cpp_ext_v7",
+    name="karyon_cpp_ext_v8",
     sources=["karyon_core.cpp"],
     extra_cflags=["-O3", "-std=c++20"],
     verbose=False

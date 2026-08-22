@@ -286,7 +286,11 @@ for batch_idx, batch_tokens in enumerate(stream_loader):
         peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device == 'cuda' else 0.0
 
         grad_embed = agent_brain.pos_embeddings.byte_embed.weight.grad.norm().item() if agent_brain.pos_embeddings.byte_embed.weight.grad is not None else 0.0
-        grad_head = agent_brain.attractor_head.attractor_basins.grad.norm().item() if agent_brain.attractor_head.attractor_basins.grad is not None else 0.0
+        
+        # Robust gradient norm inspection for native C++ attractor head
+        grad_head = 0.0
+        if hasattr(agent_brain.attractor_head, 'attractor_basins') and agent_brain.attractor_head.attractor_basins.grad is not None:
+            grad_head = agent_brain.attractor_head.attractor_basins.grad.norm().item()
 
         print(f"\n" + "="*85)
         print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")

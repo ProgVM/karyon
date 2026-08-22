@@ -185,7 +185,6 @@ public:
         auto stacked_masks = torch::cat(channel_masks, 1);
         sim = sim + stacked_masks;
 
-        // Prioritize text channel focus slightly
         sim.index_put_({torch::indexing::Slice(), 0}, sim.index({torch::indexing::Slice(), 0}) + 1.5f);
 
         auto attention_weights = torch::softmax(sim, -1);
@@ -252,8 +251,7 @@ public:
     }
 
     torch::Tensor forward(torch::Tensor x_seq) {
-        // x_seq shape: [Batch, SeqLen, TextDim]
-        auto x_trans = x_seq.transpose(1, 2); // [Batch, TextDim, SeqLen]
+        auto x_trans = x_seq.transpose(1, 2);
         auto x_padded = torch::nn::functional::pad(
             x_trans, 
             torch::nn::functional::PadFuncOptions({kernel_size - 1, 0}).mode(torch::kConstant).value(0.0)
@@ -299,25 +297,19 @@ public:
         auto na = u_t.slice(1, 4, 5);
         auto da = u_t.slice(1, 5, 6);
 
-        // Reactive time delta
         auto eff_dt = torch::clamp(dt * (1.0f - 0.4f * na + 0.4f * da), 0.30f, 2.00f);
 
-        // Selective Continuous Decay Factor
         auto decay_in = torch::cat({w_t, u_t}, -1);
         auto decay_logits = decay_proj->forward(decay_in);
         auto alpha = torch::pow(torch::sigmoid(decay_logits), eff_dt);
 
-        // Continuous Input Drive B(w_t)
         auto b_input = in_proj->forward(w_t);
 
-        // Wiener Stochastic Diffusion
         constexpr float sigma = 1e-3f;
         auto dW = torch::randn_like(h_prev) * torch::sqrt(eff_dt) * sigma;
 
-        // Exact Langevin Selective State Space Update (Linear Highway)
         auto h_next = alpha * h_prev + (1.0f - alpha) * b_input + dW;
 
-        // Gated Motor Outflow
         auto gate = torch::silu(out_gate->forward(w_t));
         auto y_t = layer_norm->forward(out_proj->forward(h_next * gate) + h_next);
 
@@ -424,7 +416,7 @@ public:
 };
 
 // ============================================================================
-// 9. HIGH-VELOCITY BATCHED EPISODIC MEMORY (ACTIVE-CAPACITY DYNAMIC SLICING)
+// 9. HIGH-VELOCITY BATCHED EPISODIC MEMORY (DYNAMIC SLICING)
 // ============================================================================
 class BatchedEpisodicMemoryImpl : public torch::nn::Module {
 public:
@@ -603,12 +595,15 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("named_parameters", [](std::shared_ptr<SelectiveSDEStateSpaceCoreImpl> m) { return m->named_parameters(); })
         .def("__call__", &SelectiveSDEStateSpaceCoreImpl::forward);
 
+    // FIXED: Explicitly bind attractor_basins parameter for Python diagnostics access
     py::class_<DesaturatedHopfieldAttractorHeadImpl, torch::nn::Module, std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl>>(m, "DesaturatedHopfieldAttractorHead")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
              py::arg("hidden_dim") = 512, py::arg("vocab_size") = 258, py::arg("num_attractors") = 64, py::arg("device") = "cpu")
+        .def_readwrite("attractor_basins", &DesaturatedHopfieldAttractorHeadImpl::attractor_basins)
         .def("relax_to_minima", &DesaturatedHopfieldAttractorHeadImpl::relax_to_minima)
         .def("parameters", [](std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl> m) { return m->parameters(); })
-        .def("named_parameters", [](std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl> m) { return m->named_parameters(); });
+        .def("named_parameters", [](std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl> m) { return m->named_parameters(); })
+        .def("__call__", &DesaturatedHopfieldAttractorHeadImpl::relax_to_minima);
 
     py::class_<LatentPredictorImpl, torch::nn::Module, std::shared_ptr<LatentPredictorImpl>>(m, "LatentPredictor")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
