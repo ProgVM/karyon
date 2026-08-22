@@ -1,10 +1,10 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v6.0 (PRODUCTION MASTER)
+KARYON AGENT CORE v6.1 (PRODUCTION MASTER)
 Active Inference Engine with Fused Micro-Chunked Recurrent Execution,
 Afferent-Efferent Sensory-Motor Weight Tying, Desaturated Hopfield Attractors,
-and Ashby Homeostatic Somatic Regulation.
+and Isolated Interoceptive Somatic State Dynamics.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -75,7 +75,7 @@ class DesaturatedHopfieldAttractorHead(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v6.0 PRODUCTION MASTER)
+# MASTER CORE AGENT (v6.1 PRODUCTION MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -302,10 +302,11 @@ class CoREAgent(nn.Module):
 
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, 
                          criterion_speech: nn.Module, loss_free_energy_weight: float = 0.05, 
-                         chunk_size: int = 32, optimizer: torch.optim.Optimizer = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                         chunk_size: int = 32, optimizer: torch.optim.Optimizer = None) -> Tuple[float, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Micro-Chunked Sequential Execution:
-        Eliminates Autograd graph buildup and enables direct gradient propagation.
+        Micro-Chunked Sequential Execution with Clean Autograd Isolation:
+        Somatic homeostasis updates are detached from backprop graphs, guaranteeing
+        zero backward collisions and instant memory reclamation.
         """
         batch_size, seq_len = input_seq.size()
         
@@ -314,7 +315,7 @@ class CoREAgent(nn.Module):
         curr_prev_action = torch.zeros(batch_size, self.action_dim, device=self.device)
         obs_vision = torch.zeros(batch_size, self.config.net.vision_dim, device=self.device)
         
-        curr_u_t = hu_batch.state.clone()
+        curr_u_t = hu_batch.state.clone().detach()
         action_cost_tensor = torch.full((batch_size, 1), 0.001, device=self.device)
         cog_action_tensor = torch.zeros((batch_size, 1), dtype=torch.int64, device=self.device)
         
@@ -352,8 +353,11 @@ class CoREAgent(nn.Module):
                 chunk_speech_losses.append(loss_tok)
                 chunk_fe_losses.append(free_energy.mean())
                 
-                somatic_pred_err = torch.clamp(free_energy * 3.0 / self.unified_dim, 0.0, 1.0)
-                curr_u_t = hu_batch.update(action_cost_tensor, somatic_pred_err, eps_ent.mean(dim=-1, keepdim=True), cog_action_tensor)
+                # Biological Interoceptive Update: Detached from neural autograd graph
+                with torch.no_grad():
+                    somatic_pred_err = torch.clamp(free_energy.detach() * 3.0 / self.unified_dim, 0.0, 1.0)
+                    eps_ent_mean = eps_ent.detach().mean(dim=-1, keepdim=True)
+                    curr_u_t = hu_batch.update(action_cost_tensor, somatic_pred_err, eps_ent_mean, cog_action_tensor).detach()
 
             chunk_speech_loss = torch.stack(chunk_speech_losses).mean()
             chunk_fe_loss = torch.stack(chunk_fe_losses).mean()
