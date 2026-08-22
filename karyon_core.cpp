@@ -441,7 +441,7 @@ public:
 };
 
 // ============================================================================
-// 9. ACTIVE INFERENCE LATENT WORLD MODEL (FIXED TYPO: int64_t hidden_dim)
+// 9. ACTIVE INFERENCE LATENT WORLD MODEL
 // ============================================================================
 class LatentPredictorImpl : public torch::nn::Module {
 public:
@@ -631,7 +631,7 @@ public:
 };
 
 // ============================================================================
-// 11. PYBIND11 MODULE BINDINGS
+// 11. PYBIND11 MODULE BINDINGS (WITH EXPLICIT PY::ARG DEFAULTS)
 // ============================================================================
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::class_<ByteTokenizer>(m, "ByteTokenizer")
@@ -682,19 +682,26 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
              py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512, py::arg("num_heads") = 8,
              py::arg("head_k") = 32, py::arg("head_v") = 64, py::arg("homeo_dim") = 6, py::arg("device") = "cpu")
-        .def("forward_step", &GoalConditionedMatrixSDESSMCoreImpl::forward_step)
+        .def("forward_step", &GoalConditionedMatrixSDESSMCoreImpl::forward_step,
+             py::arg("m_prev"), py::arg("h_prev"), py::arg("w_t"), py::arg("u_t"), py::arg("dt") = 1.0f)
         .def("parameters", [](std::shared_ptr<GoalConditionedMatrixSDESSMCoreImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<GoalConditionedMatrixSDESSMCoreImpl> m) { return m->named_parameters(); })
-        .def("__call__", &GoalConditionedMatrixSDESSMCoreImpl::forward_step);
+        .def("__call__", &GoalConditionedMatrixSDESSMCoreImpl::forward_step,
+             py::arg("m_prev"), py::arg("h_prev"), py::arg("w_t"), py::arg("u_t"), py::arg("dt") = 1.0f);
 
     py::class_<FusedSensorySDEEngineImpl, torch::nn::Module, std::shared_ptr<FusedSensorySDEEngineImpl>>(m, "FusedSensorySDEEngine")
         .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
              py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512, py::arg("text_dim") = 128,
              py::arg("vision_dim") = 256, py::arg("action_dim") = 3, py::arg("num_heads") = 8,
              py::arg("head_k") = 32, py::arg("head_v") = 64, py::arg("homeo_dim") = 6, py::arg("device") = "cpu")
-        .def("forward_chunk", &FusedSensorySDEEngineImpl::forward_chunk)
+        .def("forward_chunk", &FusedSensorySDEEngineImpl::forward_chunk,
+             py::arg("chunk_text"), py::arg("obs_vis"), py::arg("prev_act"),
+             py::arg("m_prev"), py::arg("h_prev"), py::arg("u_t"), py::arg("dt") = 1.0f)
         .def("parameters", [](std::shared_ptr<FusedSensorySDEEngineImpl> m) { return m->parameters(); })
-        .def("named_parameters", [](std::shared_ptr<FusedSensorySDEEngineImpl> m) { return m->named_parameters(); });
+        .def("named_parameters", [](std::shared_ptr<FusedSensorySDEEngineImpl> m) { return m->named_parameters(); })
+        .def("__call__", &FusedSensorySDEEngineImpl::forward_chunk,
+             py::arg("chunk_text"), py::arg("obs_vis"), py::arg("prev_act"),
+             py::arg("m_prev"), py::arg("h_prev"), py::arg("u_t"), py::arg("dt") = 1.0f);
 
     py::class_<DesaturatedHopfieldAttractorHeadImpl, torch::nn::Module, std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl>>(m, "DesaturatedHopfieldAttractorHead")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
@@ -723,7 +730,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def_readwrite("values", &BatchedEpisodicMemoryImpl::values)
         .def_readwrite("pointer", &BatchedEpisodicMemoryImpl::pointer)
         .def_readwrite("size", &BatchedEpisodicMemoryImpl::size)
-        .def("write", &BatchedEpisodicMemoryImpl::write)
-        .def("read", &BatchedEpisodicMemoryImpl::read)
-        .def("consolidate_and_prune", &BatchedEpisodicMemoryImpl::consolidate_and_prune);
+        .def("write", &BatchedEpisodicMemoryImpl::write,
+             py::arg("key"), py::arg("value"), py::arg("protected_slots") = 3)
+        .def("read", &BatchedEpisodicMemoryImpl::read,
+             py::arg("query"), py::arg("temperature") = 0.05f, py::arg("threshold") = 0.5f, py::arg("sigmoid_beta") = 15.0f)
+        .def("consolidate_and_prune", &BatchedEpisodicMemoryImpl::consolidate_and_prune,
+             py::arg("similarity_threshold") = 0.95f, py::arg("protected_slots") = 3);
 }
