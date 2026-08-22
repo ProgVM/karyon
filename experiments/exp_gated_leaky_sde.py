@@ -283,18 +283,19 @@ def run_isolated_benchmark():
     criterion = nn.CrossEntropyLoss(ignore_index=256)
     tokenizer = ByteTokenizer()
 
-    # Synthetic multi-word structured conversational stream to test syntax learning
+    # Synthetic structured conversational stream
     sample_text = (
         "User: Explain the nature of continuous time recurrent systems.\n"
         "Karyon: Continuous time systems integrate neural dynamics smoothly across time, "
         "preserving long term memories through liquid time constants and homeostatic stability."
     )
     tokens_raw = tokenizer.encode(sample_text)
-    repeats = (seq_len // len(tokens_raw)) + 2
-    full_tokens = (tokens_raw * repeats)[:seq_len]
+    repeats = ((seq_len + 1) // len(tokens_raw)) + 2
+    full_tokens = (tokens_raw * repeats)[:seq_len + 1]
     
-    input_tokens = torch.tensor([full_tokens[:-1]], dtype=torch.long, device=device).repeat(batch_size, 1)
-    target_tokens = torch.tensor([full_tokens[1:]], dtype=torch.long, device=device).repeat(batch_size, 1)
+    # Exact 512-length sequences for input and target
+    input_tokens = torch.tensor([full_tokens[:seq_len]], dtype=torch.long, device=device).repeat(batch_size, 1)
+    target_tokens = torch.tensor([full_tokens[1:seq_len + 1]], dtype=torch.long, device=device).repeat(batch_size, 1)
 
     # -------------------------------------------------------------------------
     # TEST 1: BASELINE (Hard Tanh SDE)
@@ -318,13 +319,14 @@ def run_isolated_benchmark():
 
         for chunk_idx in range(num_chunks):
             c_start = chunk_idx * chunk_size
-            c_end = (chunk_idx + 1) * chunk_size
+            c_end = min((chunk_idx + 1) * chunk_size, seq_len)
 
             chunk_emb = baseline_model.pos_embeddings(input_tokens[:, c_start:c_end], start_pos=c_start)
             chunk_targets = target_tokens[:, c_start:c_end]
+            curr_chunk_len = chunk_emb.size(1)
 
             chunk_losses = []
-            for t in range(chunk_size):
+            for t in range(curr_chunk_len):
                 h_f, h_s, logits = baseline_model.forward_step(chunk_emb[:, t], h_f, h_s, u_t)
                 chunk_losses.append(criterion(logits, chunk_targets[:, t]))
 
@@ -364,18 +366,19 @@ def run_isolated_benchmark():
 
         for chunk_idx in range(num_chunks):
             c_start = chunk_idx * chunk_size
-            c_end = (chunk_idx + 1) * chunk_size
+            c_end = min((chunk_idx + 1) * chunk_size, seq_len)
 
             chunk_emb = prop_model.pos_embeddings(input_tokens[:, c_start:c_end], start_pos=c_start)
             chunk_targets = target_tokens[:, c_start:c_end]
+            curr_chunk_len = chunk_emb.size(1)
 
             chunk_losses = []
-            for t in range(chunk_size):
+            for t in range(curr_chunk_len):
                 h_f, h_s, logits = prop_model.forward_step(chunk_emb[:, t], h_f, h_s, u_t)
                 loss_t = criterion(logits, chunk_targets[:, t])
                 chunk_losses.append(loss_t)
 
-                # Unified Somatic Energy Coupling: Motor loss excites Arousal (NA)
+                # Unified Somatic Energy: Motor loss excites Arousal (NA)
                 with torch.no_grad():
                     somatic_surprise = torch.clamp(loss_t.detach() / 5.0, 0.0, 1.0).unsqueeze(0).repeat(batch_size, 1)
                     zero_entropy = torch.zeros((batch_size, 1), device=device)
@@ -443,7 +446,7 @@ def run_isolated_benchmark():
         print(f"[{name}] Sample -> \"{''.join(chars)}\"")
 
     generate_sample(baseline_model, "Baseline (Hard Tanh SDE)")
-    generate_sample(proposed_model := prop_model, "Proposed (Gated Leaky SDE)")
+    generate_sample(prop_model, "Proposed (Gated Leaky SDE)")
     print("="*90 + "\n")
 
     if prop_losses[-1] < base_losses[-1] - 0.5:
