@@ -136,10 +136,11 @@ class MatrixFastWeightSDESSMCore(nn.Module):
     """
     def __init__(self, unified_dim=256, num_heads=8, head_k=32, head_v=64, homeo_dim=6):
         super().__init__()
+        self.unified_dim = unified_dim
         self.num_heads = num_heads
         self.head_k = head_k
         self.head_v = head_v
-        self.hidden_dim = num_heads * head_v # 8 * 64 = 512
+        self.hidden_dim = num_heads * head_v
 
         self.q_proj = nn.Linear(unified_dim, num_heads * head_k)
         self.k_proj = nn.Linear(unified_dim, num_heads * head_k)
@@ -151,12 +152,14 @@ class MatrixFastWeightSDESSMCore(nn.Module):
         self.norm = nn.LayerNorm(self.hidden_dim)
 
     def forward(self, m_prev, w_t, u_t, dt=1.0):
-        # m_prev shape: [Batch, NumHeads, HeadK, HeadV]
+        # Guarantee strict 2D shape [Batch, UnifiedDim]
         batch_size = w_t.size(0)
+        if w_t.dim() > 2:
+            w_t = w_t.reshape(batch_size, self.unified_dim)
+            
         na = u_t[:, 4:5]
         da = u_t[:, 5:6]
 
-        # 4D Shape-aligned eff_dt tensor for proper broadcasting
         eff_dt_raw = torch.clamp(dt * (1.0 - 0.4 * na + 0.4 * da), 0.30, 2.00)
         eff_dt_4d = eff_dt_raw.view(batch_size, 1, 1, 1)
 
@@ -212,7 +215,6 @@ class Vector1DSDESSMAgent(nn.Module):
         self.gateway = SensoryGateway(self.unified_dim, self.hidden_dim, config.net.homeo_dim,
                                       self.text_dim, config.net.vision_dim, config.net.action_dim, device_str)
         
-        # 1D State Space Layers
         self.in_proj = nn.Linear(self.unified_dim, self.hidden_dim)
         self.decay_proj = nn.Linear(self.unified_dim + config.net.homeo_dim, self.hidden_dim)
         self.out_gate = nn.Linear(self.unified_dim, self.hidden_dim)
@@ -262,7 +264,6 @@ class ProposedMatrixSDESSMAgent(nn.Module):
         self.gateway = SensoryGateway(self.unified_dim, self.hidden_dim, config.net.homeo_dim,
                                       self.text_dim, config.net.vision_dim, config.net.action_dim, device_str)
         
-        # 3D Matrix Fast-Weight State Space Core (32x capacity)
         self.matrix_sde_ssm = MatrixFastWeightSDESSMCore(
             unified_dim=self.unified_dim, 
             num_heads=8, 
@@ -285,10 +286,12 @@ class ProposedMatrixSDESSMAgent(nn.Module):
 
         w_t, attn, _, eps_ent = self.gateway(t_emb, obs_vis, prev_act, h_query_proxy, u_t)
         
-        # Continuous Hippocampal Recall when uncertainty arises
+        # Continuous Hippocampal Recall with shape-safe dimensional guard
         na = u_t[:, 4:5]
         if episodic_memory is not None and na.mean().item() > 0.15 and episodic_memory.size.max().item() > 0:
             retrieved, _ = episodic_memory.read(w_t, 0.05, 0.40, 15.0)
+            if retrieved.dim() > 2:
+                retrieved = retrieved.reshape(batch_size, self.unified_dim)
             w_integrated = w_t + retrieved * 0.5
         else:
             w_integrated = w_t
@@ -302,7 +305,7 @@ class ProposedMatrixSDESSMAgent(nn.Module):
 
 
 # =============================================================================
-# BENCHMARK EXECUTION SUITE (LONG CONTEXT NEEDLE-IN-A-HAYSTACK RETRIEVAL TEST)
+# BENCHMARK EXECUTION SUITE
 # =============================================================================
 
 def run_isolated_benchmark():
@@ -324,7 +327,7 @@ def run_isolated_benchmark():
     criterion = nn.CrossEntropyLoss(ignore_index=256)
     tokenizer = ByteTokenizer()
 
-    # Long-Context Synthetic Problem (Context memory across 500 bytes)
+    # Long-Context Synthetic Needle-in-a-Haystack Task
     prompt_needle = (
         "Document: The secret project codename is PHENIX-909. "
         "Background details: Continuous time systems represent information smoothly. "
@@ -400,7 +403,6 @@ def run_isolated_benchmark():
 
     for step in range(num_eval_steps):
         prop_opt.zero_grad()
-        # Matrix State: [Batch, 8, 32, 64] (16,384 scalars capacity)
         m_prev = torch.zeros(batch_size, 8, 32, 64, device=device)
         h_query_proxy = torch.zeros(batch_size, config.net.hidden_dim, device=device)
         u_t = hu_prop.state.clone().detach()
@@ -423,11 +425,14 @@ def run_isolated_benchmark():
                 loss_t = criterion(logits, chunk_targets[:, t])
                 chunk_losses.append(loss_t)
 
-                # Continuous Hippocampal Auto-Writing on Salient Surprise Events (Unified Dim 256)
+                # Continuous Hippocampal Auto-Writing on Salient Surprise Events
                 with torch.no_grad():
                     curr_loss_val = loss_t.detach().item()
-                    if curr_loss_val > 1.2:
-                        mem_prop.write(w_t.detach(), w_t.detach(), 3)
+                    if curr_loss_val > 1.0:
+                        w_flat = w_t.detach()
+                        if w_flat.dim() > 2:
+                            w_flat = w_flat.reshape(batch_size, config.net.unified_dim)
+                        mem_prop.write(w_flat, w_flat, 3)
 
                     ema_surprise = (1.0 - alpha_ema) * ema_surprise + alpha_ema * (curr_loss_val / 4.0)
                     somatic_surprise = torch.clamp(torch.tensor([[ema_surprise]], device=device), 0.0, 0.40).repeat(batch_size, 1)
