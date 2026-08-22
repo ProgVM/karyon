@@ -1,5 +1,7 @@
 # experiments/exp_thalamic_gradient_flow.py
 """
+feat(exp): implement thalamocortical residual shunt and micro-chunked backward pass
+
 ===============================================================================
 KARYON EXPERIMENTAL BENCHMARK: EXP-12 (THALAMOCORTICAL GRADIENT FLOW & LATENCY)
 Hypothesis: Direct Thalamocortical Shunt + Immediate Micro-Chunked Backward
@@ -245,7 +247,6 @@ def run_isolated_benchmark():
         if device.type == 'cuda': torch.cuda.synchronize()
         
         t0_batch = time.perf_counter()
-        full_emb = prop_model.pos_embeddings(dummy_input)
         h_f = torch.zeros(batch_size, config.net.hidden_dim, device=device)
         h_s = torch.zeros(batch_size, config.net.hidden_dim, device=device)
         u_t = hu_prop.state.clone()
@@ -259,19 +260,26 @@ def run_isolated_benchmark():
             t_chunk_start = chunk_idx * chunk_size
             t_chunk_end = (chunk_idx + 1) * chunk_size
             
+            chunk_input_tokens = dummy_input[:, t_chunk_start:t_chunk_end]
+            chunk_target_tokens = dummy_target[:, t_chunk_start:t_chunk_end]
+
             t0_f = time.perf_counter()
+            # Biological sensory streaming: Embeddings computed per-chunk creating clean subgraphs
+            chunk_emb = prop_model.pos_embeddings(chunk_input_tokens)
+            
             chunk_losses = []
-            for t in range(t_chunk_start, t_chunk_end):
-                h_f, h_s, logits = prop_model.forward_step(full_emb[:, t], h_f, h_s, u_t)
-                chunk_losses.append(criterion(logits, dummy_target[:, t]))
+            for t in range(chunk_size):
+                h_f, h_s, logits = prop_model.forward_step(chunk_emb[:, t], h_f, h_s, u_t)
+                chunk_losses.append(criterion(logits, chunk_target_tokens[:, t]))
 
             chunk_loss = torch.stack(chunk_losses).mean()
             if device.type == 'cuda': torch.cuda.synchronize()
             accum_fwd_time += (time.perf_counter() - t0_f) * 1000.0
 
             # Immediate Chunk Backward: Releases memory instantly without accumulating graph
+            # Normalized by num_chunks so mathematical gradient scale equals full sequence mean
             t0_b = time.perf_counter()
-            chunk_loss.backward()
+            (chunk_loss / float(num_chunks)).backward()
             if device.type == 'cuda': torch.cuda.synchronize()
             accum_bwd_time += (time.perf_counter() - t0_b) * 1000.0
 
