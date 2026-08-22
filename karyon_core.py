@@ -3,10 +3,10 @@ import os
 import torch
 from torch.utils.cpp_extension import load
 
-print("[C++ JIT] Compiling and linking native Karyon architecture (v10 Goal-Conditioned SDE-SSM)...")
+print("[C++ JIT] Compiling and linking native Karyon architecture (v11 Fused C++ Engine)...")
 
 karyon_cpp = load(
-    name="karyon_cpp_ext_v10",
+    name="karyon_cpp_ext_v11",
     sources=["karyon_core.cpp"],
     extra_cflags=["-O3", "-std=c++20"],
     verbose=False
@@ -19,8 +19,9 @@ SensoryGateway = karyon_cpp.SensoryGateway
 MotorGateway = karyon_cpp.MotorGateway
 CausalByteReceptiveField = karyon_cpp.CausalByteReceptiveField
 GoalConditionedMatrixSDESSMCore = karyon_cpp.GoalConditionedMatrixSDESSMCore
+FusedSensorySDEEngine = karyon_cpp.FusedSensorySDEEngine
 DesaturatedHopfieldAttractorHead = karyon_cpp.DesaturatedHopfieldAttractorHead
 LatentPredictor = karyon_cpp.LatentPredictor
 BatchedEpisodicMemory = karyon_cpp.BatchedEpisodicMemory
 
-print("[C++ JIT] Native C++ v10 Goal-Conditioned SDE-SSM architecture successfully initialized!")
+print("[C++ JIT] Native C++ v11 Fused Engine successfully initialized!")

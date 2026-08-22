@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <string>
 #include <algorithm>
+#include <memory>
 
 namespace py = pybind11;
 
@@ -347,7 +348,68 @@ public:
 };
 
 // ============================================================================
-// 7. DESATURATED HOPFIELD ATTRACTOR HEAD (NATIVE C++)
+// 7. FUSED SENSORY SDE ENGINE (NATIVE C++ MONOLITHIC CHUNK SCANNER)
+// ============================================================================
+class FusedSensorySDEEngineImpl : public torch::nn::Module {
+public:
+    std::shared_ptr<SensoryGatewayImpl> gateway{nullptr};
+    std::shared_ptr<GoalConditionedMatrixSDESSMCoreImpl> sde_ssm{nullptr};
+    int64_t hidden_dim;
+    int64_t unified_dim;
+
+    FusedSensorySDEEngineImpl(int64_t unified_dim = 256, int64_t hidden_dim = 512,
+                             int64_t text_dim = 128, int64_t vision_dim = 256, int64_t action_dim = 3,
+                             int64_t num_heads = 8, int64_t head_k = 32, int64_t head_v = 64,
+                             int64_t homeo_dim = 6, std::string device_str = "cpu")
+        : hidden_dim(hidden_dim), unified_dim(unified_dim) {
+
+        gateway = register_module("gateway", std::make_shared<SensoryGatewayImpl>(
+            unified_dim, hidden_dim, homeo_dim, text_dim, vision_dim, action_dim, device_str
+        ));
+        sde_ssm = register_module("sde_ssm", std::make_shared<GoalConditionedMatrixSDESSMCoreImpl>(
+            unified_dim, hidden_dim, num_heads, head_k, head_v, homeo_dim, device_str
+        ));
+
+        if (device_str.find("cuda") != std::string::npos) {
+            this->to(torch::kCUDA);
+        }
+    }
+
+    // FUSED MONOLITHIC CHUNK SCANNER: Runs all 32 steps on CUDA in pure C++
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward_chunk(
+        torch::Tensor chunk_text, torch::Tensor obs_vis, torch::Tensor prev_act,
+        torch::Tensor m_prev, torch::Tensor h_prev, torch::Tensor u_t, float dt = 1.0f) {
+
+        int64_t batch_size = chunk_text.size(0);
+        int64_t chunk_len = chunk_text.size(1);
+
+        std::vector<torch::Tensor> h_states;
+        h_states.reserve(chunk_len);
+
+        auto m_curr = m_prev;
+        auto h_curr = h_prev;
+        torch::Tensor last_w;
+
+        for (int64_t t = 0; t < chunk_len; ++t) {
+            auto t_text = chunk_text.select(1, t);
+            auto g_out = gateway->forward(t_text, obs_vis, prev_act, h_curr, u_t);
+            auto w_t = std::get<0>(g_out);
+            last_w = w_t;
+
+            auto sde_out = sde_ssm->forward_step(m_curr, h_curr, w_t, u_t, dt);
+            m_curr = std::get<0>(sde_out);
+            h_curr = std::get<1>(sde_out);
+
+            h_states.push_back(h_curr);
+        }
+
+        auto h_chunk = torch::stack(h_states, 1).reshape({batch_size * chunk_len, hidden_dim});
+        return std::make_tuple(h_chunk, m_curr, h_curr, last_w);
+    }
+};
+
+// ============================================================================
+// 8. DESATURATED HOPFIELD ATTRACTOR HEAD (NATIVE C++)
 // ============================================================================
 class DesaturatedHopfieldAttractorHeadImpl : public torch::nn::Module {
 public:
@@ -379,7 +441,7 @@ public:
 };
 
 // ============================================================================
-// 8. ACTIVE INFERENCE LATENT WORLD MODEL
+// 9. ACTIVE INFERENCE LATENT WORLD MODEL
 // ============================================================================
 class LatentPredictorImpl : public torch::nn::Module {
 public:
@@ -391,7 +453,7 @@ public:
     torch::nn::Linear posterior_net{nullptr};
     torch::nn::Sequential decoder_net{nullptr};
 
-    LatentPredictorImpl(int64_t hidden_dim = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
+    LatentPredictorImpl(int64_dim hidden_dim = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
         : hidden_dim(hidden_dim), unified_dim(unified_dim), latent_dim(latent_dim) {
         
         prior_net = register_module("prior_net", torch::nn::Linear(hidden_dim, latent_dim * 2));
@@ -445,7 +507,7 @@ public:
 };
 
 // ============================================================================
-// 9. HIGH-VELOCITY BATCHED EPISODIC MEMORY (STRICT 2D SHAPE-ALIGNED READ)
+// 10. HIGH-VELOCITY BATCHED EPISODIC MEMORY (STRICT 2D SHAPE-ALIGNED READ)
 // ============================================================================
 class BatchedEpisodicMemoryImpl : public torch::nn::Module {
 public:
@@ -569,7 +631,7 @@ public:
 };
 
 // ============================================================================
-// 10. PYBIND11 MODULE BINDINGS
+// 11. PYBIND11 MODULE BINDINGS
 // ============================================================================
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::class_<ByteTokenizer>(m, "ByteTokenizer")
@@ -624,6 +686,16 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("parameters", [](std::shared_ptr<GoalConditionedMatrixSDESSMCoreImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<GoalConditionedMatrixSDESSMCoreImpl> m) { return m->named_parameters(); })
         .def("__call__", &GoalConditionedMatrixSDESSMCoreImpl::forward_step);
+
+    // FUSED MONOLITHIC CHUNK SCANNER BINDING
+    py::class_<FusedSensorySDEEngineImpl, torch::nn::Module, std::shared_ptr<FusedSensorySDEEngineImpl>>(m, "FusedSensorySDEEngine")
+        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
+             py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512, py::arg("text_dim") = 128,
+             py::arg("vision_dim") = 256, py::arg("action_dim") = 3, py::arg("num_heads") = 8,
+             py::arg("head_k") = 32, py::arg("head_v") = 64, py::arg("homeo_dim") = 6, py::arg("device") = "cpu")
+        .def("forward_chunk", &FusedSensorySDEEngineImpl::forward_chunk)
+        .def("parameters", [](std::shared_ptr<FusedSensorySDEEngineImpl> m) { return m->parameters(); })
+        .def("named_parameters", [](std::shared_ptr<FusedSensorySDEEngineImpl> m) { return m->named_parameters(); });
 
     py::class_<DesaturatedHopfieldAttractorHeadImpl, torch::nn::Module, std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl>>(m, "DesaturatedHopfieldAttractorHead")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
