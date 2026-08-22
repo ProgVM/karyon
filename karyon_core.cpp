@@ -441,7 +441,7 @@ public:
 };
 
 // ============================================================================
-// 9. ACTIVE INFERENCE LATENT WORLD MODEL
+// 9. ACTIVE INFERENCE LATENT WORLD MODEL (FIXED TYPO: int64_t hidden_dim)
 // ============================================================================
 class LatentPredictorImpl : public torch::nn::Module {
 public:
@@ -453,7 +453,7 @@ public:
     torch::nn::Linear posterior_net{nullptr};
     torch::nn::Sequential decoder_net{nullptr};
 
-    LatentPredictorImpl(int64_dim hidden_dim = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
+    LatentPredictorImpl(int64_t hidden_dim = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
         : hidden_dim(hidden_dim), unified_dim(unified_dim), latent_dim(latent_dim) {
         
         prior_net = register_module("prior_net", torch::nn::Linear(hidden_dim, latent_dim * 2));
@@ -687,7 +687,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("named_parameters", [](std::shared_ptr<GoalConditionedMatrixSDESSMCoreImpl> m) { return m->named_parameters(); })
         .def("__call__", &GoalConditionedMatrixSDESSMCoreImpl::forward_step);
 
-    // FUSED MONOLITHIC CHUNK SCANNER BINDING
     py::class_<FusedSensorySDEEngineImpl, torch::nn::Module, std::shared_ptr<FusedSensorySDEEngineImpl>>(m, "FusedSensorySDEEngine")
         .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
              py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512, py::arg("text_dim") = 128,
