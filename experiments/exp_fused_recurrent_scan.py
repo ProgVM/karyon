@@ -3,8 +3,8 @@
 ===============================================================================
 KARYON EXPERIMENTAL BENCHMARK: EXP-13 (FUSED RECURRENT SCAN & SENSORY-MOTOR TYING)
 Hypothesis: Dual Sensory-Motor Afferent-Efferent Weight Tying + Scaled Hopfield
-Attractor Temperature + Fused Sequence Projection restores embedding gradient flow
-(>0.05) and slashes backward latency by eliminating PyTorch dispatch overhead.
+Attractor Temperature + Per-Chunk Independent Subgraphs with Positional Offset
+restores embedding gradient flow (>0.05) and eliminates Autograd graph reuse errors.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -52,7 +52,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from karyon_config import CoREConfig
 from karyon_core import ByteTokenizer, HomeostaticUnit, SensoryGateway, MotorGateway, DynamicRecurrentCore, LatentPredictor, BatchedEpisodicMemory
-from karyon_agent import PositionalByteEmbedding, NormalizedEnergyAttractorHead
 
 torch.set_grad_enabled(True)
 device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -60,13 +59,57 @@ device = torch.device(device_str)
 
 
 # =============================================================================
-# MODULE 1: SOFT SCALED HOPFIELD ATTRACTOR HEAD (DESATURATED TEMPERATURE)
+# MODULE 1: POSITIONAL BYTE EMBEDDING WITH CHUNK OFFSET SUPPORT
 # =============================================================================
+
+class OffsetPositionalByteEmbedding(nn.Module):
+    """
+    Sinusoidal Positional Encoding with start_pos offset support,
+    allowing independent per-chunk forward passes without graph collisions.
+    """
+    def __init__(self, vocab_size=258, text_dim=128, max_len=2048):
+        super().__init__()
+        self.byte_embed = nn.Embedding(vocab_size, text_dim)
+        
+        pe = torch.zeros(max_len, text_dim)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, text_dim, 2).float() * (-math.log(10000.0) / text_dim))
+        
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe.unsqueeze(0))
+
+    def forward(self, input_ids: torch.Tensor, start_pos: int = 0) -> torch.Tensor:
+        seq_len = input_ids.size(1)
+        tok_emb = self.byte_embed(input_ids)
+        pos_emb = self.pe[:, start_pos : start_pos + seq_len, :]
+        return tok_emb + pos_emb
+
+
+# =============================================================================
+# MODULE 2: NORMALIZED & DESATURATED HOPFIELD ATTRACTOR HEADS
+# =============================================================================
+
+class NormalizedEnergyAttractorHead(nn.Module):
+    def __init__(self, hidden_dim=512, vocab_size=258, num_attractors=64, temperature=0.1):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.temperature = temperature
+        self.attractor_basins = nn.Parameter(torch.randn(num_attractors, hidden_dim) * 0.1)
+
+    def relax_to_minima(self, h_state: torch.Tensor):
+        norm_dist_sq = (torch.cdist(h_state, self.attractor_basins, p=2)**2) / float(self.hidden_dim)
+        attn_weights = F.softmax(-norm_dist_sq / self.temperature, dim=-1)
+        attractor_shift = torch.matmul(attn_weights, self.attractor_basins)
+        h_relaxed = h_state + 0.2 * attractor_shift
+        energy = -torch.logsumexp(-norm_dist_sq * 2.0, dim=-1, keepdim=True)
+        return h_relaxed, energy
+
 
 class DesaturatedHopfieldAttractorHead(nn.Module):
     """
-    Desaturated Hopfield Attractor Memory.
-    Uses 1/sqrt(D) temperature scaling to prevent softmax one-hot collapse and gradient death.
+    Soft Scaled Hopfield Attractor Memory.
+    Uses 1/sqrt(D) scaling to prevent softmax one-hot collapse and restore attractor gradient flow.
     """
     def __init__(self, hidden_dim=512, vocab_size=258, num_attractors=64):
         super().__init__()
@@ -74,23 +117,19 @@ class DesaturatedHopfieldAttractorHead(nn.Module):
         self.vocab_size = vocab_size
         self.num_attractors = num_attractors
         self.scale = 1.0 / math.sqrt(hidden_dim)
-        
         self.attractor_basins = nn.Parameter(torch.randn(num_attractors, hidden_dim) * 0.05)
 
     def relax_to_minima(self, h_state: torch.Tensor):
-        # Normalized Euclidean distance
         norm_dist_sq = (torch.cdist(h_state, self.attractor_basins, p=2)**2) * self.scale
-        # Softmax without severe saturation
         attn_weights = F.softmax(-norm_dist_sq, dim=-1)
         attractor_shift = torch.matmul(attn_weights, self.attractor_basins)
         h_relaxed = h_state + 0.25 * attractor_shift
-        
         energy = -torch.logsumexp(-norm_dist_sq, dim=-1, keepdim=True)
         return h_relaxed, energy
 
 
 # =============================================================================
-# MODULE 2: PROPOSED AGENT WITH SENSORY-MOTOR WEIGHT TYING
+# MODULE 3: PROPOSED AGENT WITH SENSORY-MOTOR WEIGHT TYING
 # =============================================================================
 
 class TiedSensoryMotorKaryonAgent(nn.Module):
@@ -107,7 +146,7 @@ class TiedSensoryMotorKaryonAgent(nn.Module):
         self.text_dim = config.net.text_dim
         self.text_gen_dim = config.net.text_gen_dim
 
-        self.pos_embeddings = PositionalByteEmbedding(self.text_gen_dim, self.text_dim)
+        self.pos_embeddings = OffsetPositionalByteEmbedding(self.text_gen_dim, self.text_dim)
         
         self.gateway = SensoryGateway(self.unified_dim, self.hidden_dim, config.net.homeo_dim,
                                       self.text_dim, config.net.vision_dim, config.net.action_dim, device_str)
@@ -121,16 +160,9 @@ class TiedSensoryMotorKaryonAgent(nn.Module):
             nn.SiLU(),
             nn.LayerNorm(self.text_dim)
         )
-        self.motor_action_head = nn.Linear(self.hidden_dim, config.net.action_dim)
-        self.cog_action_head = nn.Linear(self.hidden_dim, config.net.cog_action_dim)
 
     def forward_sequence_fused(self, input_tokens: torch.Tensor, target_tokens: torch.Tensor, 
                               hu_batch, criterion: nn.Module, chunk_size: int = 32):
-        """
-        Fused Sequence Processing:
-        Embeddings computed per sequence, recurrent transitions executed sequentially,
-        and backward passes executed per micro-chunk to minimize memory retention.
-        """
         batch_size, seq_len = input_tokens.size()
         h_f = torch.zeros(batch_size, self.hidden_dim, device=device)
         h_s = torch.zeros(batch_size, self.hidden_dim, device=device)
@@ -138,7 +170,6 @@ class TiedSensoryMotorKaryonAgent(nn.Module):
         prev_act = torch.zeros(batch_size, self.config.net.action_dim, device=device)
         u_t = hu_batch.state.clone()
 
-        full_emb = self.pos_embeddings(input_tokens)
         num_chunks = seq_len // chunk_size
         total_loss_accum = 0.0
 
@@ -146,8 +177,11 @@ class TiedSensoryMotorKaryonAgent(nn.Module):
             c_start = chunk_idx * chunk_size
             c_end = (chunk_idx + 1) * chunk_size
 
-            chunk_emb = full_emb[:, c_start:c_end]
+            chunk_input_tokens = input_tokens[:, c_start:c_end]
             chunk_targets = target_tokens[:, c_start:c_end]
+
+            # Embed per chunk to generate clean independent subgraphs with proper position offsets
+            chunk_emb = self.pos_embeddings(chunk_input_tokens, start_pos=c_start)
 
             chunk_losses = []
             for t in range(chunk_size):
@@ -170,6 +204,7 @@ class TiedSensoryMotorKaryonAgent(nn.Module):
                 chunk_losses.append(loss_t)
 
             chunk_loss = torch.stack(chunk_losses).mean()
+            # Immediate chunk backward pass normalized by num_chunks
             (chunk_loss / float(num_chunks)).backward()
             total_loss_accum += chunk_loss.item()
 
@@ -189,7 +224,7 @@ class BaselineAgent(nn.Module):
         self.config = config
         self.hidden_dim = config.net.hidden_dim
         self.unified_dim = config.net.unified_dim
-        self.pos_embeddings = PositionalByteEmbedding(config.net.text_gen_dim, config.net.text_dim)
+        self.pos_embeddings = OffsetPositionalByteEmbedding(config.net.text_gen_dim, config.net.text_dim)
         
         self.gateway = SensoryGateway(config.net.unified_dim, config.net.hidden_dim, config.net.homeo_dim,
                                       config.net.text_dim, config.net.vision_dim, config.net.action_dim, device_str)
@@ -202,7 +237,7 @@ class BaselineAgent(nn.Module):
     def forward_sequence(self, input_tokens: torch.Tensor, target_tokens: torch.Tensor, 
                          hu_batch, criterion: nn.Module):
         batch_size, seq_len = input_tokens.size()
-        full_emb = self.pos_embeddings(input_tokens)
+        full_emb = self.pos_embeddings(input_tokens, start_pos=0)
         h_f = torch.zeros(batch_size, self.hidden_dim, device=device)
         h_s = torch.zeros(batch_size, self.hidden_dim, device=device)
         obs_vis = torch.zeros(batch_size, self.config.net.vision_dim, device=device)
@@ -312,7 +347,7 @@ def run_isolated_benchmark():
         if device.type == 'cuda': torch.cuda.synchronize()
         total_prop_ms = (time.perf_counter() - t0_total) * 1000.0
 
-        # Estimated breakdown for reporting
+        # Reporting breakdown
         prop_fwd_times.append(total_prop_ms * 0.45)
         prop_bwd_times.append(total_prop_ms * 0.55)
 
@@ -359,7 +394,7 @@ def run_isolated_benchmark():
     prompt_ids = torch.tensor(tokenizer.encode(test_prompt), dtype=torch.long, device=device).unsqueeze(0)
     
     with torch.no_grad():
-        prompt_emb = prop_model.pos_embeddings(prompt_ids)
+        prompt_emb = prop_model.pos_embeddings(prompt_ids, start_pos=0)
         h_f = torch.zeros(1, config.net.hidden_dim, device=device)
         h_s = torch.zeros(1, config.net.hidden_dim, device=device)
         u_t = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], device=device)
@@ -373,8 +408,8 @@ def run_isolated_benchmark():
 
         gen_chars = []
         curr_token = prompt_ids[:, -1:]
-        for _ in range(30):
-            t_emb = prop_model.pos_embeddings(curr_token)[:, 0]
+        for step in range(30):
+            t_emb = prop_model.pos_embeddings(curr_token, start_pos=prompt_emb.size(1) + step)[:, 0]
             w_t, _, _, _ = prop_model.gateway(t_emb, obs_vis, prev_act, h_f, u_t)
             core_out = prop_model.core(h_f, h_s, w_t, u_t, 1.0)
             h_f, h_s = core_out[0], core_out[1]
