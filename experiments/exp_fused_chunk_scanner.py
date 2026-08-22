@@ -263,15 +263,15 @@ class FusedChunkScannerAgent(nn.Module):
             h_states.append(h_prev)
 
         # Stack chunk hidden states: [Batch, ChunkLen, HiddenDim] -> [Batch * ChunkLen, HiddenDim]
-        h_chunk_tensor = torch.stack(h_states, dim=1).view(batch_size * chunk_len, self.hidden_dim)
+        h_chunk_tensor = torch.stack(h_states, dim=1).reshape(batch_size * chunk_len, self.hidden_dim)
 
         # 2. Parallel Batched Motor Tensor Readout (Runs 1 single kernel over all 32 tokens in parallel!)
         h_relaxed_flat, _ = self.attractor_head.relax_to_minima(h_chunk_tensor)
         h_proj_flat = self.motor_text_proj(h_relaxed_flat)
         logits_flat = F.linear(h_proj_flat, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
 
-        # 3. Single Batched Cross-Entropy Loss
-        targets_flat = chunk_targets.view(batch_size * chunk_len)
+        # 3. Single Batched Cross-Entropy Loss with Safe Memory Layout
+        targets_flat = chunk_targets.contiguous().view(-1)
         chunk_loss = criterion(logits_flat, targets_flat)
 
         return chunk_loss, m_prev, h_prev
