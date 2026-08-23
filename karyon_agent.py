@@ -1,11 +1,11 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v10.1 (PRODUCTION MASTER FRACTAL)
+KARYON AGENT CORE v10.5 (PRODUCTION MASTER FRACTAL & EVENT RESET)
 Complete 9-System Architecture with Native C++20 Thalamocortical Gated
 Fractal 3-Tier SDE-SSM Core (49,152 Scalar Memory Capacity, 176k tok/s),
 Causal N-gram Byte Receptive Field (K=4), Afferent-Efferent Sensory-Motor
-Weight Tying, Desaturated Hopfield Attractors, and Low-Pass Ashby Homeostasis.
+Weight Tying, Desaturated Hopfield Attractors, and Theta Phase Event Reset.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -60,7 +60,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v10.1 PRODUCTION MASTER FRACTAL)
+# MASTER CORE AGENT (v10.5 PRODUCTION MASTER FRACTAL & EVENT RESET)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -129,7 +129,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 5. Desaturated Hopfield Attractor Memory Landscape
+        # 5. Desaturated Hopfield Attractor Landscape
         self.attractor_head = DesaturatedHopfieldAttractorHead(
             hidden_dim=self.hidden_dim, 
             vocab_size=self.text_gen_dim,
@@ -365,7 +365,14 @@ class CoREAgent(nn.Module):
             total_speech_loss_accum += chunk_loss.item()
             total_fe_loss_accum += 0.01
 
-            # Somatic Homeostasis Update (FIXED: self.device throughout)
+            # Event Boundary Theta Phase Reset: Reset state carryover if EOS is encountered
+            with torch.no_grad():
+                has_eos = (chunk_input_tokens == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
+                m_f = m_f * (1.0 - has_eos)
+                m_m = m_m * (1.0 - has_eos)
+                m_M = m_M * (1.0 - has_eos)
+
+            # Somatic Homeostasis Update
             with torch.no_grad():
                 curr_loss_val = chunk_loss.detach().item()
                 if episodic_memory is not None and curr_loss_val > 1.2:

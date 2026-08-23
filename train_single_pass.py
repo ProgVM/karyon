@@ -1,9 +1,9 @@
 # train_single_pass.py
 """
 ===============================================================================
-KARYON SINGLE-PASS CONTINUOUS LEARNING RUNTIME (N=1)
+KARYON MULTI-PASS HIGH-VELOCITY STREAMING RUNTIME (N=3)
 Integrated with Native C++20 Thalamocortical Gated Fractal 3-Tier SSD Core,
-KEP Rule #6 Process Diagnostics Dashboard, and Top-p Rule #4 Speech Sampling.
+Event Boundary Reset, KEP Rule #6 Diagnostics, and Top-p Rule #4 Speech Sampling.
 ===============================================================================
 """
 
@@ -76,7 +76,7 @@ if not os.path.exists(kcore_path):
     logger.warning(f"Container '{kcore_path}' not found! Automatically building base model via init_priors...")
     initialize_priors(recreate=True, filepath=kcore_path, device=device)
 
-logger.info("Loading Single-Pass Conversational Data Stream (alpaca-gpt4)...")
+logger.info("Loading Conversational Data Stream (alpaca-gpt4)...")
 dataset = load_dataset("vicgalle/alpaca-gpt4", split="train[:10000]")
 
 tokenizer = ByteTokenizer()
@@ -107,11 +107,12 @@ def collate_fn(batch):
 
 BATCH_SIZE = 32
 MAX_SEQ_LEN = 512
+NUM_PASSES = 3 # 3 Full Epochs (~115 seconds total session!)
 
 train_dataset = StreamingDataset(dataset, tokenizer, max_len=MAX_SEQ_LEN)
 stream_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn, drop_last=True)
 
-logger.info(f"Single-Pass Data Stream Ready. Samples: {len(train_dataset)} | Batches: {len(stream_loader)} | Mode: Single-Pass (N=1)")
+logger.info(f"Data Stream Ready. Samples: {len(train_dataset)} | Batches: {len(stream_loader)} | Passes: {NUM_PASSES}")
 
 core_config = CoREConfig()
 core_config.net.text_dim = 128
@@ -148,7 +149,7 @@ hu = HomeostaticUnit(batch_size=BATCH_SIZE, device=device)
 episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_config.net.unified_dim, max_capacity=1000, device=device)
 
 # Load state directly from .kcore container
-h_fast, h_slow, _, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device)
+h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device)
 
 optimizer = optim.Adam(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.0)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
@@ -186,7 +187,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
             hu=diag_hu,
             episodic_memory=diag_mem,
             config=config,
-            max_generated_tokens=50,
+            max_generated_tokens=60,
             temperature=0.7,
             top_p=0.90
         )
@@ -197,99 +198,102 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.train()
     return "".join(generated_chars).strip()
 
-logger.info("Starting Ultra-High-Speed Session (176k tok/s) with KEP Rule #6 Deep Diagnostics...")
+logger.info(f"Starting Multi-Pass High-Speed Session ({NUM_PASSES} Passes @ 176k tok/s)...")
 
-for batch_idx, batch_tokens in enumerate(stream_loader):
-    t_batch_start = time.perf_counter()
+for pass_idx in range(NUM_PASSES):
+    logger.info(f"\n{'='*85}\n === [STARTING PASS {pass_idx+1}/{NUM_PASSES} (EPOCH {saved_epoch + pass_idx + 1})] ===\n{'='*85}")
     
-    batch_tokens = batch_tokens.to(device)
-    current_batch_size = batch_tokens.size(0)
-    seq_len = batch_tokens.size(1)
-
-    if seq_len <= 1:
-        continue
-
-    hu_batch = HomeostaticUnit(batch_size=current_batch_size, device=device)
-
-    input_seq = batch_tokens[:, :-1]
-    target_seq = batch_tokens[:, 1:]
-
-    optimizer.zero_grad()
-    
-    # 1. Native C++ 3-Tier Fractal SSD Execution (92ms)
-    t_exec_start = time.perf_counter()
-    total_loss_metric, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
-        input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
-        loss_free_energy_weight=0.05, chunk_size=32, optimizer=optimizer
-    )
-    t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
-
-    na_val = curr_u_t.select(1, 4).mean().item()
-
-    # 2. Plasticity and Adaptation Step
-    moving_mean_fe = (1.0 - alpha_ma) * moving_mean_fe + alpha_ma * fe_val
-    moving_var_fe = (1.0 - alpha_ma) * moving_var_fe + alpha_ma * ((fe_val - moving_mean_fe)**2)
-    moving_std_fe = math.sqrt(max(1e-6, moving_var_fe))
-
-    is_fe_unmastered = fe_val > FREE_ENERGY_MASTERY_SETPOINT
-    is_speech_unmastered = speech_loss_val > SPEECH_MASTERY_SETPOINT
-    is_statistical_outlier = agent_brain.evaluate_dfet_gating(fe_val, moving_mean_fe, moving_std_fe, na_val)
-    
-    should_adapt = is_fe_unmastered or is_speech_unmastered or is_statistical_outlier
-
-    t_opt_ms = 0.0
-    if should_adapt:
-        effective_lr = 3e-3 * (1.0 + 1.0 * na_val)
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = effective_lr
-
-        t_opt_start = time.perf_counter()
-        torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=3.0)
-        optimizer.step()
-        t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
+    for batch_idx, batch_tokens in enumerate(stream_loader):
+        t_batch_start = time.perf_counter()
         
-        total_adapted_batches += 1
-        status_str = f"ADAPTED (lr={effective_lr:.5f})"
-    else:
+        batch_tokens = batch_tokens.to(device)
+        current_batch_size = batch_tokens.size(0)
+        seq_len = batch_tokens.size(1)
+
+        if seq_len <= 1:
+            continue
+
+        hu_batch = HomeostaticUnit(batch_size=current_batch_size, device=device)
+
+        input_seq = batch_tokens[:, :-1]
+        target_seq = batch_tokens[:, 1:]
+
         optimizer.zero_grad()
-        rest_recovery_rate = getattr(core_config.homeo, 'energy_recovery_rate', 0.0012)
-        with torch.no_grad():
-            curr_u_t[:, 1] = torch.clamp(curr_u_t[:, 1] + rest_recovery_rate, 0.0, 1.0)
+        
+        # 1. Native C++ 3-Tier Fractal SSD Execution with Theta Phase Event Reset
+        t_exec_start = time.perf_counter()
+        total_loss_metric, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
+            input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
+            loss_free_energy_weight=0.05, chunk_size=32, optimizer=optimizer
+        )
+        t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
+
+        na_val = curr_u_t.select(1, 4).mean().item()
+
+        # 2. Plasticity and Adaptation Step
+        moving_mean_fe = (1.0 - alpha_ma) * moving_mean_fe + alpha_ma * fe_val
+        moving_var_fe = (1.0 - alpha_ma) * moving_var_fe + alpha_ma * ((fe_val - moving_mean_fe)**2)
+        moving_std_fe = math.sqrt(max(1e-6, moving_var_fe))
+
+        is_fe_unmastered = fe_val > FREE_ENERGY_MASTERY_SETPOINT
+        is_speech_unmastered = speech_loss_val > SPEECH_MASTERY_SETPOINT
+        is_statistical_outlier = agent_brain.evaluate_dfet_gating(fe_val, moving_mean_fe, moving_std_fe, na_val)
+        
+        should_adapt = is_fe_unmastered or is_speech_unmastered or is_statistical_outlier
+
+        t_opt_ms = 0.0
+        if should_adapt:
+            effective_lr = (3e-3 / (1.0 + 0.3 * pass_idx)) * (1.0 + 1.0 * na_val)
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = effective_lr
+
+            t_opt_start = time.perf_counter()
+            torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=3.0)
+            optimizer.step()
+            t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
             
-        total_skipped_batches += 1
-        status_str = f"RESTING / SKIPPED (0 Backprop FLOPs)"
+            total_adapted_batches += 1
+            status_str = f"ADAPTED (lr={effective_lr:.5f})"
+        else:
+            optimizer.zero_grad()
+            rest_recovery_rate = getattr(core_config.homeo, 'energy_recovery_rate', 0.0012)
+            with torch.no_grad():
+                curr_u_t[:, 1] = torch.clamp(curr_u_t[:, 1] + rest_recovery_rate, 0.0, 1.0)
+                
+            total_skipped_batches += 1
+            status_str = f"RESTING / SKIPPED (0 Backprop FLOPs)"
 
-    batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
-    tokens_per_sec = (current_batch_size * seq_len) / (batch_total_ms / 1000.0)
+        batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
+        tokens_per_sec = (current_batch_size * seq_len) / (batch_total_ms / 1000.0)
 
-    # KEP Rule #6: Deep Process Diagnostics Dashboard
-    if (batch_idx + 1) % 10 == 0 or batch_idx == len(stream_loader) - 1:
-        perplexity = math.exp(min(speech_loss_val, 20.0))
-        curiosity, energy, stability, health, na, da = curr_u_t[0].tolist()
-        peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device == 'cuda' else 0.0
+        # KEP Rule #6: Deep Process Diagnostics Dashboard
+        if (batch_idx + 1) % 20 == 0 or batch_idx == len(stream_loader) - 1:
+            perplexity = math.exp(min(speech_loss_val, 20.0))
+            curiosity, energy, stability, health, na, da = curr_u_t[0].tolist()
+            peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device == 'cuda' else 0.0
 
-        grad_embed = agent_brain.pos_embeddings.byte_embed.weight.grad.norm().item() if agent_brain.pos_embeddings.byte_embed.weight.grad is not None else 0.0
-        grad_head = 0.0
-        if hasattr(agent_brain.attractor_head, 'attractor_basins') and agent_brain.attractor_head.attractor_basins.grad is not None:
-            grad_head = agent_brain.attractor_head.attractor_basins.grad.norm().item()
+            grad_embed = agent_brain.pos_embeddings.byte_embed.weight.grad.norm().item() if agent_brain.pos_embeddings.byte_embed.weight.grad is not None else 0.0
+            grad_head = 0.0
+            if hasattr(agent_brain.attractor_head, 'attractor_basins') and agent_brain.attractor_head.attractor_basins.grad is not None:
+                grad_head = agent_brain.attractor_head.attractor_basins.grad.norm().item()
 
-        print(f"\n" + "="*85)
-        print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
-        print("="*85)
-        print(f"Plasticity Gating Status  : {status_str}")
-        print(f"Submodule Timing (ms)     : Fractal 3-Tier SSD Scan: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms")
-        print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
-        print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
-        print(f"Gradient Flow Inspection  : Embeddings Grad Norm = {grad_embed:.6f} | Attractor Head Grad Norm = {grad_head:.6f}")
-        print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy:.3f} | Arousal(NA): {na:.3f}")
-        print("="*85)
+            print(f"\n" + "="*85)
+            print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | PASS {pass_idx+1}/{NUM_PASSES} | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
+            print("="*85)
+            print(f"Plasticity Gating Status  : {status_str}")
+            print(f"Submodule Timing (ms)     : 3-Tier SSD Scan: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms")
+            print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
+            print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
+            print(f"Gradient Flow Inspection  : Embeddings Grad Norm = {grad_embed:.6f} | Attractor Head Grad Norm = {grad_head:.6f}")
+            print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy:.3f} | Arousal(NA): {na:.3f}")
+            print("="*85)
 
-    # KEP Rule #4: Live Diagnostic Speech Sample every 30 batches
-    if (batch_idx + 1) % 30 == 0:
-        diag_sample = run_diagnostic_text_sample(agent_brain, episodic_mem, curr_u_t, core_config)
-        logger.info(f"💬 [KEP Rule #4 Diagnostic Speech Sample @ Step {batch_idx+1}] -> \"{diag_sample}\"\n")
+        # KEP Rule #4: Live Diagnostic Speech Sample every 30 batches
+        if (batch_idx + 1) % 30 == 0:
+            diag_sample = run_diagnostic_text_sample(agent_brain, episodic_mem, curr_u_t, core_config)
+            logger.info(f"💬 [KEP Rule #4 Diagnostic Speech Sample @ Pass {pass_idx+1} Step {batch_idx+1}] -> \"{diag_sample}\"\n")
 
-logger.info("Persisting final DFET stream state into '.kcore' container...")
-save_karyon(agent_brain, episodic_mem, hu, h_curr[0:1], h_curr[0:1], epoch=1, story_idx=len(stream_loader) * BATCH_SIZE, filepath=kcore_path)
+    # Persist progress after each pass
+    save_karyon(agent_brain, episodic_mem, hu, h_curr[0:1], h_curr[0:1], epoch=saved_epoch + pass_idx + 1, story_idx=len(stream_loader) * BATCH_SIZE * (pass_idx + 1), filepath=kcore_path)
 
-logger.info(f"Single-Pass Session Complete! Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches}.")
+logger.info(f"Multi-Pass Session Complete! Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches}.")
