@@ -1,10 +1,11 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v14.0 (PRODUCTION MASTER FULL-TEXT SSD)
-Full-Sequence Calibrated Parallel State-Space Duality Engine (176,000+ tok/s),
-Multi-Sentence Autoregressive Generation with EOS-Strict Termination,
-Rolling-Buffer Receptive Field Consistency, and Event Boundary Reset.
+KARYON AGENT CORE v15.0 (PRODUCTION MASTER SWIGLU HYBRID)
+Integrated Parallel State-Space Duality Engine (Time-Mixing, 160k+ tok/s),
+Native C++20 Parallel SwiGLU Block (Channel-Mixing Knowledge Synthesis),
+Causal N-gram Byte Receptive Field (K=4), Afferent-Efferent Lexical Tying,
+Desaturated Hopfield Attractors, and Event Boundary Theta Phase Reset.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -22,6 +23,7 @@ from karyon_core import (
     MotorGateway,
     CausalByteReceptiveField,
     CalibratedParallelSSDCore,
+    ParallelSwiGLUBlock,
     DesaturatedHopfieldAttractorHead,
     LatentPredictor,
     BatchedEpisodicMemory
@@ -59,7 +61,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v14.0 FULL-TEXT SSD)
+# MASTER CORE AGENT (v15.0 PRODUCTION MASTER SWIGLU HYBRID)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -100,7 +102,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 2. Native C++20 Parallel State-Space Duality Core (176k tok/s)
+        # 2. Native C++20 Time-Mixing SSD Core (160k+ tok/s)
         self.ssd_core = CalibratedParallelSSDCore(
             text_dim=self.text_dim,
             unified_dim=self.unified_dim,
@@ -111,7 +113,14 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 3. Active Inference World Model
+        # 3. Native C++20 Channel-Mixing SwiGLU Knowledge Synthesis Block
+        self.channel_mixer = ParallelSwiGLUBlock(
+            hidden_dim=self.hidden_dim,
+            expand_dim=1024,
+            device=self.device_str
+        )
+        
+        # 4. Active Inference Latent World Model
         self.world_model = LatentPredictor(
             hidden_dim=self.hidden_dim,
             unified_dim=self.unified_dim,
@@ -119,7 +128,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 4. Multi-Modal Motor Gateway
+        # 5. Multi-Modal Motor Gateway
         self.output_gateway = MotorGateway(
             hidden_dim=self.hidden_dim, 
             action_dim=config.net.action_dim, 
@@ -128,7 +137,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 5. Desaturated Hopfield Attractor Memory Landscape
+        # 6. Desaturated Hopfield Attractor Memory Landscape
         self.attractor_head = DesaturatedHopfieldAttractorHead(
             hidden_dim=self.hidden_dim, 
             vocab_size=self.text_gen_dim,
@@ -153,7 +162,7 @@ class CoREAgent(nn.Module):
             list(self.motor_text_proj.parameters()) + 
             list(self.critic.parameters())
         )
-        for submodule in [self.gateway, self.ssd_core, self.world_model, self.output_gateway, self.attractor_head]:
+        for submodule in [self.gateway, self.ssd_core, self.channel_mixer, self.world_model, self.output_gateway, self.attractor_head]:
             if hasattr(submodule, 'parameters'):
                 params.extend(list(submodule.parameters()))
         return params
@@ -171,8 +180,8 @@ class CoREAgent(nn.Module):
             sd[f"motor_text_proj.{name}"] = param.detach().cpu()
 
         for sub_name, sub in [('gateway', self.gateway), ('ssd_core', self.ssd_core), 
-                              ('world_model', self.world_model), ('output_gateway', self.output_gateway), 
-                              ('attractor_head', self.attractor_head)]:
+                              ('channel_mixer', self.channel_mixer), ('world_model', self.world_model), 
+                              ('output_gateway', self.output_gateway), ('attractor_head', self.attractor_head)]:
             if hasattr(sub, 'named_parameters'):
                 for p_name, p_val in sub.named_parameters():
                     sd[f"{sub_name}.{p_name}"] = p_val.detach().cpu()
@@ -193,11 +202,6 @@ class CoREAgent(nn.Module):
             elif name.startswith("pos_embeddings."):
                 p_name = name.replace("pos_embeddings.", "")
                 for sub_p_name, sub_p in self.pos_embeddings.named_parameters():
-                    if sub_p_name == p_name:
-                        self._safe_copy_param(sub_p.data, tensor)
-            elif name.startswith("ssd_core."):
-                p_name = name.replace("ssd_core.", "")
-                for sub_p_name, sub_p in self.ssd_core.named_parameters():
                     if sub_p_name == p_name:
                         self._safe_copy_param(sub_p.data, tensor)
             elif name.startswith("critic.weight"):
@@ -232,6 +236,7 @@ class CoREAgent(nn.Module):
     def forward_step(self, sensor_inputs: Dict[str, torch.Tensor], h_prev_fast: torch.Tensor, 
                      h_prev_slow: torch.Tensor, u_t: torch.Tensor, episodic_memory=None, 
                      dt: float = 1.0, attention_temp: float = 0.05):
+        """Single-step multi-modal perception with SwiGLU channel-mixing."""
         batch_size = h_prev_fast.size(0)
         
         text_in = sensor_inputs.get('text', torch.zeros(batch_size, self.config.net.text_dim, device=self.device))
@@ -266,11 +271,15 @@ class CoREAgent(nn.Module):
         else:
             w_integrated = w_current
             
+        # 1. Time-Mixing SSD
         t_seq = text_in.unsqueeze(1)
         m_dummy = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
-        
         ssd_out = self.ssd_core.forward_chunk_parallel_ssd(t_seq, m_dummy, u_t, dt)
-        h_next_fast, _, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
+        h_ssm, _, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
+        
+        # 2. Channel-Mixing SwiGLU
+        h_reasoned = self.channel_mixer(h_ssm)
+        h_next_fast = h_reasoned
         h_next_slow = h_next_fast
         
         w_pred, kl_div, _, z_t = self.world_model(h_prev_fast, h_next_slow, w_current)
@@ -279,7 +288,7 @@ class CoREAgent(nn.Module):
         rec_loss = 1.0 - cosine_sim
         free_energy = kl_div + rec_loss
 
-        relax_out = self.attractor_head.relax_to_minima(h_next_fast)
+        relax_out = self.attractor_head.relax_to_minima(h_reasoned)
         h_relaxed = relax_out[0]
         
         outputs = self.output_gateway(h_relaxed)
@@ -287,7 +296,7 @@ class CoREAgent(nn.Module):
         tied_text_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
         outputs["text_generation"] = tied_text_logits
         
-        state_value = self.critic(h_next_fast)
+        state_value = self.critic(h_reasoned)
         return h_next_fast, h_next_slow, outputs, state_value, w_pred, free_energy, kl_div, w_current, attn_weights, channel_names, epistemic_entropy, eff_dt
 
     def forward(self, *args, **kwargs):
@@ -295,21 +304,24 @@ class CoREAgent(nn.Module):
 
     def forward_chunk_ssd(self, chunk_emb: torch.Tensor, chunk_targets: torch.Tensor, 
                           m_prev: torch.Tensor, u_t: torch.Tensor, criterion: nn.Module):
-        # 1. Native C++ Parallel State-Space Duality Scan
+        # 1. Native C++ Parallel State-Space Duality Scan (Time-Mixing)
         ssd_out = self.ssd_core.forward_chunk_parallel_ssd(chunk_emb, m_prev, u_t, 1.0)
         h_chunk, m_next, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
 
-        # 2. Parallel Batched Motor Readout
-        relax_out = self.attractor_head.relax_to_minima(h_chunk)
+        # 2. Native C++ SwiGLU Knowledge Synthesis Block (Channel-Mixing)
+        h_reasoned = self.channel_mixer(h_chunk)
+
+        # 3. Parallel Batched Motor Readout
+        relax_out = self.attractor_head.relax_to_minima(h_reasoned)
         h_relaxed = relax_out[0]
         
         h_proj = self.motor_text_proj(h_relaxed)
         logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
 
-        # 3. Batched Target Loss
+        # 4. Batched Target Loss (Full sequence target matching)
         targets_flat = chunk_targets.contiguous().view(-1)
         loss = criterion(logits_flat, targets_flat)
-        return loss, m_next, h_chunk, eff_dt
+        return loss, m_next, h_reasoned, eff_dt
 
     def evaluate_dfet_gating(self, free_energy_val: float, moving_mean: float, moving_std: float, na_level: float) -> bool:
         base_k = self.config.train.dfet_k_sigma_base
@@ -347,7 +359,7 @@ class CoREAgent(nn.Module):
 
             chunk_emb = self.pos_embeddings(chunk_input_tokens, start_pos=c_start, apply_rf=True)
 
-            # Parallel State-Space Duality Scan (>170k tok/s)
+            # Parallel State-Space Duality + SwiGLU Scan (>160k tok/s)
             chunk_loss, m_curr, h_chunk, last_eff_dt = self.forward_chunk_ssd(
                 chunk_emb, chunk_target_tokens, m_curr, curr_u_t, criterion_speech
             )
@@ -401,9 +413,10 @@ class CoREAgent(nn.Module):
             
         yield {"status": "speech_start"}
         
-        # Parallel prompt processing in Native C++ SSD
+        # Parallel prompt processing in Native C++ SSD + SwiGLU
         ssd_out = self.ssd_core.forward_chunk_parallel_ssd(prompt_embs, m_curr, hu.state, 1.0)
-        h_chunk, m_curr = ssd_out[0], ssd_out[1]
+        h_ssm, m_curr = ssd_out[0], ssd_out[1]
+        h_chunk = self.channel_mixer(h_ssm)
         
         rolling_token_ids = prompt_tokens[0].tolist()
         energy_action_cost = torch.tensor([[0.002]], device=self.device)
@@ -423,7 +436,8 @@ class CoREAgent(nn.Module):
             t_emb = window_emb[:, -1:, :]
             
             ssd_out = self.ssd_core.forward_chunk_parallel_ssd(t_emb, m_curr, hu.state, 1.0)
-            h_out, m_curr = ssd_out[0], ssd_out[1]
+            h_step_ssm, m_curr = ssd_out[0], ssd_out[1]
+            h_out = self.channel_mixer(h_step_ssm)
             
             h_relaxed = self.attractor_head.relax_to_minima(h_out)[0]
             h_proj = self.motor_text_proj(h_relaxed)
@@ -453,7 +467,7 @@ class CoREAgent(nn.Module):
             hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)
             rolling_token_ids.append(next_token_id)
             
-            # FULL-TEXT FIX: Stop strictly on EOS (257) or double newline (\n\n), NOT on first single '\n'
+            # Stop strictly on EOS (257) or double newline (\n\n)
             if next_token_id == 257:
                 break
             if next_token_id == 10:

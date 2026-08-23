@@ -227,7 +227,7 @@ public:
 };
 
 // ============================================================================
-// 5. CAUSAL BYTE RECEPTIVE FIELD (NON-LINEAR DEPTHWISE 1D CONV + SILU)
+// 5. CAUSAL BYTE RECEPTIVE FIELD (NATIVE C++ K=4 DEPTHWISE CONV1D + SILU)
 // ============================================================================
 class CausalByteReceptiveFieldImpl : public torch::nn::Module {
 public:
@@ -263,7 +263,7 @@ public:
 };
 
 // ============================================================================
-// 6. CALIBRATED PARALLEL STATE-SPACE DUALITY CORE (NATIVE C++20 SSD)
+// 6. CALIBRATED PARALLEL STATE-SPACE DUALITY CORE (TIME-MIXING)
 // ============================================================================
 class CalibratedParallelSSDCoreImpl : public torch::nn::Module {
 public:
@@ -283,7 +283,7 @@ public:
     torch::nn::Linear out_proj{nullptr};
     torch::nn::LayerNorm norm{nullptr};
 
-    CalibratedParallelSSDCoreImpl(int64_t text_dim = 128, int64_t unified_dim = 256, int64_t hidden_dim = 512,
+    CalibratedParallelSSDCoreImpl(int64_t text_dim = 128, int64_t unified_dim = 256, int64_dim hidden_dim = 512,
                                  int64_t num_heads = 8, int64_t head_k = 32, int64_t head_v = 64,
                                  std::string device_str = "cpu")
         : text_dim(text_dim), unified_dim(unified_dim), hidden_dim(hidden_dim),
@@ -318,7 +318,6 @@ public:
         auto da = u_t.slice(1, 5, 6).view({batch_size, 1, 1, 1});
         auto eff_dt = torch::clamp(dt * (1.0f - 0.4f * na + 0.4f * da), 0.30f, 2.00f);
 
-        // 1. Parallel Projections
         auto w_chunk = sensory_proj->forward(chunk_emb);
 
         auto q = (q_proj->forward(w_chunk).view({batch_size, chunk_len, num_heads, head_k}).transpose(1, 2)) * inv_sqrt_k;
@@ -328,7 +327,6 @@ public:
         auto alpha = torch::pow(torch::sigmoid(decay_logits), eff_dt);
         auto beta = 1.0f - alpha;
 
-        // 2. Intra-chunk Causal Attention Matrix
         auto pos = torch::arange(chunk_len, chunk_emb.options().dtype(torch::kFloat32));
         auto diff = pos.unsqueeze(1) - pos.unsqueeze(0);
         auto causal_mask = (diff >= 0).to(torch::kFloat32);
@@ -337,14 +335,12 @@ public:
         auto s_matrix = torch::matmul(q, k.transpose(-1, -2)) * decay_weights;
         auto y_intra = torch::matmul(s_matrix, v);
 
-        // 3. Inter-chunk Retrieval
         auto decay_to_start = torch::pow(alpha, (pos + 1.0f).view({1, 1, chunk_len, 1}));
         auto y_inter = torch::matmul(q * decay_to_start, m_prev);
 
         auto y_total = (y_intra + y_inter).transpose(1, 2).reshape({batch_size * chunk_len, hidden_dim});
         auto h_chunk = norm->forward(out_proj->forward(y_total) + y_total);
 
-        // 4. Matrix State Update for Next Chunk
         auto decay_to_end = torch::pow(alpha, (static_cast<float>(chunk_len) - 1.0f - pos).view({1, 1, chunk_len, 1}));
         auto k_decayed = k * decay_to_end;
         auto kv_chunk_update = torch::matmul(k_decayed.transpose(-1, -2), v);
@@ -360,7 +356,42 @@ public:
 };
 
 // ============================================================================
-// 7. DESATURATED HOPFIELD ATTRACTOR HEAD (NATIVE C++)
+// 7. PARALLEL SWIGLU CHANNEL-MIXING BLOCK (NATIVE C++20)
+// ============================================================================
+class ParallelSwiGLUBlockImpl : public torch::nn::Module {
+public:
+    int64_t hidden_dim;
+    int64_t expand_dim;
+
+    torch::nn::Linear w_gate{nullptr};
+    torch::nn::Linear w_up{nullptr};
+    torch::nn::Linear w_down{nullptr};
+    torch::nn::LayerNorm norm{nullptr};
+
+    ParallelSwiGLUBlockImpl(int64_t hidden_dim = 512, int64_t expand_dim = 1024, std::string device_str = "cpu")
+        : hidden_dim(hidden_dim), expand_dim(expand_dim) {
+
+        w_gate = register_module("w_gate", torch::nn::Linear(torch::nn::LinearOptions(hidden_dim, expand_dim).bias(false)));
+        w_up = register_module("w_up", torch::nn::Linear(torch::nn::LinearOptions(hidden_dim, expand_dim).bias(false)));
+        w_down = register_module("w_down", torch::nn::Linear(torch::nn::LinearOptions(expand_dim, hidden_dim).bias(false)));
+        norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
+
+        if (device_str.find("cuda") != std::string::npos) {
+            this->to(torch::kCUDA);
+        }
+    }
+
+    torch::Tensor forward(torch::Tensor x_flat) {
+        // x_flat shape: [Batch * ChunkLen, HiddenDim]
+        auto gate = torch::silu(w_gate->forward(x_flat));
+        auto up = w_up->forward(x_flat);
+        auto ffn_out = w_down->forward(gate * up);
+        return norm->forward(x_flat + ffn_out);
+    }
+};
+
+// ============================================================================
+// 8. DESATURATED HOPFIELD ATTRACTOR HEAD (NATIVE C++)
 // ============================================================================
 class DesaturatedHopfieldAttractorHeadImpl : public torch::nn::Module {
 public:
@@ -392,7 +423,7 @@ public:
 };
 
 // ============================================================================
-// 8. ACTIVE INFERENCE LATENT WORLD MODEL
+// 9. ACTIVE INFERENCE LATENT WORLD MODEL
 // ============================================================================
 class LatentPredictorImpl : public torch::nn::Module {
 public:
@@ -458,7 +489,7 @@ public:
 };
 
 // ============================================================================
-// 9. HIGH-VELOCITY BATCHED EPISODIC MEMORY (STRICT 2D SHAPE-ALIGNED READ)
+// 10. HIGH-VELOCITY BATCHED EPISODIC MEMORY (STRICT 2D SHAPE-ALIGNED READ)
 // ============================================================================
 class BatchedEpisodicMemoryImpl : public torch::nn::Module {
 public:
@@ -580,7 +611,7 @@ public:
 };
 
 // ============================================================================
-// 10. PYBIND11 MODULE BINDINGS
+// 11. PYBIND11 MODULE BINDINGS
 // ============================================================================
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::class_<ByteTokenizer>(m, "ByteTokenizer")
@@ -637,6 +668,14 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("named_parameters", [](std::shared_ptr<CalibratedParallelSSDCoreImpl> m) { return m->named_parameters(); })
         .def("__call__", &CalibratedParallelSSDCoreImpl::forward_chunk_parallel_ssd,
              py::arg("chunk_emb"), py::arg("m_prev"), py::arg("u_t"), py::arg("dt") = 1.0f);
+
+    py::class_<ParallelSwiGLUBlockImpl, torch::nn::Module, std::shared_ptr<ParallelSwiGLUBlockImpl>>(m, "ParallelSwiGLUBlock")
+        .def(py::init<int64_t, int64_t, std::string>(),
+             py::arg("hidden_dim") = 512, py::arg("expand_dim") = 1024, py::arg("device") = "cpu")
+        .def("forward", &ParallelSwiGLUBlockImpl::forward)
+        .def("parameters", [](std::shared_ptr<ParallelSwiGLUBlockImpl> m) { return m->parameters(); })
+        .def("named_parameters", [](std::shared_ptr<ParallelSwiGLUBlockImpl> m) { return m->named_parameters(); })
+        .def("__call__", &ParallelSwiGLUBlockImpl::forward);
 
     py::class_<DesaturatedHopfieldAttractorHeadImpl, torch::nn::Module, std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl>>(m, "DesaturatedHopfieldAttractorHead")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
