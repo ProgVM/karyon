@@ -3,7 +3,7 @@
 ===============================================================================
 KARYON MULTI-PASS HIGH-VELOCITY STREAMING RUNTIME (N=3)
 Integrated with Native C++20 Dual-Layer Cortical SDE-SSM Stack (L2/3 + L5/6),
-Response-Only SFT Loss Masking, Dual-Rate Optimizer, and Top-p Speech Sampling.
+Safe Response-Only Target Masking, Dual-Rate Optimizer, and Top-p Sampling.
 ===============================================================================
 """
 
@@ -82,10 +82,6 @@ dataset = load_dataset("vicgalle/alpaca-gpt4", split="train[:10000]")
 tokenizer = ByteTokenizer()
 
 class StreamingDataset(Dataset):
-    """
-    Supervised Fine-Tuning Streaming Dataset with Response-Only Target Masking.
-    User prompt tokens are masked with ignore_index=256, eliminating gradient noise.
-    """
     def __init__(self, hf_dataset, tokenizer, max_len=512):
         self.samples = []
         for item in hf_dataset:
@@ -95,8 +91,8 @@ class StreamingDataset(Dataset):
                 prompt_str = f"User: {instruction}\nKaryon: "
                 response_str = f"{output}"
                 
-                prompt_ids = tokenizer.encode(prompt_str)[:-1] # Remove EOS from prompt
-                response_ids = tokenizer.encode(response_str) # Ends with EOS 257
+                prompt_ids = tokenizer.encode(prompt_str)[:-1] # strip EOS from prompt
+                response_ids = tokenizer.encode(response_str) # contains EOS 257
                 
                 full_ids = prompt_ids + response_ids
                 if len(full_ids) > max_len:
@@ -106,9 +102,10 @@ class StreamingDataset(Dataset):
                     inp_t = torch.tensor(full_ids[:-1], dtype=torch.long)
                     tgt_t = torch.tensor(full_ids[1:], dtype=torch.long)
                     
-                    # Mask user prompt in target: only compute loss on response tokens
-                    prompt_len = min(len(prompt_ids), len(tgt_t))
-                    tgt_t[:prompt_len - 1] = 256
+                    # Safe prompt masking: mask indices corresponding to the prompt
+                    prompt_target_len = max(0, len(prompt_ids) - 1)
+                    if prompt_target_len > 0 and prompt_target_len < len(tgt_t):
+                        tgt_t[:prompt_target_len] = 256
                     
                     self.samples.append((inp_t, tgt_t))
 
@@ -132,7 +129,7 @@ NUM_PASSES = 3
 train_dataset = StreamingDataset(dataset, tokenizer, max_len=MAX_SEQ_LEN)
 stream_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn, drop_last=True)
 
-logger.info(f"Data Stream Ready (Response-Only Masking). Samples: {len(train_dataset)} | Batches: {len(stream_loader)} | Passes: {NUM_PASSES}")
+logger.info(f"Data Stream Ready (Safe Response Masking). Samples: {len(train_dataset)} | Batches: {len(stream_loader)} | Passes: {NUM_PASSES}")
 
 core_config = CoREConfig()
 core_config.net.text_dim = 128
@@ -171,7 +168,7 @@ episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_conf
 # Load state directly from .kcore container
 h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device)
 
-# Dual-Rate Optimizer: Fast lexical separation (5e-3) + Steady cortical SDE-SSM (3e-3)
+# Dual-Rate Optimizer: 5e-3 for lexical embeddings & 3e-3 for cortical SSM layers
 emb_params = list(agent_brain.pos_embeddings.parameters()) + list(agent_brain.motor_text_proj.parameters())
 core_params = [p for n, p in agent_brain.named_parameters() if not any(n.startswith(prefix) for prefix in ['pos_embeddings', 'motor_text_proj'])]
 
@@ -226,7 +223,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.train()
     return "".join(generated_chars).strip()
 
-logger.info(f"Starting Multi-Pass High-Speed Session ({NUM_PASSES} Passes @ 140k+ tok/s with Response Masking)...")
+logger.info(f"Starting Multi-Pass High-Speed Session ({NUM_PASSES} Passes @ 140k+ tok/s)...")
 
 for pass_idx in range(NUM_PASSES):
     logger.info(f"\n{'='*85}\n === [STARTING PASS {pass_idx+1}/{NUM_PASSES} (EPOCH {saved_epoch + pass_idx + 1})] ===\n{'='*85}")
@@ -249,7 +246,7 @@ for pass_idx in range(NUM_PASSES):
 
         optimizer.zero_grad()
         
-        # 1. Native C++ Dual-Layer Cortical SDE-SSM Execution with Response Masking
+        # 1. Native C++ Dual-Layer Cortical SDE-SSM Execution with Safe Target Handling
         t_exec_start = time.perf_counter()
         total_loss_metric, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
             input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,

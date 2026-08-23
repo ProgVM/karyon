@@ -1,10 +1,9 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v12.0 (PRODUCTION MASTER CORTICAL STACK)
-Dual-Layer Cortical SDE-SSM Stack with Rolling-Buffer Receptive Field Consistency,
-Afferent-Efferent Lexical Weight Tying, Desaturated Hopfield Attractor Landscape,
-and Theta-Phase Event Boundary Reset.
+KARYON AGENT CORE v12.1 (PRODUCTION MASTER CORTICAL STACK)
+Dual-Layer Cortical SDE-SSM Stack with Masked Target Guarding, NaN-Safe
+Sampling, Rolling Receptive Field Buffer, and Event Boundary Reset.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -59,7 +58,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v12.0 PRODUCTION MASTER CORTICAL STACK)
+# MASTER CORE AGENT (v12.1 PRODUCTION MASTER CORTICAL STACK)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -214,9 +213,9 @@ class CoREAgent(nn.Module):
                 p_name = name.replace("layer2_norm.", "")
                 if hasattr(self.layer2_norm, p_name):
                     self._safe_copy_param(getattr(self.layer2_norm, p_name).data, tensor)
-            elif name == "critic.weight":
+            elif name.startswith("critic.weight"):
                 self._safe_copy_param(self.critic.weight.data, tensor)
-            elif name == "critic.bias":
+            elif name.startswith("critic.bias"):
                 self._safe_copy_param(self.critic.bias.data, tensor)
             elif name.startswith("motor_text_proj."):
                 p_name = name.replace("motor_text_proj.", "")
@@ -280,7 +279,6 @@ class CoREAgent(nn.Module):
         else:
             w_integrated = w_current
             
-        # 2-Layer Cortical Step
         t_seq = text_in.unsqueeze(1)
         m_dummy = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
         
@@ -327,7 +325,6 @@ class CoREAgent(nn.Module):
         ssd2_out = self.ssd_layer2.forward_chunk_parallel_ssd(h1_reshaped, m2_prev, u_t, 1.0)
         h2_chunk, m2_next, _ = ssd2_out[0], ssd2_out[1], ssd2_out[2]
         
-        # Deep Dual-Layer Integration
         h_total_chunk = self.layer2_norm(h1_chunk + h2_chunk)
 
         # 3. Parallel Batched Motor Readout
@@ -337,9 +334,18 @@ class CoREAgent(nn.Module):
         h_proj = self.motor_text_proj(h_relaxed)
         logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
 
-        # 4. Batched Target Loss with ignore_index=256 support
-        loss = criterion(logits_flat, chunk_targets.contiguous().view(-1))
-        return loss, m1_next, m2_next, h_total_chunk, eff_dt
+        # 4. Safe Loss Computation: Handle all-masked target chunks without NaN
+        targets_flat = chunk_targets.contiguous().view(-1)
+        valid_mask = (targets_flat != 256)
+        num_valid = valid_mask.sum()
+
+        if num_valid > 0:
+            loss = criterion(logits_flat, targets_flat)
+        else:
+            # Connect to graph with zero loss when chunk is 100% prompt tokens
+            loss = (logits_flat * 0.0).sum()
+
+        return loss, m1_next, m2_next, h_total_chunk, eff_dt, (num_valid > 0)
 
     def evaluate_dfet_gating(self, free_energy_val: float, moving_mean: float, moving_std: float, na_level: float) -> bool:
         base_k = self.config.train.dfet_k_sigma_base
@@ -363,6 +369,7 @@ class CoREAgent(nn.Module):
         cog_action_tensor = torch.zeros((batch_size, 1), dtype=torch.int64, device=self.device)
         
         num_chunks = max(1, seq_len // chunk_size)
+        valid_chunks_count = 0
         total_speech_loss_accum = 0.0
         total_fe_loss_accum = 0.0
         last_eff_dt = torch.tensor([[1.0]], device=self.device)
@@ -379,11 +386,13 @@ class CoREAgent(nn.Module):
 
             chunk_emb = self.pos_embeddings(chunk_input_tokens, start_pos=c_start, apply_rf=True)
 
-            chunk_loss, m1_curr, m2_curr, h_chunk, last_eff_dt = self.forward_chunk_ssd(
+            chunk_loss, m1_curr, m2_curr, h_chunk, last_eff_dt, has_valid = self.forward_chunk_ssd(
                 chunk_emb, chunk_target_tokens, m1_curr, m2_curr, curr_u_t, criterion_speech
             )
 
-            total_speech_loss_accum += chunk_loss.item()
+            if has_valid:
+                total_speech_loss_accum += chunk_loss.item()
+                valid_chunks_count += 1
             total_fe_loss_accum += 0.01
 
             # Event Boundary Theta Phase Reset: Reset state on EOS (257)
@@ -394,7 +403,7 @@ class CoREAgent(nn.Module):
 
             # Somatic Homeostasis Update
             with torch.no_grad():
-                curr_loss_val = chunk_loss.detach().item()
+                curr_loss_val = chunk_loss.detach().item() if has_valid else 0.0
                 if episodic_memory is not None and curr_loss_val > 1.2:
                     w_rep = h_chunk[-batch_size:].detach()
                     if w_rep.size(-1) != self.unified_dim:
@@ -406,14 +415,14 @@ class CoREAgent(nn.Module):
                 zero_entropy = torch.zeros((batch_size, 1), device=self.device)
                 curr_u_t = hu_batch.update(action_cost_tensor, somatic_surprise, zero_entropy, cog_action_tensor).detach()
 
-            if optimizer is not None:
+            if optimizer is not None and has_valid:
                 (chunk_loss / float(num_chunks)).backward()
 
             m1_curr = m1_curr.detach()
             m2_curr = m2_curr.detach()
             curr_u_t = curr_u_t.detach()
 
-        avg_speech_loss = total_speech_loss_accum / float(num_chunks)
+        avg_speech_loss = total_speech_loss_accum / float(max(1, valid_chunks_count))
         avg_fe_loss = total_fe_loss_accum / float(num_chunks)
         total_loss_metric = avg_speech_loss + loss_free_energy_weight * avg_fe_loss
 
@@ -425,10 +434,6 @@ class CoREAgent(nn.Module):
         config, known_priors: List[str] = None, projected_priors: torch.Tensor = None, 
         max_generated_tokens: int = 120, temperature: float = 0.7, top_p: float = 0.90
     ) -> Generator[Dict[str, Any], None, None]:
-        """
-        Autoregressive Generation with Rolling Receptive Field Buffer (K=4).
-        Eliminates Train-Test mismatch by passing rolling 4-byte history to CausalByteReceptiveField.
-        """
         prompt_tokens = self.encode_text(prompt).unsqueeze(0)
         prompt_embs = self.pos_embeddings(prompt_tokens, start_pos=0, apply_rf=True)
         
@@ -447,7 +452,6 @@ class CoREAgent(nn.Module):
         
         h_total_chunk = self.layer2_norm(h1_chunk + h2_chunk)
         
-        # Maintain rolling token history buffer for exact causal convolution receptive consistency
         rolling_token_ids = prompt_tokens[0].tolist()
         energy_action_cost = torch.tensor([[0.002]], device=self.device)
         zero_pred_err = torch.tensor([[0.0]], device=self.device)
@@ -456,14 +460,12 @@ class CoREAgent(nn.Module):
         total_prompt_len = prompt_tokens.size(1)
 
         for step in range(max_generated_tokens):
-            # Take last 4 tokens for K=4 causal convolution buffer
             context_window = rolling_token_ids[-4:]
             window_t = torch.tensor([context_window], dtype=torch.long, device=self.device)
             window_start_pos = (total_prompt_len + step) - (len(context_window) - 1)
             
-            # Apply receptive field with K=4 context
             window_emb = self.pos_embeddings(window_t, start_pos=window_start_pos, apply_rf=True)
-            t_emb = window_emb[:, -1:, :] # Take active token slice after convolution
+            t_emb = window_emb[:, -1:, :]
             
             ssd1_out = self.ssd_layer1.forward_chunk_parallel_ssd(t_emb, m1, hu.state, 1.0)
             h1_out, m1 = ssd1_out[0], ssd1_out[1]
@@ -487,7 +489,15 @@ class CoREAgent(nn.Module):
             indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
             logits[indices_to_remove] = -1e9
             
+            # Safe softmax with NaN protection
             probs = F.softmax(logits, dim=-1)
+            probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
+            prob_sum = probs.sum(dim=-1, keepdim=True)
+            if (prob_sum <= 0).any():
+                probs = torch.full_like(probs, 1.0 / 258)
+            else:
+                probs = probs / prob_sum
+
             next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
             next_token_id = next_token.item()
 
