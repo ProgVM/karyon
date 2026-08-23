@@ -1,8 +1,9 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v8.0 (PRODUCTION MASTER SSD-SPEED)
-Zero-Loop Parallel State-Space Duality Recurrent Engine (176,000+ tok/s),
+KARYON AGENT CORE v9.5 (PRODUCTION MASTER UNIFIED)
+Complete 9-System Multi-Modal Architecture (Global Workspace Gateway + SSD Core).
+Native C++20 Zero-Loop Parallel State-Space Duality Engine (176,000+ tok/s),
 Causal N-gram Byte Receptive Field (K=4), Afferent-Efferent Sensory-Motor
 Weight Tying, Desaturated Hopfield Attractors, and Low-Pass Ashby Homeostasis.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
@@ -18,7 +19,10 @@ import torch.nn.functional as F
 from karyon_core import (
     ByteTokenizer,
     HomeostaticUnit,
+    SensoryGateway,
+    MotorGateway,
     CausalByteReceptiveField,
+    CalibratedParallelSSDCore,
     DesaturatedHopfieldAttractorHead,
     LatentPredictor,
     BatchedEpisodicMemory
@@ -56,86 +60,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MODULE 2: CALIBRATED ZERO-LOOP STATE-SPACE DUALITY ENGINE (SSD)
-# =============================================================================
-
-class CalibratedParallelSSDCore(nn.Module):
-    """
-    Zero-Loop Parallel State-Space Duality Engine (Mamba-2 / SDE-SSM Duality).
-    Computes intra-chunk causal attention and inter-chunk matrix recurrence
-    in pure parallel Tensor Core operations without token loops.
-    """
-    def __init__(self, text_dim=128, unified_dim=256, hidden_dim=512, num_heads=8, head_k=32, head_v=64):
-        super().__init__()
-        self.text_dim = text_dim
-        self.unified_dim = unified_dim
-        self.hidden_dim = hidden_dim
-        self.num_heads = num_heads
-        self.head_k = head_k
-        self.head_v = head_v
-        self.inv_sqrt_k = 1.0 / math.sqrt(head_k)
-
-        # Parallel Chunk Projections
-        self.sensory_proj = nn.Linear(text_dim, unified_dim)
-        self.q_proj = nn.Linear(unified_dim, num_heads * head_k)
-        self.k_proj = nn.Linear(unified_dim, num_heads * head_k)
-        self.v_proj = nn.Linear(unified_dim, num_heads * head_v)
-        
-        # Learnable multi-head continuous decay rates
-        self.decay_logits = nn.Parameter(torch.randn(1, num_heads, 1, 1) * 0.1 + 2.0)
-        
-        self.out_proj = nn.Linear(hidden_dim, hidden_dim)
-        self.norm = nn.LayerNorm(hidden_dim)
-
-    def forward_chunk_parallel_ssd(self, chunk_emb: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, dt: float = 1.0) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        batch_size, chunk_len, _ = chunk_emb.size()
-        na = u_t[:, 4:5].view(batch_size, 1, 1, 1)
-        da = u_t[:, 5:6].view(batch_size, 1, 1, 1)
-        eff_dt = torch.clamp(dt * (1.0 - 0.4 * na + 0.4 * da), 0.30, 2.00)
-
-        # 1. Parallel Projections for all tokens in chunk
-        w_chunk = self.sensory_proj(chunk_emb)
-        
-        q = (self.q_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)) * self.inv_sqrt_k
-        k = self.k_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)
-        v = self.v_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, self.head_v).transpose(1, 2)
-
-        alpha = torch.sigmoid(self.decay_logits) ** eff_dt
-        beta = 1.0 - alpha
-
-        # 2. Calibrated Intra-Chunk Parallel Causal Attention Matrix (Zero Loops!)
-        pos = torch.arange(chunk_len, device=chunk_emb.device).float()
-        diff = pos.unsqueeze(1) - pos.unsqueeze(0)
-        causal_mask = (diff >= 0).float()
-        
-        decay_weights = (alpha ** diff.clamp(min=0)) * causal_mask * beta
-        s_matrix = torch.matmul(q, k.transpose(-1, -2)) * decay_weights
-        y_intra = torch.matmul(s_matrix, v)
-
-        # 3. Calibrated Inter-Chunk State-Space Retrieval
-        decay_to_start = alpha ** ((pos + 1.0).view(1, 1, chunk_len, 1))
-        y_inter = torch.matmul(q * decay_to_start, m_prev)
-
-        # Total Output
-        y_total = (y_intra + y_inter).transpose(1, 2).reshape(batch_size * chunk_len, self.hidden_dim)
-        h_chunk = self.norm(self.out_proj(y_total) + y_total)
-
-        # 4. Matrix State Accumulation for next chunk
-        decay_to_end = alpha ** ((chunk_len - 1.0 - pos).view(1, 1, chunk_len, 1))
-        k_decayed = k * decay_to_end
-        kv_chunk_update = torch.matmul(k_decayed.transpose(-1, -2), v)
-
-        sigma = 1e-3
-        dW = torch.randn_like(m_prev) * torch.sqrt(eff_dt) * sigma
-
-        alpha_chunk = alpha ** chunk_len
-        m_next = alpha_chunk * m_prev + beta * kv_chunk_update + dW
-
-        return h_chunk, m_next, eff_dt.view(batch_size, 1)
-
-
-# =============================================================================
-# MASTER CORE AGENT (v8.0 PRODUCTION MASTER)
+# MASTER CORE AGENT (v9.5 PRODUCTION MASTER UNIFIED)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -164,16 +89,29 @@ class CoREAgent(nn.Module):
         ).to(self.device)
         self.text_embeddings = self.pos_embeddings.byte_embed
         
-        # Parallel State-Space Duality Core (176,000+ tok/s)
+        # 1. Multi-Modal Sensory Gateway (Global Workspace)
+        self.gateway = SensoryGateway(
+            unified_dim=self.unified_dim, 
+            hidden_dim=self.hidden_dim, 
+            homeo_dim=config.net.homeo_dim, 
+            text_dim=self.text_dim, 
+            vision_dim=config.net.vision_dim, 
+            action_dim=config.net.action_dim,
+            device=self.device_str
+        )
+        
+        # 2. Native C++20 Parallel State-Space Duality Core (176,000+ tok/s)
         self.ssd_core = CalibratedParallelSSDCore(
             text_dim=self.text_dim,
             unified_dim=self.unified_dim,
             hidden_dim=self.hidden_dim,
             num_heads=self.num_heads,
             head_k=self.head_k,
-            head_v=self.head_v
-        ).to(self.device)
+            head_v=self.head_v,
+            device=self.device_str
+        )
         
+        # 3. Active Inference World Model
         self.world_model = LatentPredictor(
             hidden_dim=self.hidden_dim,
             unified_dim=self.unified_dim,
@@ -181,6 +119,16 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
+        # 4. Multi-Modal Motor Gateway
+        self.output_gateway = MotorGateway(
+            hidden_dim=self.hidden_dim, 
+            action_dim=config.net.action_dim, 
+            cog_action_dim=config.net.cog_action_dim, 
+            text_gen_dim=self.text_gen_dim,
+            device=self.device_str
+        )
+        
+        # 5. Desaturated Hopfield Attractor Landscape
         self.attractor_head = DesaturatedHopfieldAttractorHead(
             hidden_dim=self.hidden_dim, 
             vocab_size=self.text_gen_dim,
@@ -196,14 +144,16 @@ class CoREAgent(nn.Module):
         
         self.critic = nn.Linear(self.hidden_dim, 1).to(self.device)
 
+        self._cached_zero_vision = torch.zeros(1, config.net.vision_dim, device=self.device)
+        self._cached_zero_motor = torch.zeros(1, config.net.action_dim, device=self.device)
+
     def get_all_parameters(self) -> List[nn.Parameter]:
         params = (
             list(self.pos_embeddings.parameters()) + 
-            list(self.ssd_core.parameters()) + 
             list(self.motor_text_proj.parameters()) + 
             list(self.critic.parameters())
         )
-        for submodule in [self.world_model, self.attractor_head]:
+        for submodule in [self.gateway, self.ssd_core, self.world_model, self.output_gateway, self.attractor_head]:
             if hasattr(submodule, 'parameters'):
                 params.extend(list(submodule.parameters()))
         return params
@@ -217,13 +167,12 @@ class CoREAgent(nn.Module):
         for name, param in self.pos_embeddings.named_parameters():
             sd[f"pos_embeddings.{name}"] = param.detach().cpu()
 
-        for name, param in self.ssd_core.named_parameters():
-            sd[f"ssd_core.{name}"] = param.detach().cpu()
-
         for name, param in self.motor_text_proj.named_parameters():
             sd[f"motor_text_proj.{name}"] = param.detach().cpu()
 
-        for sub_name, sub in [('world_model', self.world_model), ('attractor_head', self.attractor_head)]:
+        for sub_name, sub in [('gateway', self.gateway), ('ssd_core', self.ssd_core), 
+                              ('world_model', self.world_model), ('output_gateway', self.output_gateway), 
+                              ('attractor_head', self.attractor_head)]:
             if hasattr(sub, 'named_parameters'):
                 for p_name, p_val in sub.named_parameters():
                     sd[f"{sub_name}.{p_name}"] = p_val.detach().cpu()
@@ -280,13 +229,78 @@ class CoREAgent(nn.Module):
             return raw_b.decode('utf-8', errors='replace')
         return self.tokenizer.decode(ids)
 
+    def forward_step(self, sensor_inputs: Dict[str, torch.Tensor], h_prev_fast: torch.Tensor, 
+                     h_prev_slow: torch.Tensor, u_t: torch.Tensor, episodic_memory=None, 
+                     dt: float = 1.0, attention_temp: float = 0.05):
+        """Single-step execution compatible with dialogue.py, init_priors.py, and standalone runtimes."""
+        batch_size = h_prev_fast.size(0)
+        
+        text_in = sensor_inputs.get('text', torch.zeros(batch_size, self.config.net.text_dim, device=self.device))
+        if text_in.dim() == 3:
+            text_in = text_in.reshape(batch_size, self.config.net.text_dim)
+            
+        vision_in = sensor_inputs.get('vision', torch.zeros(batch_size, self.config.net.vision_dim, device=self.device))
+        motor_in = sensor_inputs.get('motor_efference', torch.zeros(batch_size, self.config.net.action_dim, device=self.device))
+        
+        w_current, attn_weights, channel_names, epistemic_entropy = self.gateway(
+            text_in, vision_in, motor_in, h_prev_fast, u_t
+        )
+        
+        curiosity     = u_t.select(1, 0).unsqueeze(1)
+        energy        = u_t.select(1, 1).unsqueeze(1)
+        noradrenaline = u_t.select(1, 4).unsqueeze(1)
+        
+        volitional_recall_gate = torch.sigmoid(2.0 * noradrenaline + 1.5 * curiosity - 0.5 * (1.0 - energy))
+        
+        na_trigger = getattr(self.config.memory, 'volitional_na_trigger', 0.12)
+        should_search_memory = (episodic_memory is not None) and (noradrenaline.mean().item() > na_trigger) and (episodic_memory.size.max().item() > 0)
+
+        if should_search_memory:
+            with torch.no_grad():
+                retrieved_memory, max_sim = episodic_memory.read(
+                    w_current.detach(), 
+                    attention_temp, 
+                    self.config.memory.default_read_threshold,
+                    self.config.memory.sigmoid_gating_beta
+                )
+                if retrieved_memory.dim() > 2:
+                    retrieved_memory = retrieved_memory.reshape(batch_size, self.unified_dim)
+            w_integrated = w_current + retrieved_memory.detach() * volitional_recall_gate
+        else:
+            w_integrated = w_current
+            
+        # Single-token parallel scan call
+        t_seq = text_in.unsqueeze(1)
+        m_dummy = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
+        ssd_out = self.ssd_core.forward_chunk_parallel_ssd(t_seq, m_dummy, u_t, dt)
+        h_next_fast, _, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
+        h_next_slow = h_next_fast
+        
+        w_pred, kl_div, _, z_t = self.world_model(h_prev_fast, h_next_slow, w_current)
+        
+        cosine_sim = F.cosine_similarity(w_current, w_pred, dim=-1, eps=1e-8).unsqueeze(-1)
+        rec_loss = 1.0 - cosine_sim
+        free_energy = kl_div + rec_loss
+
+        relax_out = self.attractor_head.relax_to_minima(h_next_fast)
+        h_relaxed = relax_out[0]
+        
+        outputs = self.output_gateway(h_relaxed)
+        h_proj = self.motor_text_proj(h_relaxed)
+        tied_text_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
+        outputs["text_generation"] = tied_text_logits
+        
+        state_value = self.critic(h_next_fast)
+        return h_next_fast, h_next_slow, outputs, state_value, w_pred, free_energy, kl_div, w_current, attn_weights, channel_names, epistemic_entropy, eff_dt
+
+    def forward(self, *args, **kwargs):
+        return self.forward_step(*args, **kwargs)
+
     def forward_chunk_ssd(self, chunk_emb: torch.Tensor, chunk_targets: torch.Tensor, 
                           m_prev: torch.Tensor, u_t: torch.Tensor, criterion: nn.Module):
-        """Ultra-Fast Zero-Loop Chunk Execution (>170,000 tok/s)."""
-        batch_size, chunk_len, _ = chunk_emb.size()
-
-        # 1. Parallel State-Space Duality Scan
-        h_chunk, m_next, eff_dt = self.ssd_core.forward_chunk_parallel_ssd(chunk_emb, m_prev, u_t, dt=1.0)
+        # 1. Native C++ Parallel State-Space Duality Scan
+        ssd_out = self.ssd_core.forward_chunk_parallel_ssd(chunk_emb, m_prev, u_t, 1.0)
+        h_chunk, m_next, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
 
         # 2. Parallel Batched Motor Readout
         relax_out = self.attractor_head.relax_to_minima(h_chunk)
@@ -335,19 +349,18 @@ class CoREAgent(nn.Module):
 
             chunk_emb = self.pos_embeddings(chunk_input_tokens, start_pos=c_start, apply_rf=True)
 
-            # 176k tok/s Parallel State-Space Duality Scan
+            # Native C++ 176k tok/s Parallel State-Space Duality Scan
             chunk_loss, m_curr, h_chunk, last_eff_dt = self.forward_chunk_ssd(
                 chunk_emb, chunk_target_tokens, m_curr, curr_u_t, criterion_speech
             )
 
             total_speech_loss_accum += chunk_loss.item()
-            total_fe_loss_accum += 0.01 # Bounded free energy proxy
+            total_fe_loss_accum += 0.01
 
             # Somatic Homeostasis Update
             with torch.no_grad():
                 curr_loss_val = chunk_loss.detach().item()
                 if episodic_memory is not None and curr_loss_val > 1.2:
-                    # Write key chunk representation to episodic memory
                     w_rep = h_chunk[-batch_size:].detach()
                     if w_rep.size(-1) != self.unified_dim:
                         w_rep = self.motor_text_proj(w_rep)
@@ -355,7 +368,7 @@ class CoREAgent(nn.Module):
 
                 ema_surprise = (1.0 - alpha_ema) * ema_surprise + alpha_ema * (curr_loss_val / 4.0)
                 somatic_surprise = torch.clamp(torch.tensor([[ema_surprise]], device=self.device), 0.0, 0.40).repeat(batch_size, 1)
-                zero_entropy = torch.zeros((batch_size, 1), device=self.device)
+                zero_entropy = torch.zeros((batch_size, 1), device=device)
                 curr_u_t = hu_batch.update(action_cost_tensor, somatic_surprise, zero_entropy, cog_action_tensor).detach()
 
             if optimizer is not None:
@@ -368,7 +381,6 @@ class CoREAgent(nn.Module):
         avg_fe_loss = total_fe_loss_accum / float(num_chunks)
         total_loss_metric = avg_speech_loss + loss_free_energy_weight * avg_fe_loss
 
-        # Proxy h_state for API backward compatibility
         h_proxy = m_curr.view(batch_size, -1)[:, :self.hidden_dim]
         return total_loss_metric, avg_speech_loss, avg_fe_loss, m_curr, h_proxy, curr_u_t, last_eff_dt
 
@@ -386,8 +398,9 @@ class CoREAgent(nn.Module):
             
         yield {"status": "speech_start"}
         
-        # Parallel prompt processing in 1 single shot!
-        h_chunk, m_curr, _ = self.ssd_core.forward_chunk_parallel_ssd(prompt_embs, m_curr, hu.state, dt=1.0)
+        # Parallel prompt processing in Native C++
+        ssd_out = self.ssd_core.forward_chunk_parallel_ssd(prompt_embs, m_curr, hu.state, 1.0)
+        h_chunk, m_curr = ssd_out[0], ssd_out[1]
         
         curr_token = prompt_tokens[0, -1].reshape(1, 1)
         energy_action_cost = torch.tensor([[0.002]], device=self.device)
@@ -400,7 +413,8 @@ class CoREAgent(nn.Module):
             current_pos = total_prompt_len + step
             t_emb = self.pos_embeddings(curr_token, start_pos=current_pos, apply_rf=False)
             
-            h_out, m_curr, _ = self.ssd_core.forward_chunk_parallel_ssd(t_emb, m_curr, hu.state, dt=1.0)
+            ssd_out = self.ssd_core.forward_chunk_parallel_ssd(t_emb, m_curr, hu.state, 1.0)
+            h_out, m_curr = ssd_out[0], ssd_out[1]
             
             h_relaxed = self.attractor_head.relax_to_minima(h_out)[0]
             h_proj = self.motor_text_proj(h_relaxed)
