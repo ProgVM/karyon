@@ -1,6 +1,6 @@
 # experiments/exp_multirate_ssd_spectrum.py
 """
-feat(exp): implement bio-inspired multi-rate decay spectrum and adaptive logit scale
+feat(exp): implement bio-inspired multi-rate decay spectrum and explicit 3-tier kep verdict
 
 ===============================================================================
 KARYON EXPERIMENTAL BENCHMARK: EXP-29 (MULTI-RATE DECAY SPECTRUM & SCALED READOUT)
@@ -147,11 +147,9 @@ class MultiRateDecaySSDCore(nn.Module):
         self.v_proj = nn.Linear(unified_dim, num_heads * head_v)
 
         if use_spectrum:
-            # Log-spaced spectrum spanning from 1.15 (alpha=0.76) to 5.8 (alpha=0.997)
             spectrum_init = torch.linspace(1.15, 5.80, num_heads).view(1, num_heads, 1, 1)
             self.decay_logits = nn.Parameter(spectrum_init)
         else:
-            # Baseline: Uniform initialization around 2.0 (alpha ~ 0.88)
             self.decay_logits = nn.Parameter(torch.randn(1, num_heads, 1, 1) * 0.1 + 2.0)
 
         self.out_proj = nn.Linear(hidden_dim, hidden_dim)
@@ -169,7 +167,7 @@ class MultiRateDecaySSDCore(nn.Module):
         k = self.k_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)
         v = self.v_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, self.head_v).transpose(1, 2)
 
-        alpha = torch.sigmoid(self.decay_logits) ** eff_dt
+        alpha = torch.pow(torch.sigmoid(self.decay_logits), eff_dt)
         beta = 1.0 - alpha
 
         pos = torch.arange(chunk_len, device=chunk_emb.device).float()
@@ -251,7 +249,6 @@ class ProposedMultiRateSpectrumAgent(nn.Module):
         self.text_gen_dim = config.net.text_gen_dim
 
         self.pos_embeddings = OffsetPositionalByteEmbedding(self.text_gen_dim, self.text_dim, device_str=device_str)
-        # Bio-inspired multi-rate frequency spectrum
         self.ssd_core = MultiRateDecaySSDCore(
             self.text_dim, self.unified_dim, self.hidden_dim, 8, 32, 64, use_spectrum=True
         )
@@ -264,7 +261,6 @@ class ProposedMultiRateSpectrumAgent(nn.Module):
             nn.SiLU(),
             nn.LayerNorm(self.text_dim)
         )
-        # Learnable logit scale parameter initialized to sqrt(D_text)
         self.logit_scale = nn.Parameter(torch.tensor(math.sqrt(float(self.text_dim))))
 
     def forward_chunk(self, chunk_emb: torch.Tensor, chunk_targets: torch.Tensor, 
@@ -274,7 +270,6 @@ class ProposedMultiRateSpectrumAgent(nn.Module):
         h_relaxed = self.attractor_head.relax_to_minima(h_reasoned)[0]
         
         h_proj = self.motor_text_proj(h_relaxed)
-        # Adaptive scaled logit projection
         raw_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight)
         eff_scale = self.logit_scale / float(self.text_dim)
         logits_flat = raw_logits * eff_scale
@@ -307,7 +302,6 @@ def run_isolated_benchmark():
     tokenizer = ByteTokenizer()
     num_chunks = seq_len // chunk_size
 
-    # Multi-topic complex conversational test corpus
     sample_text = (
         "User: Explain why the Sun radiates energy and how photosynthesis works.\n"
         "Karyon: The Sun generates radiant solar energy through nuclear fusion in its core. "
@@ -434,6 +428,9 @@ def run_isolated_benchmark():
 
     base_vram = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device.type == 'cuda' else 0.0
 
+    final_base_loss = base_losses[-1]
+    final_prop_loss = prop_losses[-1]
+
     print("\n" + "="*90)
     print(" === [KEP RULE #6 TELEMETRY BENCHMARK REPORT: MULTI-RATE SPECTRUM] ===")
     print("="*90)
@@ -443,8 +440,8 @@ def run_isolated_benchmark():
     print(f"{'Throughput Speed (tok/s)':<35} | {base_tok_per_sec:<22.1f} | {prop_tok_per_sec:<22.1f} | {prop_tok_per_sec/base_tok_per_sec:+.2f}x (⚡⚡⚡)")
     print(f"{'Peak VRAM Memory (MB)':<35} | {base_vram:<22.1f} | {base_vram:<22.1f} | {'0.0 MB (Lean)':<10}")
     print(f"{'Initial Loss (Step 1)':<35} | {base_losses[0]:<22.4f} | {prop_losses[0]:<22.4f} | {prop_losses[0] - base_losses[0]:+6.4f}")
-    print(f"{'Final Loss (Step 35)':<35} | {base_losses[-1]:<22.4f} | {prop_losses[-1]:<22.4f} | {prop_losses[-1] - base_losses[-1]:+6.4f} (🔥)")
-    print(f"{'Perplexity (PPL Step 35)':<35} | {math.exp(base_losses[-1]):<22.2f} | {math.exp(prop_losses[-1]):<22.2f} | {math.exp(prop_losses[-1]) - math.exp(base_losses[-1]):+6.2f}")
+    print(f"{'Final Loss (Step 35)':<35} | {final_base_loss:<22.4f} | {final_prop_loss:<22.4f} | {final_prop_loss - final_base_loss:+6.4f}")
+    print(f"{'Perplexity (PPL Step 35)':<35} | {math.exp(final_base_loss):<22.2f} | {math.exp(final_prop_loss):<22.2f} | {math.exp(final_prop_loss) - math.exp(final_base_loss):+6.2f}")
     print("="*90)
 
     # Inspect Spectrum Heads in Proposed Model
@@ -522,10 +519,35 @@ def run_isolated_benchmark():
     generate_eval(prop_model, "Proposed (Multi-Rate Spectrum alpha in [0.76, 0.997])", is_prop=True)
     print("="*90 + "\n")
 
-    if prop_losses[-1] <= base_losses[-1] and prop_tok_per_sec >= 100000.0:
+    # =========================================================================
+    # KEP RULE #2: STRICT 3-TIER VERDICT EVALUATION PROTOCOL
+    # =========================================================================
+    print("--- [KEP RULE #2 VERDICT EVALUATION] ---")
+    
+    is_nan_or_diverged = math.isnan(final_prop_loss) or math.isinf(final_prop_loss)
+    throughput_retained = prop_tok_per_sec >= (base_tok_per_sec * 0.80)
+    significant_loss_drop = (final_prop_loss < final_base_loss - 0.05)
+    loss_degraded = (final_prop_loss > final_base_loss + 0.05)
+
+    if not is_nan_or_diverged and significant_loss_drop and throughput_retained:
         print("🟢 KEP VERDICT: POSITIVE (Multi-Rate Frequency Spectrum Validated!).")
+        print(f"   Reason: Loss dropped by {final_base_loss - final_prop_loss:.4f} with preserved {prop_tok_per_sec:.1f} tok/s throughput.")
+        print("   Action: Adopt Multi-Rate Frequency Spectrum into production karyon_core!")
+    elif not is_nan_or_diverged and not loss_degraded and throughput_retained:
+        print("⚪ KEP VERDICT: NEUTRAL (Hypothesis showed no statistically significant gain).")
+        print(f"   Reason: Loss delta ({final_prop_loss - final_base_loss:+.4f}) within noise boundary. No regression, but no clear gain.")
+        print("   Action: Do not merge into production. Archive in experiments/archive/.")
     else:
-        print("⚪ KEP VERDICT: NEUTRAL / REJECTED.")
+        print("🔴 KEP VERDICT: REJECTED (Hypothesis degraded model performance).")
+        if is_nan_or_diverged:
+            print("   Reason: Numerical divergence / NaN encountered.")
+        elif not throughput_retained:
+            print(f"   Reason: Throughput dropped below threshold ({prop_tok_per_sec:.1f} tok/s vs {base_tok_per_sec:.1f} tok/s).")
+        else:
+            print(f"   Reason: Loss degraded by {final_prop_loss - final_base_loss:+.4f} (PPL increased).")
+        print("   Action: Log rejection reasons in Master Architecture Registry and discard changes.")
+    print("="*90 + "\n")
+
 
 if __name__ == "__main__":
     run_isolated_benchmark()
