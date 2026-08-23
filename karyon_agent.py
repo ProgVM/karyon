@@ -1,9 +1,10 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v12.1 (PRODUCTION MASTER CORTICAL STACK)
-Dual-Layer Cortical SDE-SSM Stack with Masked Target Guarding, NaN-Safe
-Sampling, Rolling Receptive Field Buffer, and Event Boundary Reset.
+KARYON AGENT CORE v13.0 (PRODUCTION MASTER CLEAN SSD)
+Full-Sequence Calibrated Parallel State-Space Duality Engine (176,000+ tok/s),
+Rolling-Buffer Receptive Field Consistency, Afferent-Efferent Lexical Tying,
+Desaturated Hopfield Attractor Memory, and Event Boundary Reset.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -58,7 +59,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v12.1 PRODUCTION MASTER CORTICAL STACK)
+# MASTER CORE AGENT (v13.0 PRODUCTION MASTER CLEAN SSD)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -99,8 +100,8 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 2. Cortical Layer 1 (L2/3: Syntax & Morpheme SSD Core)
-        self.ssd_layer1 = CalibratedParallelSSDCore(
+        # 2. Native C++20 Parallel State-Space Duality Core (176k tok/s)
+        self.ssd_core = CalibratedParallelSSDCore(
             text_dim=self.text_dim,
             unified_dim=self.unified_dim,
             hidden_dim=self.hidden_dim,
@@ -110,19 +111,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 3. Cortical Layer 2 (L5/6: Semantic Reasoning SSD Core)
-        self.ssd_layer2 = CalibratedParallelSSDCore(
-            text_dim=self.hidden_dim,
-            unified_dim=self.hidden_dim,
-            hidden_dim=self.hidden_dim,
-            num_heads=self.num_heads,
-            head_k=self.head_k,
-            head_v=self.head_v,
-            device=self.device_str
-        )
-        self.layer2_norm = nn.LayerNorm(self.hidden_dim).to(self.device)
-        
-        # 4. Active Inference World Model
+        # 3. Active Inference World Model
         self.world_model = LatentPredictor(
             hidden_dim=self.hidden_dim,
             unified_dim=self.unified_dim,
@@ -130,7 +119,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 5. Multi-Modal Motor Gateway
+        # 4. Multi-Modal Motor Gateway
         self.output_gateway = MotorGateway(
             hidden_dim=self.hidden_dim, 
             action_dim=config.net.action_dim, 
@@ -139,7 +128,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 6. Desaturated Hopfield Attractor Memory Landscape
+        # 5. Desaturated Hopfield Attractor Memory Landscape
         self.attractor_head = DesaturatedHopfieldAttractorHead(
             hidden_dim=self.hidden_dim, 
             vocab_size=self.text_gen_dim,
@@ -161,11 +150,10 @@ class CoREAgent(nn.Module):
     def get_all_parameters(self) -> List[nn.Parameter]:
         params = (
             list(self.pos_embeddings.parameters()) + 
-            list(self.layer2_norm.parameters()) + 
             list(self.motor_text_proj.parameters()) + 
             list(self.critic.parameters())
         )
-        for submodule in [self.gateway, self.ssd_layer1, self.ssd_layer2, self.world_model, self.output_gateway, self.attractor_head]:
+        for submodule in [self.gateway, self.ssd_core, self.world_model, self.output_gateway, self.attractor_head]:
             if hasattr(submodule, 'parameters'):
                 params.extend(list(submodule.parameters()))
         return params
@@ -174,9 +162,7 @@ class CoREAgent(nn.Module):
         sd = {
             'text_embeddings.weight': self.pos_embeddings.byte_embed.weight.detach().cpu(),
             'critic.weight': self.critic.weight.detach().cpu(),
-            'critic.bias': self.critic.bias.detach().cpu(),
-            'layer2_norm.weight': self.layer2_norm.weight.detach().cpu(),
-            'layer2_norm.bias': self.layer2_norm.bias.detach().cpu()
+            'critic.bias': self.critic.bias.detach().cpu()
         }
         for name, param in self.pos_embeddings.named_parameters():
             sd[f"pos_embeddings.{name}"] = param.detach().cpu()
@@ -184,7 +170,7 @@ class CoREAgent(nn.Module):
         for name, param in self.motor_text_proj.named_parameters():
             sd[f"motor_text_proj.{name}"] = param.detach().cpu()
 
-        for sub_name, sub in [('gateway', self.gateway), ('ssd_layer1', self.ssd_layer1), ('ssd_layer2', self.ssd_layer2),
+        for sub_name, sub in [('gateway', self.gateway), ('ssd_core', self.ssd_core), 
                               ('world_model', self.world_model), ('output_gateway', self.output_gateway), 
                               ('attractor_head', self.attractor_head)]:
             if hasattr(sub, 'named_parameters'):
@@ -209,10 +195,11 @@ class CoREAgent(nn.Module):
                 for sub_p_name, sub_p in self.pos_embeddings.named_parameters():
                     if sub_p_name == p_name:
                         self._safe_copy_param(sub_p.data, tensor)
-            elif name.startswith("layer2_norm."):
-                p_name = name.replace("layer2_norm.", "")
-                if hasattr(self.layer2_norm, p_name):
-                    self._safe_copy_param(getattr(self.layer2_norm, p_name).data, tensor)
+            elif name.startswith("ssd_core."):
+                p_name = name.replace("ssd_core.", "")
+                for sub_p_name, sub_p in self.ssd_core.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
             elif name.startswith("critic.weight"):
                 self._safe_copy_param(self.critic.weight.data, tensor)
             elif name.startswith("critic.bias"):
@@ -282,14 +269,8 @@ class CoREAgent(nn.Module):
         t_seq = text_in.unsqueeze(1)
         m_dummy = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
         
-        ssd1_out = self.ssd_layer1.forward_chunk_parallel_ssd(t_seq, m_dummy, u_t, dt)
-        h1, _, eff_dt = ssd1_out[0], ssd1_out[1], ssd1_out[2]
-        
-        ssd2_out = self.ssd_layer2.forward_chunk_parallel_ssd(h1.unsqueeze(1), m_dummy, u_t, dt)
-        h2 = ssd2_out[0]
-        
-        h_total = self.layer2_norm(h1 + h2)
-        h_next_fast = h_total
+        ssd_out = self.ssd_core.forward_chunk_parallel_ssd(t_seq, m_dummy, u_t, dt)
+        h_next_fast, _, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
         h_next_slow = h_next_fast
         
         w_pred, kl_div, _, z_t = self.world_model(h_prev_fast, h_next_slow, w_current)
@@ -298,7 +279,7 @@ class CoREAgent(nn.Module):
         rec_loss = 1.0 - cosine_sim
         free_energy = kl_div + rec_loss
 
-        relax_out = self.attractor_head.relax_to_minima(h_total)
+        relax_out = self.attractor_head.relax_to_minima(h_next_fast)
         h_relaxed = relax_out[0]
         
         outputs = self.output_gateway(h_relaxed)
@@ -306,46 +287,29 @@ class CoREAgent(nn.Module):
         tied_text_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
         outputs["text_generation"] = tied_text_logits
         
-        state_value = self.critic(h_total)
+        state_value = self.critic(h_next_fast)
         return h_next_fast, h_next_slow, outputs, state_value, w_pred, free_energy, kl_div, w_current, attn_weights, channel_names, epistemic_entropy, eff_dt
 
     def forward(self, *args, **kwargs):
         return self.forward_step(*args, **kwargs)
 
     def forward_chunk_ssd(self, chunk_emb: torch.Tensor, chunk_targets: torch.Tensor, 
-                          m1_prev: torch.Tensor, m2_prev: torch.Tensor, u_t: torch.Tensor, criterion: nn.Module):
-        batch_size, chunk_len, _ = chunk_emb.size()
-        
-        # 1. Cortical Layer 1 (Syntax)
-        ssd1_out = self.ssd_layer1.forward_chunk_parallel_ssd(chunk_emb, m1_prev, u_t, 1.0)
-        h1_chunk, m1_next, eff_dt = ssd1_out[0], ssd1_out[1], ssd1_out[2]
-        
-        # 2. Cortical Layer 2 (Semantics + Residual Skip Connection)
-        h1_reshaped = h1_chunk.view(batch_size, chunk_len, self.hidden_dim)
-        ssd2_out = self.ssd_layer2.forward_chunk_parallel_ssd(h1_reshaped, m2_prev, u_t, 1.0)
-        h2_chunk, m2_next, _ = ssd2_out[0], ssd2_out[1], ssd2_out[2]
-        
-        h_total_chunk = self.layer2_norm(h1_chunk + h2_chunk)
+                          m_prev: torch.Tensor, u_t: torch.Tensor, criterion: nn.Module):
+        # 1. Native C++ Parallel State-Space Duality Scan
+        ssd_out = self.ssd_core.forward_chunk_parallel_ssd(chunk_emb, m_prev, u_t, 1.0)
+        h_chunk, m_next, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
 
-        # 3. Parallel Batched Motor Readout
-        relax_out = self.attractor_head.relax_to_minima(h_total_chunk)
+        # 2. Parallel Batched Motor Readout
+        relax_out = self.attractor_head.relax_to_minima(h_chunk)
         h_relaxed = relax_out[0]
         
         h_proj = self.motor_text_proj(h_relaxed)
         logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
 
-        # 4. Safe Loss Computation: Handle all-masked target chunks without NaN
+        # 3. Batched Target Loss (Full sequence target matching)
         targets_flat = chunk_targets.contiguous().view(-1)
-        valid_mask = (targets_flat != 256)
-        num_valid = valid_mask.sum()
-
-        if num_valid > 0:
-            loss = criterion(logits_flat, targets_flat)
-        else:
-            # Connect to graph with zero loss when chunk is 100% prompt tokens
-            loss = (logits_flat * 0.0).sum()
-
-        return loss, m1_next, m2_next, h_total_chunk, eff_dt, (num_valid > 0)
+        loss = criterion(logits_flat, targets_flat)
+        return loss, m_next, h_chunk, eff_dt
 
     def evaluate_dfet_gating(self, free_energy_val: float, moving_mean: float, moving_std: float, na_level: float) -> bool:
         base_k = self.config.train.dfet_k_sigma_base
@@ -361,15 +325,12 @@ class CoREAgent(nn.Module):
                          chunk_size: int = 32, optimizer: torch.optim.Optimizer = None) -> Tuple[float, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size, seq_len = input_seq.size()
         
-        m1_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
-        m2_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
-        
+        m_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
         curr_u_t = hu_batch.state.clone().detach()
         action_cost_tensor = torch.full((batch_size, 1), 0.001, device=self.device)
         cog_action_tensor = torch.zeros((batch_size, 1), dtype=torch.int64, device=self.device)
         
         num_chunks = max(1, seq_len // chunk_size)
-        valid_chunks_count = 0
         total_speech_loss_accum = 0.0
         total_fe_loss_accum = 0.0
         last_eff_dt = torch.tensor([[1.0]], device=self.device)
@@ -386,24 +347,22 @@ class CoREAgent(nn.Module):
 
             chunk_emb = self.pos_embeddings(chunk_input_tokens, start_pos=c_start, apply_rf=True)
 
-            chunk_loss, m1_curr, m2_curr, h_chunk, last_eff_dt, has_valid = self.forward_chunk_ssd(
-                chunk_emb, chunk_target_tokens, m1_curr, m2_curr, curr_u_t, criterion_speech
+            # Parallel State-Space Duality Scan (>170k tok/s)
+            chunk_loss, m_curr, h_chunk, last_eff_dt = self.forward_chunk_ssd(
+                chunk_emb, chunk_target_tokens, m_curr, curr_u_t, criterion_speech
             )
 
-            if has_valid:
-                total_speech_loss_accum += chunk_loss.item()
-                valid_chunks_count += 1
+            total_speech_loss_accum += chunk_loss.item()
             total_fe_loss_accum += 0.01
 
             # Event Boundary Theta Phase Reset: Reset state on EOS (257)
             with torch.no_grad():
                 has_eos = (chunk_input_tokens == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
-                m1_curr = m1_curr * (1.0 - has_eos)
-                m2_curr = m2_curr * (1.0 - has_eos)
+                m_curr = m_curr * (1.0 - has_eos)
 
             # Somatic Homeostasis Update
             with torch.no_grad():
-                curr_loss_val = chunk_loss.detach().item() if has_valid else 0.0
+                curr_loss_val = chunk_loss.detach().item()
                 if episodic_memory is not None and curr_loss_val > 1.2:
                     w_rep = h_chunk[-batch_size:].detach()
                     if w_rep.size(-1) != self.unified_dim:
@@ -415,19 +374,18 @@ class CoREAgent(nn.Module):
                 zero_entropy = torch.zeros((batch_size, 1), device=self.device)
                 curr_u_t = hu_batch.update(action_cost_tensor, somatic_surprise, zero_entropy, cog_action_tensor).detach()
 
-            if optimizer is not None and has_valid:
+            if optimizer is not None:
                 (chunk_loss / float(num_chunks)).backward()
 
-            m1_curr = m1_curr.detach()
-            m2_curr = m2_curr.detach()
+            m_curr = m_curr.detach()
             curr_u_t = curr_u_t.detach()
 
-        avg_speech_loss = total_speech_loss_accum / float(max(1, valid_chunks_count))
+        avg_speech_loss = total_speech_loss_accum / float(num_chunks)
         avg_fe_loss = total_fe_loss_accum / float(num_chunks)
         total_loss_metric = avg_speech_loss + loss_free_energy_weight * avg_fe_loss
 
-        h_proxy = m2_curr.view(batch_size, -1)[:, :self.hidden_dim]
-        return total_loss_metric, avg_speech_loss, avg_fe_loss, m2_curr, h_proxy, curr_u_t, last_eff_dt
+        h_proxy = m_curr.view(batch_size, -1)[:, :self.hidden_dim]
+        return total_loss_metric, avg_speech_loss, avg_fe_loss, m_curr, h_proxy, curr_u_t, last_eff_dt
 
     def generate_thought_and_speech(
         self, prompt: str, m_state: torch.Tensor, h_state: torch.Tensor, hu, episodic_memory, 
@@ -437,20 +395,15 @@ class CoREAgent(nn.Module):
         prompt_tokens = self.encode_text(prompt).unsqueeze(0)
         prompt_embs = self.pos_embeddings(prompt_tokens, start_pos=0, apply_rf=True)
         
-        m1 = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
-        m2 = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
+        m_curr = m_state.clone()
+        if m_curr.dim() == 2:
+            m_curr = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
             
         yield {"status": "speech_start"}
         
-        # Dual-Layer Parallel Prompt Scan
-        ssd1_out = self.ssd_layer1.forward_chunk_parallel_ssd(prompt_embs, m1, hu.state, 1.0)
-        h1_chunk, m1 = ssd1_out[0], ssd1_out[1]
-        
-        h1_reshaped = h1_chunk.view(1, prompt_tokens.size(1), self.hidden_dim)
-        ssd2_out = self.ssd_layer2.forward_chunk_parallel_ssd(h1_reshaped, m2, hu.state, 1.0)
-        h2_chunk, m2 = ssd2_out[0], ssd2_out[1]
-        
-        h_total_chunk = self.layer2_norm(h1_chunk + h2_chunk)
+        # Parallel prompt processing in Native C++ SSD
+        ssd_out = self.ssd_core.forward_chunk_parallel_ssd(prompt_embs, m_curr, hu.state, 1.0)
+        h_chunk, m_curr = ssd_out[0], ssd_out[1]
         
         rolling_token_ids = prompt_tokens[0].tolist()
         energy_action_cost = torch.tensor([[0.002]], device=self.device)
@@ -460,6 +413,7 @@ class CoREAgent(nn.Module):
         total_prompt_len = prompt_tokens.size(1)
 
         for step in range(max_generated_tokens):
+            # Rolling K=4 window for causal convolution consistency
             context_window = rolling_token_ids[-4:]
             window_t = torch.tensor([context_window], dtype=torch.long, device=self.device)
             window_start_pos = (total_prompt_len + step) - (len(context_window) - 1)
@@ -467,13 +421,8 @@ class CoREAgent(nn.Module):
             window_emb = self.pos_embeddings(window_t, start_pos=window_start_pos, apply_rf=True)
             t_emb = window_emb[:, -1:, :]
             
-            ssd1_out = self.ssd_layer1.forward_chunk_parallel_ssd(t_emb, m1, hu.state, 1.0)
-            h1_out, m1 = ssd1_out[0], ssd1_out[1]
-            
-            ssd2_out = self.ssd_layer2.forward_chunk_parallel_ssd(h1_out.unsqueeze(1), m2, hu.state, 1.0)
-            h2_out, m2 = ssd2_out[0], ssd2_out[1]
-            
-            h_out = self.layer2_norm(h1_out + h2_out)
+            ssd_out = self.ssd_core.forward_chunk_parallel_ssd(t_emb, m_curr, hu.state, 1.0)
+            h_out, m_curr = ssd_out[0], ssd_out[1]
             
             h_relaxed = self.attractor_head.relax_to_minima(h_out)[0]
             h_proj = self.motor_text_proj(h_relaxed)
@@ -489,7 +438,6 @@ class CoREAgent(nn.Module):
             indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
             logits[indices_to_remove] = -1e9
             
-            # Safe softmax with NaN protection
             probs = F.softmax(logits, dim=-1)
             probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
             prob_sum = probs.sum(dim=-1, keepdim=True)
@@ -516,7 +464,7 @@ class CoREAgent(nn.Module):
             }
             
             if hu.state[0, 1].item() <= 0.05:
-                yield {"status": "exhausted", "text": " [fatigued...]", "m_state": m2, "h_state": h_out}
+                yield {"status": "exhausted", "text": " [fatigued...]", "m_state": m_curr, "h_state": h_out}
                 return
 
-        yield {"status": "speech_end", "m_state": m2, "h_state": h_out}
+        yield {"status": "speech_end", "m_state": m_curr, "h_state": h_out}

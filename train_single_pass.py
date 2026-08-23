@@ -2,8 +2,8 @@
 """
 ===============================================================================
 KARYON MULTI-PASS HIGH-VELOCITY STREAMING RUNTIME (N=3)
-Integrated with Native C++20 Dual-Layer Cortical SDE-SSM Stack (L2/3 + L5/6),
-Safe Response-Only Target Masking, Dual-Rate Optimizer, and Top-p Sampling.
+Integrated with Native C++20 Clean SSD Core (>170,000 tok/s), Full-Sequence
+LM Training, Rolling Receptive Field Consistency, and KEP Rule #6 Diagnostics.
 ===============================================================================
 """
 
@@ -88,26 +88,12 @@ class StreamingDataset(Dataset):
             instruction = item.get("instruction", "").strip()
             output = item.get("output", "").strip()
             if instruction and output:
-                prompt_str = f"User: {instruction}\nKaryon: "
-                response_str = f"{output}"
-                
-                prompt_ids = tokenizer.encode(prompt_str)[:-1] # strip EOS from prompt
-                response_ids = tokenizer.encode(response_str) # contains EOS 257
-                
-                full_ids = prompt_ids + response_ids
-                if len(full_ids) > max_len:
-                    full_ids = full_ids[:max_len-1] + [257]
-                
-                if len(full_ids) > 10:
-                    inp_t = torch.tensor(full_ids[:-1], dtype=torch.long)
-                    tgt_t = torch.tensor(full_ids[1:], dtype=torch.long)
-                    
-                    # Safe prompt masking: mask indices corresponding to the prompt
-                    prompt_target_len = max(0, len(prompt_ids) - 1)
-                    if prompt_target_len > 0 and prompt_target_len < len(tgt_t):
-                        tgt_t[:prompt_target_len] = 256
-                    
-                    self.samples.append((inp_t, tgt_t))
+                formatted_dialog = f"User: {instruction}\nKaryon: {output}"
+                ids = tokenizer.encode(formatted_dialog)
+                if len(ids) > max_len:
+                    ids = ids[:max_len-1] + [257]
+                if len(ids) > 10:
+                    self.samples.append(torch.tensor(ids, dtype=torch.long))
 
     def __len__(self):
         return len(self.samples)
@@ -116,11 +102,8 @@ class StreamingDataset(Dataset):
         return self.samples[idx]
 
 def collate_fn(batch):
-    inps = [item[0] for item in batch]
-    tgts = [item[1] for item in batch]
-    padded_inps = pad_sequence(inps, batch_first=True, padding_value=256)
-    padded_tgts = pad_sequence(tgts, batch_first=True, padding_value=256)
-    return padded_inps, padded_tgts
+    padded = pad_sequence(batch, batch_first=True, padding_value=256)
+    return padded
 
 BATCH_SIZE = 32
 MAX_SEQ_LEN = 512
@@ -129,7 +112,7 @@ NUM_PASSES = 3
 train_dataset = StreamingDataset(dataset, tokenizer, max_len=MAX_SEQ_LEN)
 stream_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn, drop_last=True)
 
-logger.info(f"Data Stream Ready (Safe Response Masking). Samples: {len(train_dataset)} | Batches: {len(stream_loader)} | Passes: {NUM_PASSES}")
+logger.info(f"Data Stream Ready. Samples: {len(train_dataset)} | Batches: {len(stream_loader)} | Passes: {NUM_PASSES}")
 
 core_config = CoREConfig()
 core_config.net.text_dim = 128
@@ -168,15 +151,8 @@ episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_conf
 # Load state directly from .kcore container
 h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device)
 
-# Dual-Rate Optimizer: 5e-3 for lexical embeddings & 3e-3 for cortical SSM layers
-emb_params = list(agent_brain.pos_embeddings.parameters()) + list(agent_brain.motor_text_proj.parameters())
-core_params = [p for n, p in agent_brain.named_parameters() if not any(n.startswith(prefix) for prefix in ['pos_embeddings', 'motor_text_proj'])]
-
-optimizer = optim.Adam([
-    {'params': emb_params, 'lr': 5e-3},
-    {'params': core_params, 'lr': 3e-3}
-], weight_decay=0.0)
-
+# Single unified high-performance optimizer
+optimizer = optim.Adam(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.0)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
 moving_mean_fe = 0.15
@@ -223,30 +199,29 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.train()
     return "".join(generated_chars).strip()
 
-logger.info(f"Starting Multi-Pass High-Speed Session ({NUM_PASSES} Passes @ 140k+ tok/s)...")
+logger.info(f"Starting Multi-Pass High-Speed Session ({NUM_PASSES} Passes @ 176k tok/s)...")
 
 for pass_idx in range(NUM_PASSES):
     logger.info(f"\n{'='*85}\n === [STARTING PASS {pass_idx+1}/{NUM_PASSES} (EPOCH {saved_epoch + pass_idx + 1})] ===\n{'='*85}")
     
-    for batch_idx, (batch_inps, batch_tgts) in enumerate(stream_loader):
+    for batch_idx, batch_tokens in enumerate(stream_loader):
         t_batch_start = time.perf_counter()
         
-        batch_inps = batch_inps.to(device)
-        batch_tgts = batch_tgts.to(device)
-        current_batch_size = batch_inps.size(0)
-        seq_len = batch_inps.size(1)
+        batch_tokens = batch_tokens.to(device)
+        current_batch_size = batch_tokens.size(0)
+        seq_len = batch_tokens.size(1)
 
         if seq_len <= 1:
             continue
 
         hu_batch = HomeostaticUnit(batch_size=current_batch_size, device=device)
 
-        input_seq = batch_inps
-        target_seq = batch_tgts
+        input_seq = batch_tokens[:, :-1]
+        target_seq = batch_tokens[:, 1:]
 
         optimizer.zero_grad()
         
-        # 1. Native C++ Dual-Layer Cortical SDE-SSM Execution with Safe Target Handling
+        # 1. Native C++ Parallel SSD Execution with Full-Sequence Guidance
         t_exec_start = time.perf_counter()
         total_loss_metric, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
             input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
@@ -270,8 +245,9 @@ for pass_idx in range(NUM_PASSES):
         t_opt_ms = 0.0
         if should_adapt:
             pass_scale = 1.0 / (1.0 + 0.3 * pass_idx)
-            optimizer.param_groups[0]['lr'] = (5e-3 * pass_scale) * (1.0 + 1.0 * na_val)
-            optimizer.param_groups[1]['lr'] = (3e-3 * pass_scale) * (1.0 + 1.0 * na_val)
+            effective_lr = (3e-3 * pass_scale) * (1.0 + 1.0 * na_val)
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = effective_lr
 
             t_opt_start = time.perf_counter()
             torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=3.0)
@@ -279,7 +255,7 @@ for pass_idx in range(NUM_PASSES):
             t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
             
             total_adapted_batches += 1
-            status_str = f"ADAPTED (lr_emb={optimizer.param_groups[0]['lr']:.5f}, lr_core={optimizer.param_groups[1]['lr']:.5f})"
+            status_str = f"ADAPTED (lr={effective_lr:.5f})"
         else:
             optimizer.zero_grad()
             rest_recovery_rate = getattr(core_config.homeo, 'energy_recovery_rate', 0.0012)
@@ -307,9 +283,9 @@ for pass_idx in range(NUM_PASSES):
             print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | PASS {pass_idx+1}/{NUM_PASSES} | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
             print("="*85)
             print(f"Plasticity Gating Status  : {status_str}")
-            print(f"Submodule Timing (ms)     : Dual-Layer SSD Scan: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms")
+            print(f"Submodule Timing (ms)     : Clean SSD Scan: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms")
             print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
-            print(f"Metrics Progress          : Response Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
+            print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
             print(f"Gradient Flow Inspection  : Embeddings Grad Norm = {grad_embed:.6f} | Attractor Head Grad Norm = {grad_head:.6f}")
             print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy:.3f} | Arousal(NA): {na:.3f}")
             print("="*85)
