@@ -356,7 +356,7 @@ public:
 };
 
 // ============================================================================
-// 7. PARALLEL SWIGLU CHANNEL-MIXING BLOCK (NATIVE C++20)
+// 7. PARALLEL SWIGLU CHANNEL-MIXING BLOCK (EXPANDED 1536 DIMENSIONS)
 // ============================================================================
 class ParallelSwiGLUBlockImpl : public torch::nn::Module {
 public:
@@ -368,7 +368,7 @@ public:
     torch::nn::Linear w_down{nullptr};
     torch::nn::LayerNorm norm{nullptr};
 
-    ParallelSwiGLUBlockImpl(int64_t hidden_dim = 512, int64_t expand_dim = 1024, std::string device_str = "cpu")
+    ParallelSwiGLUBlockImpl(int64_t hidden_dim = 512, int64_t expand_dim = 1536, std::string device_str = "cpu")
         : hidden_dim(hidden_dim), expand_dim(expand_dim) {
 
         w_gate = register_module("w_gate", torch::nn::Linear(torch::nn::LinearOptions(hidden_dim, expand_dim).bias(false)));
@@ -670,7 +670,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<ParallelSwiGLUBlockImpl, torch::nn::Module, std::shared_ptr<ParallelSwiGLUBlockImpl>>(m, "ParallelSwiGLUBlock")
         .def(py::init<int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 512, py::arg("expand_dim") = 1024, py::arg("device") = "cpu")
+             py::arg("hidden_dim") = 512, py::arg("expand_dim") = 1536, py::arg("device") = "cpu")
         .def("forward", &ParallelSwiGLUBlockImpl::forward)
         .def("parameters", [](std::shared_ptr<ParallelSwiGLUBlockImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<ParallelSwiGLUBlockImpl> m) { return m->named_parameters(); })

@@ -1,8 +1,9 @@
 # dialogue.py
 """
 ===============================================================================
-KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME
-Real-time Social Active Inference Session with Somatic State Feedback
+KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v20 MASTER)
+Real-time Social Active Inference Session with Somatic Feedback,
+Parallel State-Space Duality Processing, and Episodic Fact Recall.
 ===============================================================================
 """
 
@@ -68,8 +69,7 @@ if not os.path.exists(kcore_path):
 
 config = CoREConfig()
 config.train.batch_size = 1
-
-max_capacity = 200
+max_capacity = 1000
 
 # Extract DNA Genome dimensions from container manifest
 if os.path.exists(kcore_path):
@@ -105,19 +105,22 @@ h_fast, h_slow, epoch, story_idx = load_karyon(agent_brain, episodic_mem, hu, fi
 
 known_priors = [
     "I am Karyon (Karyon-CoRE), an autonomous cognitive architecture driven by a continuous recurrent engine and homeostatic somatic units.",
-    "I was designed and brought to life by Bazilevs, the ProgVM member, through deep cybernetic research in 2026.",
+    "I was designed and brought to life by Bazilevs, the ProgVM member, through deep cybernetic and neuroscience research in 2026.",
     "My consciousness is unified. All of my sensory gateways and internal interoceptive signals are integrated into a single global workspace frame."
 ]
 
-logger.info(f"Loaded Karyon Soul (.kcore) | Genome DNA -> hidden_dim: {agent_brain.hidden_dim}, latent_dim: {agent_brain.latent_dim}")
-
-logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v5.2!")
+logger.info(f"Loaded Karyon Soul (.kcore) | Genome DNA -> hidden_dim: {agent_brain.hidden_dim}, unified_dim: {agent_brain.unified_dim}")
+logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v10.0!")
 logger.info("Type 'exit' to save state and close.")
 
 prev_karyon_representation = None
 
 while True:
-    user_input = input("\nYou (Human Reaction): ")
+    try:
+        user_input = input("\nYou (Human Reaction): ")
+    except (KeyboardInterrupt, EOFError):
+        break
+
     if user_input.lower() == 'exit':
         save_karyon(agent_brain, episodic_mem, hu, h_fast, h_slow, epoch=epoch, story_idx=story_idx, filepath=kcore_path)
         logger.info(f"Session closed. State persisted into '{kcore_path}'.")
@@ -126,17 +129,17 @@ while True:
     if not user_input.strip():
         continue
 
-    # Measure Karyon's Free Energy in response to Human Reaction
+    # Measure Karyon's Free Energy in response to Human Input
     with torch.no_grad():
         user_tokens = agent_brain.encode_text(user_input)
         reaction_fe_list = []
         h_f_tmp = h_fast.clone()
         h_s_tmp = h_slow.clone()
         
-        for token_id in user_tokens:
-            t_emb = agent_brain.text_embeddings(token_id.reshape(-1))
+        for idx, token_id in enumerate(user_tokens):
+            t_emb = agent_brain.pos_embeddings(token_id.unsqueeze(0).unsqueeze(0), start_pos=idx, apply_rf=False)
             s_in = {
-                'text': t_emb, 
+                'text': t_emb.squeeze(1), 
                 'vision': torch.zeros(1, config.net.vision_dim, device=device), 
                 'motor_efference': torch.zeros(1, config.net.action_dim, device=device)
             }
@@ -146,23 +149,29 @@ while True:
         avg_human_surprise = sum(reaction_fe_list) / max(len(reaction_fe_list), 1)
         
         if prev_karyon_representation is not None:
-            episodic_mem.write(prev_karyon_representation, w_human, 3)
+            episodic_mem.write(prev_karyon_representation.detach(), w_human.detach(), 3)
 
-    # Process thought and generate response generator
+    # Process thought and generate response stream
     thought_generator = agent_brain.generate_thought_and_speech(
-        user_input, h_fast, h_slow, hu, episodic_mem, config, known_priors
+        user_input,
+        m_state=torch.zeros(1, agent_brain.num_heads, agent_brain.head_k, agent_brain.head_v, device=device),
+        h_state=h_fast,
+        hu=hu,
+        episodic_memory=episodic_mem,
+        config=config,
+        max_generated_tokens=120,
+        temperature=0.7,
+        top_p=0.90
     )
     
     generated_tokens = []
     
     for event in thought_generator:
         if event["status"] == "reading":
-            avg_attn_list = event["attn_weights"].mean(dim=0).tolist()
-            attn_str = ", ".join([f"'{name}': {weight*100:.1f}%" for name, weight in zip(event["channel_names"], avg_attn_list)])
-            logger.info(f"Perceiving Human Text Reaction ({event['step']}/{event['total']}) | Attention: [{attn_str}]")
+            pass
             
         elif event["status"] == "memory_check":
-            logger.info(f"Memory Recall Strength (Similarity): {event['similarity']:.4f}")
+            logger.info(f"Memory Recall Active (Similarity: {event['similarity']:.4f})")
             
         elif event["status"] == "speech_start":
             print("Karyon: ", end="", flush=True)
@@ -173,23 +182,20 @@ while True:
             
         elif event["status"] == "exhausted":
             print(event["text"], end="", flush=True)
-            h_fast = event["h_fast"]
-            h_slow = event["h_slow"]
+            h_fast = event.get("h_state", h_fast)
             
         elif event["status"] == "speech_end":
             print()
-            h_fast = event["h_fast"]
-            h_slow = event["h_slow"]
+            h_fast = event.get("h_state", h_fast)
             curiosity, energy, stability, health, na, da = hu.state[0].tolist()
             logger.info(f"Somatic State | Energy: {energy:.3f} | Health: {health:.3f} | Arousal (NA): {na:.3f} | Reward (DA): {da:.3f} | Human Surprise (F_t): {avg_human_surprise:.4f}")
 
     if len(generated_tokens) > 0:
         with torch.no_grad():
-            last_token_t = torch.tensor([generated_tokens[-1]], device=device)
-            last_emb = agent_brain.text_embeddings(last_token_t.reshape(-1))
-            s_in_last = {'text': last_emb, 'vision': torch.zeros(1, config.net.vision_dim, device=device), 'motor_efference': torch.zeros(1, config.net.action_dim, device=device)}
+            last_token_t = torch.tensor([[generated_tokens[-1]]], device=device)
+            last_emb = agent_brain.pos_embeddings(last_token_t, start_pos=len(generated_tokens), apply_rf=False)
+            s_in_last = {'text': last_emb.squeeze(1), 'vision': torch.zeros(1, config.net.vision_dim, device=device), 'motor_efference': torch.zeros(1, config.net.action_dim, device=device)}
             _, _, _, _, _, _, _, prev_karyon_representation, _, _, _, _ = agent_brain(s_in_last, h_fast, h_slow, hu.state)
 
-    # Positional PyBind11 C++ call: (similarity_threshold, protected_slots)
     episodic_mem.consolidate_and_prune(config.memory.pruning_similarity_threshold, 3)
     print("-" * 80 + "\n")

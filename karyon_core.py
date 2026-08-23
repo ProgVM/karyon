@@ -3,10 +3,10 @@ import os
 import torch
 from torch.utils.cpp_extension import load
 
-print("[C++ JIT] Compiling and linking native Karyon architecture (v19 Clean Master)...")
+print("[C++ JIT] Compiling and linking native Karyon architecture (v20 Master)...")
 
 karyon_cpp = load(
-    name="karyon_cpp_ext_v19",
+    name="karyon_cpp_ext_v20",
     sources=["karyon_core.cpp"],
     extra_cflags=["-O3", "-std=c++20"],
     verbose=False
@@ -24,4 +24,4 @@ DesaturatedHopfieldAttractorHead = karyon_cpp.DesaturatedHopfieldAttractorHead
 LatentPredictor = karyon_cpp.LatentPredictor
 BatchedEpisodicMemory = karyon_cpp.BatchedEpisodicMemory
 
-print("[C++ JIT] Native C++ v19 Clean Master successfully initialized!")
+print("[C++ JIT] Native C++ v20 Master architecture successfully initialized!")
