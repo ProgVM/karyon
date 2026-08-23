@@ -12,17 +12,14 @@
 struct KaryonEntity {
     torch::Device device;
     
-    // Persistent Core Tensors
     torch::Tensor h_fast;
     torch::Tensor h_slow;
     torch::Tensor u_t;
 
-    // Motor Output State
     std::vector<uint8_t> generated_text_bytes;
     std::vector<float>   motor_action_vec;
     std::vector<float>   cog_action_vec;
 
-    // Binary Section Buffers
     std::vector<uint8_t> manifest_buffer;
     std::vector<uint8_t> logic_buffer;
     std::vector<uint8_t> weights_buffer;
@@ -72,8 +69,9 @@ KaryonEntity* karyon_load(const char* kcore_file_path, const char* device) {
     }
 
     auto opts = torch::TensorOptions().dtype(torch::kFloat32).device(entity->device);
-    entity->h_fast = torch::zeros({1, 256}, opts);
-    entity->h_slow = torch::zeros({1, 256}, opts);
+    // Synced with v16.5 Cortical dimension (768)
+    entity->h_fast = torch::zeros({1, 768}, opts);
+    entity->h_slow = torch::zeros({1, 768}, opts);
     entity->u_t = torch::tensor({{0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f}}, opts);
 
     return entity;
@@ -81,7 +79,6 @@ KaryonEntity* karyon_load(const char* kcore_file_path, const char* device) {
 
 void karyon_perceive_text(KaryonEntity* entity, const char* text_utf8, float dt) {
     if (!entity || !text_utf8) return;
-
     std::string input_str(text_utf8);
     entity->generated_text_bytes.assign(input_str.begin(), input_str.end());
     entity->response_buffer = input_str;
@@ -89,7 +86,6 @@ void karyon_perceive_text(KaryonEntity* entity, const char* text_utf8, float dt)
 
 void karyon_perceive_stream(KaryonEntity* entity, const SensoryStream* stream) {
     if (!entity || !stream) return;
-
     if (stream->text_bytes && stream->text_len > 0) {
         entity->generated_text_bytes.assign(stream->text_bytes, stream->text_bytes + stream->text_len);
     }
@@ -97,7 +93,6 @@ void karyon_perceive_stream(KaryonEntity* entity, const SensoryStream* stream) {
 
 void karyon_step(KaryonEntity* entity) {
     if (!entity) return;
-
     auto curiosity = entity->u_t.select(1, 0).unsqueeze(1);
     auto energy    = entity->u_t.select(1, 1).unsqueeze(1);
     auto stability = entity->u_t.select(1, 2).unsqueeze(1);
@@ -115,20 +110,16 @@ const char* karyon_express_text(KaryonEntity* entity) {
 
 void karyon_express_stream(KaryonEntity* entity, MotorStream* out_stream) {
     if (!entity || !out_stream) return;
-
     out_stream->text_bytes = entity->generated_text_bytes.data();
     out_stream->text_len = entity->generated_text_bytes.size();
-
     out_stream->motor_actions = entity->motor_action_vec.data();
     out_stream->action_dim = entity->motor_action_vec.size();
-
     out_stream->cog_actions = entity->cog_action_vec.data();
     out_stream->cog_dim = entity->cog_action_vec.size();
 }
 
 void karyon_adapt(KaryonEntity* entity, float feedback_signal, float learning_rate) {
     if (!entity) return;
-
     auto opts = entity->u_t.options();
     auto feedback_tensor = torch::tensor({{feedback_signal}}, opts);
 

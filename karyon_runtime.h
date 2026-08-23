@@ -11,33 +11,30 @@ extern "C" {
 
 typedef struct KaryonEntity KaryonEntity;
 
-// Multi-modal Input Sensory Stream
 typedef struct {
     const uint8_t* text_bytes;
     size_t         text_len;
     
-    const float*   vision_pixels; // Raw image float tensor buffer [C, H, W]
+    const float*   vision_pixels;
     size_t         vision_len;
     
-    const float*   audio_samples; // Raw PCM audio float buffer [Samples]
+    const float*   audio_samples;
     size_t         audio_len;
     
     float          dt;
 } SensoryStream;
 
-// Multi-modal Output Motor Stream (Efference Frame)
 typedef struct {
-    const uint8_t* text_bytes;    // Generated output text byte stream
+    const uint8_t* text_bytes;
     size_t         text_len;
     
-    const float*   motor_actions; // Continuous motor action vector [ActionDim]
+    const float*   motor_actions;
     size_t         action_dim;
     
-    const float*   cog_actions;   // Cognitive gating / attention flags [CogDim]
+    const float*   cog_actions;
     size_t         cog_dim;
 } MotorStream;
 
-// Core C-ABI Lifecycle & Execution Interface
 KaryonEntity* karyon_load(const char* kcore_file_path, const char* device);
 
 void karyon_perceive_text(KaryonEntity* entity, const char* text_utf8, float dt);
@@ -49,7 +46,6 @@ const char* karyon_express_text(KaryonEntity* entity);
 void karyon_express_stream(KaryonEntity* entity, MotorStream* out_stream);
 
 void karyon_adapt(KaryonEntity* entity, float feedback_signal, float learning_rate);
-
 void karyon_get_somatic_state(KaryonEntity* entity, float* energy, float* health, float* arousal);
 
 void karyon_save(KaryonEntity* entity, const char* kcore_file_path);
