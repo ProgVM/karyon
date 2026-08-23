@@ -3,10 +3,10 @@ import os
 import torch
 from torch.utils.cpp_extension import load
 
-print("[C++ JIT] Compiling and linking native Karyon architecture (v21 Master)...")
+print("[C++ JIT] Compiling and linking native Karyon architecture (v20 Master)...")
 
 karyon_cpp = load(
-    name="karyon_cpp_ext_v21",
+    name="karyon_cpp_ext_v20",
     sources=["karyon_core.cpp"],
     extra_cflags=["-O3", "-std=c++20"],
     verbose=False
@@ -18,9 +18,10 @@ HomeostaticUnit = karyon_cpp.HomeostaticUnit
 SensoryGateway = karyon_cpp.SensoryGateway
 MotorGateway = karyon_cpp.MotorGateway
 CausalByteReceptiveField = karyon_cpp.CausalByteReceptiveField
-HierarchicalCorticalStack = karyon_cpp.HierarchicalCorticalStack
+CalibratedParallelSSDCore = karyon_cpp.CalibratedParallelSSDCore
+ParallelSwiGLUBlock = karyon_cpp.ParallelSwiGLUBlock
 DesaturatedHopfieldAttractorHead = karyon_cpp.DesaturatedHopfieldAttractorHead
 LatentPredictor = karyon_cpp.LatentPredictor
 BatchedEpisodicMemory = karyon_cpp.BatchedEpisodicMemory
 
-print("[C++ JIT] Native C++ v21 Master architecture successfully initialized!")
+print("[C++ JIT] Native C++ v20 Master architecture successfully initialized!")

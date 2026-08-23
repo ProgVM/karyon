@@ -1,9 +1,9 @@
 # dialogue.py
 """
 ===============================================================================
-KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v16.0 MASTER)
+KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v15.2 MASTER)
 Real-time Social Active Inference Session with Somatic Feedback,
-4-Layer Cortical Neocortex Processing, and Episodic Fact Recall.
+Parallel State-Space Duality Processing, and Episodic Fact Recall.
 ===============================================================================
 """
 
@@ -62,7 +62,6 @@ device = torch.device(device_str)
 
 kcore_path = "karyon_soul.kcore"
 
-# Fault-tolerant container check
 if not os.path.exists(kcore_path):
     logger.warning(f"Container '{kcore_path}' not found! Automatically triggering base model initialization...")
     initialize_priors(recreate=True, filepath=kcore_path, device=device_str)
@@ -71,7 +70,6 @@ config = CoREConfig()
 config.train.batch_size = 1
 max_capacity = 1000
 
-# Extract DNA Genome dimensions from container manifest
 if os.path.exists(kcore_path):
     with open(kcore_path, 'rb') as f:
         f.seek(8)
@@ -92,8 +90,6 @@ if os.path.exists(kcore_path):
             if "unified_dim" in genome: config.net.unified_dim = genome["unified_dim"]
             if "hidden_dim" in genome: config.net.hidden_dim = genome["hidden_dim"]
             if "latent_dim" in genome: config.net.latent_dim = genome["latent_dim"]
-            if "num_layers" in genome: config.net.num_layers = genome["num_layers"]
-            if "expand_dim" in genome: config.net.expand_dim = genome["expand_dim"]
             if "max_capacity" in genome: max_capacity = genome["max_capacity"]
 
 tokenizer = ByteTokenizer(vocab_size=config.net.text_gen_dim)
@@ -102,17 +98,16 @@ agent_brain = CoREAgent(config=config, device=device_str).to(device)
 hu = HomeostaticUnit(batch_size=1, device=device_str)
 episodic_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=config.net.unified_dim, max_capacity=max_capacity, device=device_str)
 
-# Load full state directly from container
-h_fast, h_slow, m_states, epoch, story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
+h_fast, h_slow, epoch, story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 
 known_priors = [
-    "I am Karyon (Karyon-CoRE), an autonomous cognitive architecture driven by a 4-layer continuous recurrent engine and homeostatic somatic units.",
+    "I am Karyon (Karyon-CoRE), an autonomous cognitive architecture driven by a continuous recurrent engine and homeostatic somatic units.",
     "I was designed and brought to life by Bazilevs, the ProgVM member, through deep cybernetic and neuroscience research in 2026.",
     "My consciousness is unified. All of my sensory gateways and internal interoceptive signals are integrated into a single global workspace frame."
 ]
 
-logger.info(f"Loaded Karyon Soul (.kcore) | Genome DNA -> layers: {agent_brain.num_layers}, hidden_dim: {agent_brain.hidden_dim}, unified_dim: {agent_brain.unified_dim}")
-logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v16.0!")
+logger.info(f"Loaded Karyon Soul (.kcore) | Genome DNA -> hidden_dim: {agent_brain.hidden_dim}, unified_dim: {agent_brain.unified_dim}")
+logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v15.2!")
 logger.info("Type 'exit' to save state and close.")
 
 prev_karyon_representation = None
@@ -124,14 +119,13 @@ while True:
         break
 
     if user_input.lower() == 'exit':
-        save_karyon(agent_brain, episodic_mem, hu, h_fast, h_slow, m_states=m_states, epoch=epoch, story_idx=story_idx, filepath=kcore_path)
+        save_karyon(agent_brain, episodic_mem, hu, h_fast, h_slow, epoch=epoch, story_idx=story_idx, filepath=kcore_path)
         logger.info(f"Session closed. State persisted into '{kcore_path}'.")
         break
         
     if not user_input.strip():
         continue
 
-    # Measure Karyon's Free Energy in response to Human Input
     with torch.no_grad():
         user_tokens = agent_brain.encode_text(user_input)
         reaction_fe_list = []
@@ -145,7 +139,7 @@ while True:
                 'vision': torch.zeros(1, config.net.vision_dim, device=device), 
                 'motor_efference': torch.zeros(1, config.net.action_dim, device=device)
             }
-            h_f_tmp, h_s_tmp, _, _, _, fe_reaction, _, w_human, _, _, epistemic_ent, _, _ = agent_brain(s_in, h_f_tmp, h_s_tmp, hu.state, m_states=m_states)
+            h_f_tmp, h_s_tmp, _, _, _, fe_reaction, _, w_human, _, _, epistemic_ent, _ = agent_brain(s_in, h_f_tmp, h_s_tmp, hu.state)
             reaction_fe_list.append(fe_reaction.mean().item())
             
         avg_human_surprise = sum(reaction_fe_list) / max(len(reaction_fe_list), 1)
@@ -153,10 +147,9 @@ while True:
         if prev_karyon_representation is not None:
             episodic_mem.write(prev_karyon_representation.detach(), w_human.detach(), 3)
 
-    # Process thought and generate response stream
     thought_generator = agent_brain.generate_thought_and_speech(
         user_input,
-        m_states=m_states,
+        m_state=torch.zeros(1, agent_brain.num_heads, agent_brain.head_k, agent_brain.head_v, device=device),
         h_state=h_fast,
         hu=hu,
         episodic_memory=episodic_mem,
@@ -185,12 +178,10 @@ while True:
         elif event["status"] == "exhausted":
             print(event["text"], end="", flush=True)
             h_fast = event.get("h_state", h_fast)
-            m_states = event.get("m_states", m_states)
             
         elif event["status"] == "speech_end":
             print()
             h_fast = event.get("h_state", h_fast)
-            m_states = event.get("m_states", m_states)
             curiosity, energy, stability, health, na, da = hu.state[0].tolist()
             logger.info(f"Somatic State | Energy: {energy:.3f} | Health: {health:.3f} | Arousal (NA): {na:.3f} | Reward (DA): {da:.3f} | Human Surprise (F_t): {avg_human_surprise:.4f}")
 
@@ -199,7 +190,7 @@ while True:
             last_token_t = torch.tensor([[generated_tokens[-1]]], device=device)
             last_emb = agent_brain.pos_embeddings(last_token_t, start_pos=len(generated_tokens), apply_rf=False)
             s_in_last = {'text': last_emb.squeeze(1), 'vision': torch.zeros(1, config.net.vision_dim, device=device), 'motor_efference': torch.zeros(1, config.net.action_dim, device=device)}
-            _, _, _, _, _, _, _, prev_karyon_representation, _, _, _, _, _ = agent_brain(s_in_last, h_fast, h_slow, hu.state, m_states=m_states)
+            _, _, _, _, _, _, _, prev_karyon_representation, _, _, _, _ = agent_brain(s_in_last, h_fast, h_slow, hu.state)
 
     episodic_mem.consolidate_and_prune(config.memory.pruning_similarity_threshold, 3)
     print("-" * 80 + "\n")

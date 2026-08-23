@@ -1,8 +1,8 @@
 # karyon_config.py
 """
 ===============================================================================
-KARYON MASTER CONFIGURATION REGISTRY v5.6
-Unified Settings for Ultra-Fast Parallel Pre-Projected Cortical Engine (Q=64).
+KARYON MASTER CONFIGURATION REGISTRY v5.3
+Unified Settings for Active Inference, Predictive Coding, and Somatic Homeostasis.
 ===============================================================================
 """
 
@@ -38,7 +38,7 @@ class HomeostasisConfig:
 
 @dataclass
 class SDEConfig:
-    """Continuous Langevin Differential Equation Core Settings."""
+    """2nd-Order Stochastic Heun Differential Equation Core Settings."""
     gamma_drift: float = 0.10
     wiener_noise_sigma: float = 1e-3
     min_effective_dt: float = 0.20
@@ -49,7 +49,7 @@ class SDEConfig:
 
 @dataclass
 class NetworkConfig:
-    """Multi-Layer Cortical Dimensions and Network Topologies."""
+    """Multi-Modal Dimensions and Network Topologies."""
     text_dim: int = 128
     vision_dim: int = 256
     audio_dim: int = 256
@@ -61,18 +61,11 @@ class NetworkConfig:
     unified_dim: int = 256
     hidden_dim: int = 512
     latent_dim: int = 128
-    
-    # 2-Layer High-Velocity Cortical Stack (Q=64)
-    num_layers: int = 2
-    expand_dim: int = 1536
-    num_heads: int = 8
-    head_k: int = 32
-    head_v: int = 64
 
 
 @dataclass
 class MemoryConfig:
-    """Vectorized Episodic Memory & Volitional Read Gating Settings."""
+    """Vectorized Episodic Memory & Volitional Read Gating Settings (KEP #8)."""
     max_capacity: int = 1000
     protected_slots: int = 3
     default_read_threshold: float = 0.50
@@ -86,16 +79,13 @@ class MemoryConfig:
 
 @dataclass
 class TrainConfig:
-    """Training, Optimization, and Dynamic Plasticity Gating (DFET v3)."""
+    """Predictive Coding, DFET v3 Plasticity Gating, and Training Settings."""
     batch_size: int = 32
-    learning_rate: float = 2.5e-3
-    min_learning_rate: float = 1e-4
-    warmup_steps: int = 300
-    weight_decay: float = 0.01
-    grad_clip_norm: float = 2.0
+    learning_rate: float = 3e-3
+    predictive_coding_lr: float = 0.015
+    grad_clip_norm: float = 3.0
     loss_free_energy_weight: float = 0.05
     loss_speech_weight: float = 1.00
-    chunk_size: int = 64
     bptt_chunk_size: int = 256
     
     dfet_enabled: bool = True
