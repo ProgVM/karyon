@@ -225,12 +225,12 @@ class HierarchicalPatchSSDAgent(nn.Module):
             vocab_size=self.text_gen_dim, text_dim=self.text_dim, device_str=device_str
         ).to(self.device)
 
-        # 1. Primary Sensory Cortex: Patch Encoder (Compresses P=4 bytes -> Z_macro 512)
+        # 1. Primary Sensory Cortex: Patch Encoder (Compresses P=4 bytes -> Z_macro 512 -> 128 for SSD)
         self.patch_encoder = nn.Sequential(
             nn.Linear(self.patch_size * self.text_dim, self.hidden_dim),
             nn.SiLU(),
             nn.LayerNorm(self.hidden_dim),
-            nn.Linear(self.hidden_dim, self.text_dim) # Project to 128 dim for SSD input
+            nn.Linear(self.hidden_dim, self.text_dim)
         ).to(self.device)
 
         # 2. Association / Prefrontal Cortex: Global Cognitive SSD Core (Operates on N=128 Patches!)
@@ -268,8 +268,13 @@ class HierarchicalPatchSSDAgent(nn.Module):
 
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, 
                          criterion: nn.Module, optimizer: torch.optim.Optimizer = None):
-        batch_size, seq_len = input_seq.size()
-        num_patches = seq_len // self.patch_size
+        batch_size, raw_seq_len = input_seq.size()
+        
+        # Protective exact alignment to multiple of patch_size (P=4)
+        num_patches = raw_seq_len // self.patch_size
+        seq_len = num_patches * self.patch_size
+        input_seq = input_seq[:, :seq_len]
+        target_seq = target_seq[:, :seq_len]
 
         # 1. Byte Embeddings [B, S, text_dim=128]
         byte_emb = self.pos_embeddings(input_seq, start_pos=0, apply_rf=True)
@@ -278,7 +283,7 @@ class HierarchicalPatchSSDAgent(nn.Module):
         patches_flat = byte_emb.view(batch_size, num_patches, self.patch_size * self.text_dim)
         macro_patches = self.patch_encoder(patches_flat)
 
-        # 3. Global Cognitive SSD Scan on N=128 Patches (Lightning Fast: 2 chunks of Q=64!)
+        # 3. Global Cognitive SSD Scan on N=128 Patches (Fast: 2 chunks of Q=64!)
         m_global = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
         curr_u_t = hu_batch.state.clone().detach()
 
@@ -311,12 +316,10 @@ class HierarchicalPatchSSDAgent(nn.Module):
                                    temperature: float = 0.7, top_p: float = 0.90) -> str:
         prompt_ids = self.tokenizer.encode(prompt)
         rolling_ids = list(prompt_ids)
-        total_prompt_len = len(rolling_ids)
         generated_chars = []
 
         for step in range(max_generated_tokens):
             cur_len = len(rolling_ids)
-            # Pad to multiple of patch_size for cleanly aligned patch encoding
             pad_needed = (self.patch_size - (cur_len % self.patch_size)) % self.patch_size
             eval_ids = rolling_ids + [256] * pad_needed
             
@@ -338,7 +341,6 @@ class HierarchicalPatchSSDAgent(nn.Module):
             local_in = torch.cat([byte_emb, macro_per_byte], dim=-1)
             local_h = self.local_decoder(local_in)
             
-            # Predict for the exact current token position
             cur_pos = cur_len - 1
             last_h = local_h[:, cur_pos, :]
             logits = (F.linear(last_h, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim) / max(temperature, 1e-4)
@@ -372,7 +374,7 @@ class HierarchicalPatchSSDAgent(nn.Module):
 # 6. STREAMING DATASET AND COLLATOR (PARITY PROTOCOL KEP #7)
 # =============================================================================
 class ParityDataset(Dataset):
-    def __init__(self, hf_data, tokenizer, max_samples=80, max_len=512):
+    def __init__(self, hf_data, tokenizer, max_samples=80, max_len=513):
         self.samples = []
         for item in hf_data:
             inst = item.get("instruction", "").strip()
@@ -382,10 +384,10 @@ class ParityDataset(Dataset):
                 ids = tokenizer.encode(dialog)
                 if len(ids) > max_len:
                     ids = ids[:max_len-1] + [257]
-                # Ensure length is multiple of 4 for patch alignment
                 rem = len(ids) % 4
-                if rem != 0:
-                    ids = ids + [256] * (4 - rem)
+                if rem != 1: # Ensure len(ids) = 4k + 1 so len(in_seq) is multiple of 4
+                    pad_add = (5 - rem) % 4
+                    ids = ids + [256] * pad_add
                 if len(ids) > 16:
                     self.samples.append(torch.tensor(ids, dtype=torch.long))
             if len(self.samples) >= max_samples * 32:
@@ -415,7 +417,7 @@ def run_exp_33_benchmark():
 
     BATCH_SIZE = 32
     NUM_EVAL_BATCHES = 60
-    dataset = ParityDataset(raw_dataset, tokenizer, max_samples=NUM_EVAL_BATCHES)
+    dataset = ParityDataset(raw_dataset, tokenizer, max_samples=NUM_EVAL_BATCHES, max_len=513)
     loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn, drop_last=True)
     logger.info(f"Parity Dataset Loaded. Total Batches: {len(loader)} | Batch Size: {BATCH_SIZE}")
 
