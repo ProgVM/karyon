@@ -8,9 +8,19 @@ Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
 
-import sys
-import types
 import os
+import sys
+
+# 1. Guaranteed Repository Root Path Resolution (KEP Principle 6)
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+curr_dir = os.path.abspath(os.path.dirname(__file__))
+if curr_dir not in sys.path:
+    sys.path.insert(0, curr_dir)
+os.chdir(repo_root)
+
+import types
 import time
 import math
 import importlib
@@ -23,7 +33,7 @@ from torch.nn.utils.rnn import pad_sequence
 from datasets import load_dataset
 
 # =============================================================================
-# 0. DYNAMO HOTFIX FOR PYTHON 3.12 / KAGGLE GPU
+# 2. DYNAMO HOTFIX FOR PYTHON 3.12 / KAGGLE GPU
 # =============================================================================
 class DummyDynamoModule(types.ModuleType):
     def __getattr__(self, name):
@@ -74,7 +84,7 @@ print(f"\n[EXP-32] Initializing Isolated Benchmark on Device: {device_str.upper(
 
 
 # =============================================================================
-# 1. POSITIONAL BYTE EMBEDDING WITH RECEPTIVE FIELD
+# 3. POSITIONAL BYTE EMBEDDING WITH RECEPTIVE FIELD
 # =============================================================================
 class OffsetPositionalByteEmbedding(nn.Module):
     def __init__(self, vocab_size=258, text_dim=128, max_len=8192, device_str='cpu'):
@@ -103,7 +113,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# 2. BASELINE MODEL A: 1-LAYER CORTICAL AGENT (v15.2 Canonical, 3.42M params)
+# 4. BASELINE MODEL A: 1-LAYER CORTICAL AGENT (v15.2 Canonical, 3.42M params)
 # =============================================================================
 class Baseline1LayerAgent(nn.Module):
     def __init__(self, device_str='cpu'):
@@ -190,7 +200,7 @@ class Baseline1LayerAgent(nn.Module):
 
 
 # =============================================================================
-# 3. PROPOSED MODEL B: EXP-32 2-LAYER DEEP CORTICAL STACK (12.85M params)
+# 5. PROPOSED MODEL B: EXP-32 2-LAYER DEEP CORTICAL STACK (12.85M params)
 # =============================================================================
 class Deep2LayerCorticalAgent(nn.Module):
     def __init__(self, device_str='cpu'):
@@ -378,7 +388,7 @@ class Deep2LayerCorticalAgent(nn.Module):
 
 
 # =============================================================================
-# 4. STREAMING DATASET AND COLLATOR (PARITY PROTOCOL KEP #7)
+# 6. STREAMING DATASET AND COLLATOR (PARITY PROTOCOL KEP #7)
 # =============================================================================
 class ParityDataset(Dataset):
     def __init__(self, hf_data, tokenizer, max_samples=80, max_len=512):
@@ -407,7 +417,7 @@ def collate_fn(batch):
 
 
 # =============================================================================
-# 5. EXP-32 MASTER EXECUTION & AUTOMATED DECISION ENGINE
+# 7. EXP-32 MASTER EXECUTION & AUTOMATED DECISION ENGINE
 # =============================================================================
 def run_exp_32_benchmark():
     print("\n" + "="*85)
