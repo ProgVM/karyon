@@ -97,7 +97,7 @@ class TrainConfig:
     dfet_k_sigma_na_weight: float = 0.25
     dfet_min_k_sigma: float = 0.15
     mastery_setpoint: float = 0.025
-    speech_mastery_setpoint: float = 1.20
+    speech_mastery_setpoint: float = 0.025
 
 
 @dataclass
