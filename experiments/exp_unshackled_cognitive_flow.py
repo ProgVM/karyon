@@ -1,6 +1,6 @@
 # experiments/exp_unshackled_cognitive_flow.py
 """
-feat(exp): implement unshackled 512d full-width cognitive flow and k=8 receptive field in exp-30
+feat(exp): fix F.silu in receptive field and implement unshackled 512d cognitive flow in exp-30
 
 ===============================================================================
 KARYON EXPERIMENTAL BENCHMARK: EXP-30 (UNSHACKLED COGNITIVE FLOW & FULL-WIDTH HIGHWAY)
@@ -79,7 +79,7 @@ class FlexibleCausalByteReceptiveField(nn.Module):
     def forward(self, x_seq: torch.Tensor) -> torch.Tensor:
         x_trans = x_seq.transpose(1, 2)
         x_padded = F.pad(x_trans, (self.kernel_size - 1, 0), mode='constant', value=0.0)
-        conv_out = torch.silu(self.conv(x_padded))
+        conv_out = F.silu(self.conv(x_padded))
         return self.norm(conv_out.transpose(1, 2) + x_seq)
 
 
@@ -225,10 +225,8 @@ class BaselineBottleneckAgent(nn.Module):
         self.ssd_core = CalibratedParallelSSDCore(self.hidden_dim, self.hidden_dim, 8, 32, 64)
         self.channel_mixer = ParallelSwiGLUBlock(self.hidden_dim, 1536)
         
-        # Legacy: 64 basins
         self.attractor_head = HighCapacityHopfieldAttractorHead(self.hidden_dim, num_attractors=64)
         
-        # Legacy Efference Bottleneck: 512 -> 128
         self.motor_text_proj = nn.Sequential(
             nn.Linear(self.hidden_dim, self.text_dim),
             nn.SiLU(),
@@ -244,7 +242,6 @@ class BaselineBottleneckAgent(nn.Module):
         h_reasoned = self.channel_mixer(h_ssm)
         h_relaxed = self.attractor_head.relax_to_minima(h_reasoned)[0]
         
-        # Squeezed into 128D
         h_proj = self.motor_text_proj(h_relaxed)
         logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
         loss = criterion(logits_flat, chunk_targets.contiguous().view(-1))
@@ -273,7 +270,7 @@ class UnshackledCognitiveAgent(nn.Module):
         # 4. 256-Basin High-Capacity Continuous Attractor Head
         self.attractor_head = HighCapacityHopfieldAttractorHead(self.hidden_dim, num_attractors=256)
         
-        # 5. Direct 512D Afferent-Efferent Lexical Highway (ZERO information destruction!)
+        # 5. Direct 512D Afferent-Efferent Lexical Highway
         self.motor_text_proj = nn.Sequential(
             nn.LayerNorm(self.hidden_dim),
             nn.SiLU(),
@@ -288,7 +285,6 @@ class UnshackledCognitiveAgent(nn.Module):
         h_reasoned = self.channel_mixer(h_ssm)
         h_relaxed = self.attractor_head.relax_to_minima(h_reasoned)[0]
         
-        # Full 512D dot-product with 512D byte embeddings
         h_proj = self.motor_text_proj(h_relaxed)
         logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
         loss = criterion(logits_flat, chunk_targets.contiguous().view(-1))
