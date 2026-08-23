@@ -1,7 +1,7 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v10.0 (PRODUCTION MASTER FRACTAL)
+KARYON AGENT CORE v10.1 (PRODUCTION MASTER FRACTAL)
 Complete 9-System Architecture with Native C++20 Thalamocortical Gated
 Fractal 3-Tier SDE-SSM Core (49,152 Scalar Memory Capacity, 176k tok/s),
 Causal N-gram Byte Receptive Field (K=4), Afferent-Efferent Sensory-Motor
@@ -60,7 +60,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v10.0 PRODUCTION MASTER FRACTAL)
+# MASTER CORE AGENT (v10.1 PRODUCTION MASTER FRACTAL)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -144,6 +144,9 @@ class CoREAgent(nn.Module):
         ).to(self.device)
         
         self.critic = nn.Linear(self.hidden_dim, 1).to(self.device)
+
+        self._cached_zero_vision = torch.zeros(1, config.net.vision_dim, device=self.device)
+        self._cached_zero_motor = torch.zeros(1, config.net.action_dim, device=self.device)
 
     def get_all_parameters(self) -> List[nn.Parameter]:
         params = (
@@ -362,7 +365,7 @@ class CoREAgent(nn.Module):
             total_speech_loss_accum += chunk_loss.item()
             total_fe_loss_accum += 0.01
 
-            # Somatic Homeostasis Update
+            # Somatic Homeostasis Update (FIXED: self.device throughout)
             with torch.no_grad():
                 curr_loss_val = chunk_loss.detach().item()
                 if episodic_memory is not None and curr_loss_val > 1.2:
@@ -373,7 +376,7 @@ class CoREAgent(nn.Module):
 
                 ema_surprise = (1.0 - alpha_ema) * ema_surprise + alpha_ema * (curr_loss_val / 4.0)
                 somatic_surprise = torch.clamp(torch.tensor([[ema_surprise]], device=self.device), 0.0, 0.40).repeat(batch_size, 1)
-                zero_entropy = torch.zeros((batch_size, 1), device=device)
+                zero_entropy = torch.zeros((batch_size, 1), device=self.device)
                 curr_u_t = hu_batch.update(action_cost_tensor, somatic_surprise, zero_entropy, cog_action_tensor).detach()
 
             if optimizer is not None:
