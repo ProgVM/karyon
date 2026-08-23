@@ -1,4 +1,11 @@
 # karyon_checkpoint.py
+"""
+===============================================================================
+KARYON CHECKPOINT & BINARY CONTAINER v4.1
+Zero-Copy Serializer and Loader for .kcore Containers Supporting Multi-Layer State Lists.
+===============================================================================
+"""
+
 import os
 import struct
 import json
@@ -6,39 +13,38 @@ import torch
 import numpy as np
 
 def adapt_and_copy_batch_buffer(target_tensor, source_tensor):
-    """Safely copies tensor data between target and source, handling dimension, capacity, and batch size differences."""
+    """Safely copies tensor data between target and source, handling shape differences."""
     src = source_tensor.to(target_tensor.device)
     
     if target_tensor.shape == src.shape:
         target_tensor.copy_(src)
         return
 
-    # 1D Tensors (e.g. pointer, size)
     if target_tensor.dim() == 1 and src.dim() == 1:
         copy_b = min(target_tensor.size(0), src.size(0))
         target_tensor[:copy_b].copy_(src[:copy_b])
         return
 
-    # 2D Tensors (e.g. state)
     if target_tensor.dim() == 2 and src.dim() == 2:
         copy_b = min(target_tensor.size(0), src.size(0))
         copy_d = min(target_tensor.size(1), src.size(1))
         target_tensor[:copy_b, :copy_d].copy_(src[:copy_b, :copy_d])
         return
 
-    # 3D Tensors (e.g. memory keys/values [Batch, Capacity, MemoryDim])
-    if target_tensor.dim() == 3 and src.dim() == 3:
+    if target_tensor.dim() == 4 and src.dim() == 4:
         copy_b = min(target_tensor.size(0), src.size(0))
-        copy_c = min(target_tensor.size(1), src.size(1))
-        copy_d = min(target_tensor.size(2), src.size(2))
-        target_tensor[:copy_b, :copy_c, :copy_d].copy_(src[:copy_b, :copy_c, :copy_d])
+        copy_h = min(target_tensor.size(1), src.size(1))
+        copy_k = min(target_tensor.size(2), src.size(2))
+        copy_v = min(target_tensor.size(3), src.size(3))
+        target_tensor[:copy_b, :copy_h, :copy_k, :copy_v].copy_(src[:copy_b, :copy_h, :copy_k, :copy_v])
         return
 
     slices = tuple(slice(0, min(t_d, s_d)) for t_d, s_d in zip(target_tensor.shape, src.shape))
     target_tensor[slices].copy_(src[slices])
 
-def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepath="karyon_soul.kcore", cpp_source_path="karyon_core.cpp"):
-    """Saves agent parameters, memory buffers, homeostasis, states, and DNA genome directly into a .kcore container."""
+def save_karyon(agent, memory, hu, h_fast, h_slow, m_states=None, epoch=0, story_idx=0, 
+                filepath="karyon_soul.kcore", cpp_source_path="karyon_core.cpp"):
+    """Saves agent parameters, multi-layer memory buffers, homeostasis, and DNA into .kcore."""
     if hasattr(agent, 'get_complete_state_dict'):
         state_dict = agent.get_complete_state_dict()
     else:
@@ -81,6 +87,10 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
         "memory_pointer": memory.pointer.detach().cpu(),
         "memory_size": memory.size.detach().cpu()
     }
+
+    if m_states is not None:
+        for idx, m_tensor in enumerate(m_states):
+            states_dict[f"m_state_layer_{idx}"] = m_tensor.detach().cpu()
     
     for name, tensor in states_dict.items():
         padding = (64 - (state_offset % 64)) % 64
@@ -103,13 +113,15 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
         "unified_dim": agent.unified_dim,
         "hidden_dim": agent.hidden_dim,
         "latent_dim": agent.latent_dim,
+        "num_layers": agent.num_layers,
+        "expand_dim": agent.expand_dim,
         "action_dim": agent.action_dim,
         "max_capacity": memory.max_capacity
     }
 
     manifest = {
-        "version": "1.0.0",
-        "arch": "Karyon-CoRE v3.6.0 Autonomous DNA",
+        "version": "4.1.0",
+        "arch": "Karyon-CoRE v16.0 Hierarchical Neocortex",
         "epoch": epoch,
         "story_idx": story_idx,
         "genome": genome_dna,
@@ -168,18 +180,19 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
     print(f"[KCORE Checkpoint] Complete State & DNA Genome persisted into container: '{filepath}' ({total_file_size / (1024*1024):.2f} MB)")
 
 def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu'):
-    """Loads agent weights, memory, homeostasis, and states directly from a .kcore container."""
+    """Loads agent weights, multi-layer memory, homeostasis, and states from .kcore container."""
     if not os.path.exists(filepath):
         print(f"[KCORE Checkpoint] Container file '{filepath}' not found. Initializing base state.")
         h_fast = torch.zeros(1, agent.hidden_dim, device=device)
         h_slow = torch.zeros(1, agent.hidden_dim, device=device)
-        return h_fast, h_slow, 0, 0
+        m_states = [torch.zeros(memory.batch_size, agent.num_heads, agent.head_k, agent.head_v, device=device) for _ in range(agent.num_layers)]
+        return h_fast, h_slow, m_states, 0, 0
 
     with open(filepath, 'rb') as f:
         magic = f.read(8)
         if magic[:5] != b'KCORE':
             print(f"[KCORE Checkpoint] File '{filepath}' is not a valid .kcore container.")
-            return torch.zeros(1, agent.hidden_dim, device=device), torch.zeros(1, agent.hidden_dim, device=device), 0, 0
+            return torch.zeros(1, agent.hidden_dim, device=device), torch.zeros(1, agent.hidden_dim, device=device), None, 0, 0
 
         header_raw = f.read(24)
         header_size, num_sections, total_file_size, flags = struct.unpack('<IIQQ', header_raw)
@@ -246,8 +259,16 @@ def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu'):
     adapt_and_copy_batch_buffer(h_fast, h_fast_saved)
     adapt_and_copy_batch_buffer(h_slow, h_slow_saved)
 
+    m_states = []
+    for l in range(agent.num_layers):
+        m_key = f"m_state_layer_{l}"
+        m_tensor = torch.zeros(memory.batch_size, agent.num_heads, agent.head_k, agent.head_v, device=device)
+        if m_key in states_dict:
+            adapt_and_copy_batch_buffer(m_tensor, states_dict[m_key])
+        m_states.append(m_tensor)
+
     epoch = manifest.get("epoch", 0)
     story_idx = manifest.get("story_idx", 0)
 
     print(f"[KCORE Checkpoint] Successfully restored 100% of entity state & DNA from container '{filepath}'")
-    return h_fast, h_slow, epoch, story_idx
+    return h_fast, h_slow, m_states, epoch, story_idx
