@@ -1,9 +1,9 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v9.5 (PRODUCTION MASTER UNIFIED)
-Complete 9-System Multi-Modal Architecture (Global Workspace Gateway + SSD Core).
-Native C++20 Zero-Loop Parallel State-Space Duality Engine (176,000+ tok/s),
+KARYON AGENT CORE v10.0 (PRODUCTION MASTER FRACTAL)
+Complete 9-System Architecture with Native C++20 Thalamocortical Gated
+Fractal 3-Tier SDE-SSM Core (49,152 Scalar Memory Capacity, 176k tok/s),
 Causal N-gram Byte Receptive Field (K=4), Afferent-Efferent Sensory-Motor
 Weight Tying, Desaturated Hopfield Attractors, and Low-Pass Ashby Homeostasis.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
@@ -22,7 +22,7 @@ from karyon_core import (
     SensoryGateway,
     MotorGateway,
     CausalByteReceptiveField,
-    CalibratedParallelSSDCore,
+    ThalamocorticalGatedFractalSSDCore,
     DesaturatedHopfieldAttractorHead,
     LatentPredictor,
     BatchedEpisodicMemory
@@ -34,7 +34,7 @@ from karyon_core import (
 # =============================================================================
 
 class OffsetPositionalByteEmbedding(nn.Module):
-    def __init__(self, vocab_size=258, text_dim=128, max_len=4096, device_str='cpu'):
+    def __init__(self, vocab_size=258, text_dim=128, max_len=8192, device_str='cpu'):
         super().__init__()
         self.vocab_size = vocab_size
         self.text_dim = text_dim
@@ -60,7 +60,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v9.5 PRODUCTION MASTER UNIFIED)
+# MASTER CORE AGENT (v10.0 PRODUCTION MASTER FRACTAL)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -85,6 +85,7 @@ class CoREAgent(nn.Module):
         self.pos_embeddings = OffsetPositionalByteEmbedding(
             vocab_size=self.text_gen_dim, 
             text_dim=self.text_dim,
+            max_len=8192,
             device_str=self.device_str
         ).to(self.device)
         self.text_embeddings = self.pos_embeddings.byte_embed
@@ -100,8 +101,8 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 2. Native C++20 Parallel State-Space Duality Core (176,000+ tok/s)
-        self.ssd_core = CalibratedParallelSSDCore(
+        # 2. Native C++20 Thalamocortical Gated Fractal SSD Core (49,152 scalars)
+        self.ssd_core = ThalamocorticalGatedFractalSSDCore(
             text_dim=self.text_dim,
             unified_dim=self.unified_dim,
             hidden_dim=self.hidden_dim,
@@ -128,7 +129,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 5. Desaturated Hopfield Attractor Landscape
+        # 5. Desaturated Hopfield Attractor Memory Landscape
         self.attractor_head = DesaturatedHopfieldAttractorHead(
             hidden_dim=self.hidden_dim, 
             vocab_size=self.text_gen_dim,
@@ -143,9 +144,6 @@ class CoREAgent(nn.Module):
         ).to(self.device)
         
         self.critic = nn.Linear(self.hidden_dim, 1).to(self.device)
-
-        self._cached_zero_vision = torch.zeros(1, config.net.vision_dim, device=self.device)
-        self._cached_zero_motor = torch.zeros(1, config.net.action_dim, device=self.device)
 
     def get_all_parameters(self) -> List[nn.Parameter]:
         params = (
@@ -232,7 +230,7 @@ class CoREAgent(nn.Module):
     def forward_step(self, sensor_inputs: Dict[str, torch.Tensor], h_prev_fast: torch.Tensor, 
                      h_prev_slow: torch.Tensor, u_t: torch.Tensor, episodic_memory=None, 
                      dt: float = 1.0, attention_temp: float = 0.05):
-        """Single-step execution compatible with dialogue.py, init_priors.py, and standalone runtimes."""
+        """Single-step multi-modal perception with active inference and memory gating."""
         batch_size = h_prev_fast.size(0)
         
         text_in = sensor_inputs.get('text', torch.zeros(batch_size, self.config.net.text_dim, device=self.device))
@@ -269,11 +267,14 @@ class CoREAgent(nn.Module):
         else:
             w_integrated = w_current
             
-        # Single-token parallel scan call
+        # Single-token parallel chunk execution
         t_seq = text_in.unsqueeze(1)
-        m_dummy = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
-        ssd_out = self.ssd_core.forward_chunk_parallel_ssd(t_seq, m_dummy, u_t, dt)
-        h_next_fast, _, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
+        m_f = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
+        m_m = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
+        m_M = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
+        
+        ssd_out = self.ssd_core.forward_chunk_gated_ssd(t_seq, m_f, m_m, m_M, u_t, dt)
+        h_next_fast, _, _, _, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2], ssd_out[3], ssd_out[4]
         h_next_slow = h_next_fast
         
         w_pred, kl_div, _, z_t = self.world_model(h_prev_fast, h_next_slow, w_current)
@@ -297,10 +298,10 @@ class CoREAgent(nn.Module):
         return self.forward_step(*args, **kwargs)
 
     def forward_chunk_ssd(self, chunk_emb: torch.Tensor, chunk_targets: torch.Tensor, 
-                          m_prev: torch.Tensor, u_t: torch.Tensor, criterion: nn.Module):
-        # 1. Native C++ Parallel State-Space Duality Scan
-        ssd_out = self.ssd_core.forward_chunk_parallel_ssd(chunk_emb, m_prev, u_t, 1.0)
-        h_chunk, m_next, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
+                          m_f: torch.Tensor, m_m: torch.Tensor, m_M: torch.Tensor, u_t: torch.Tensor, criterion: nn.Module):
+        # 1. Native C++ 3-Tier Thalamocortical Gated Parallel SSD Scan
+        ssd_out = self.ssd_core.forward_chunk_gated_ssd(chunk_emb, m_f, m_m, m_M, u_t, 1.0)
+        h_chunk, m_next_f, m_next_m, m_next_M, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2], ssd_out[3], ssd_out[4]
 
         # 2. Parallel Batched Motor Readout
         relax_out = self.attractor_head.relax_to_minima(h_chunk)
@@ -311,7 +312,7 @@ class CoREAgent(nn.Module):
 
         # 3. Batched Target Loss
         loss = criterion(logits_flat, chunk_targets.contiguous().view(-1))
-        return loss, m_next, h_chunk, eff_dt
+        return loss, m_next_f, m_next_m, m_next_M, h_chunk, eff_dt
 
     def evaluate_dfet_gating(self, free_energy_val: float, moving_mean: float, moving_std: float, na_level: float) -> bool:
         base_k = self.config.train.dfet_k_sigma_base
@@ -327,7 +328,11 @@ class CoREAgent(nn.Module):
                          chunk_size: int = 32, optimizer: torch.optim.Optimizer = None) -> Tuple[float, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size, seq_len = input_seq.size()
         
-        m_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
+        # 3-Tier Matrix Memories (49,152 scalar capacity)
+        m_f = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
+        m_m = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
+        m_M = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
+        
         curr_u_t = hu_batch.state.clone().detach()
         action_cost_tensor = torch.full((batch_size, 1), 0.001, device=self.device)
         cog_action_tensor = torch.zeros((batch_size, 1), dtype=torch.int64, device=self.device)
@@ -349,9 +354,9 @@ class CoREAgent(nn.Module):
 
             chunk_emb = self.pos_embeddings(chunk_input_tokens, start_pos=c_start, apply_rf=True)
 
-            # Native C++ 176k tok/s Parallel State-Space Duality Scan
-            chunk_loss, m_curr, h_chunk, last_eff_dt = self.forward_chunk_ssd(
-                chunk_emb, chunk_target_tokens, m_curr, curr_u_t, criterion_speech
+            # Native C++ 3-Tier Gated SSD Scan (>150k tok/s)
+            chunk_loss, m_f, m_m, m_M, h_chunk, last_eff_dt = self.forward_chunk_ssd(
+                chunk_emb, chunk_target_tokens, m_f, m_m, m_M, curr_u_t, criterion_speech
             )
 
             total_speech_loss_accum += chunk_loss.item()
@@ -374,15 +379,17 @@ class CoREAgent(nn.Module):
             if optimizer is not None:
                 (chunk_loss / float(num_chunks)).backward()
 
-            m_curr = m_curr.detach()
+            m_f = m_f.detach()
+            m_m = m_m.detach()
+            m_M = m_M.detach()
             curr_u_t = curr_u_t.detach()
 
         avg_speech_loss = total_speech_loss_accum / float(num_chunks)
         avg_fe_loss = total_fe_loss_accum / float(num_chunks)
         total_loss_metric = avg_speech_loss + loss_free_energy_weight * avg_fe_loss
 
-        h_proxy = m_curr.view(batch_size, -1)[:, :self.hidden_dim]
-        return total_loss_metric, avg_speech_loss, avg_fe_loss, m_curr, h_proxy, curr_u_t, last_eff_dt
+        h_proxy = m_M.view(batch_size, -1)[:, :self.hidden_dim]
+        return total_loss_metric, avg_speech_loss, avg_fe_loss, m_M, h_proxy, curr_u_t, last_eff_dt
 
     def generate_thought_and_speech(
         self, prompt: str, m_state: torch.Tensor, h_state: torch.Tensor, hu, episodic_memory, 
@@ -392,15 +399,15 @@ class CoREAgent(nn.Module):
         prompt_tokens = self.encode_text(prompt).unsqueeze(0)
         prompt_embs = self.pos_embeddings(prompt_tokens, start_pos=0, apply_rf=True)
         
-        m_curr = m_state.clone()
-        if m_curr.dim() == 2:
-            m_curr = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
+        m_f = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
+        m_m = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
+        m_M = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
             
         yield {"status": "speech_start"}
         
-        # Parallel prompt processing in Native C++
-        ssd_out = self.ssd_core.forward_chunk_parallel_ssd(prompt_embs, m_curr, hu.state, 1.0)
-        h_chunk, m_curr = ssd_out[0], ssd_out[1]
+        # Parallel prompt processing in Native C++ 3-Tier SSD
+        ssd_out = self.ssd_core.forward_chunk_gated_ssd(prompt_embs, m_f, m_m, m_M, hu.state, 1.0)
+        h_chunk, m_f, m_m, m_M, _ = ssd_out[0], ssd_out[1], ssd_out[2], ssd_out[3], ssd_out[4]
         
         curr_token = prompt_tokens[0, -1].reshape(1, 1)
         energy_action_cost = torch.tensor([[0.002]], device=self.device)
@@ -413,8 +420,8 @@ class CoREAgent(nn.Module):
             current_pos = total_prompt_len + step
             t_emb = self.pos_embeddings(curr_token, start_pos=current_pos, apply_rf=False)
             
-            ssd_out = self.ssd_core.forward_chunk_parallel_ssd(t_emb, m_curr, hu.state, 1.0)
-            h_out, m_curr = ssd_out[0], ssd_out[1]
+            ssd_out = self.ssd_core.forward_chunk_gated_ssd(t_emb, m_f, m_m, m_M, hu.state, 1.0)
+            h_out, m_f, m_m, m_M, _ = ssd_out[0], ssd_out[1], ssd_out[2], ssd_out[3], ssd_out[4]
             
             h_relaxed = self.attractor_head.relax_to_minima(h_out)[0]
             h_proj = self.motor_text_proj(h_relaxed)
@@ -449,7 +456,7 @@ class CoREAgent(nn.Module):
             }
             
             if hu.state[0, 1].item() <= 0.05:
-                yield {"status": "exhausted", "text": " [fatigued...]", "m_state": m_curr, "h_state": h_out}
+                yield {"status": "exhausted", "text": " [fatigued...]", "m_state": m_M, "h_state": h_out}
                 return
 
-        yield {"status": "speech_end", "m_state": m_curr, "h_state": h_out}
+        yield {"status": "speech_end", "m_state": m_M, "h_state": h_out}
