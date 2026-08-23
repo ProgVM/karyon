@@ -1,15 +1,11 @@
 # experiments/exp_multirate_ssd_spectrum.py
 """
-feat(exp): implement bio-inspired multi-rate decay spectrum and explicit 3-tier kep verdict
+feat(exp): implement production dataset parity in exp-29 benchmark under kep rule #7
 
 ===============================================================================
-KARYON EXPERIMENTAL BENCHMARK: EXP-29 (MULTI-RATE DECAY SPECTRUM & SCALED READOUT)
-Hypothesis: Initializing SSD heads with a log-spaced decay spectrum alpha_h in 
-[0.75, 0.997] (mimicking biological Gamma-to-Delta neural frequency multiplexing)
-combined with a learnable logit scaling parameter gamma and Cosine Annealing LR
-will resolve the byte temporal scale dilemma, breaking through the 1.20 loss floor
-(driving Loss < 0.85, PPL < 2.3) while preserving >120,000 tok/s throughput
-and ultra-lean <220 MB VRAM footprint.
+KARYON EXPERIMENTAL BENCHMARK: EXP-29 (MULTI-RATE DECAY SPECTRUM ON REAL DATASET)
+Evaluates Multi-Rate Frequency Spectrum alpha_h in [0.75, 0.997] vs Baseline
+under 100% PRODUCTION DATASET PARITY (50 real multi-topic batches from alpaca-gpt4).
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -23,6 +19,9 @@ from typing import Tuple, List
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+from torch.nn.utils.rnn import pad_sequence
+from datasets import load_dataset
 
 # 1. Unconditional PyTorch Dynamo Hotfix for Python 3.12 / Kaggle GPU
 class DummyDynamoModule(types.ModuleType):
@@ -119,19 +118,12 @@ class ParallelSwiGLUBlock(nn.Module):
 
 
 # =============================================================================
-# MODULE 3: PROPOSED MULTI-RATE DECAY SPECTRUM SSD CORE (EXP-29)
+# MODULE 3: SSD CORE (BASELINE UNIFORM VS PROPOSED BIO-SPECTRUM)
 # =============================================================================
 
-class MultiRateDecaySSDCore(nn.Module):
-    """
-    Bio-Inspired Multi-Rate State-Space Duality Core.
-    Initializes heads with a log-spaced decay spectrum alpha_h in [0.75, 0.997]:
-    - Head 0..1: Gamma-band (alpha ~ 0.76, local byte transition / spelling)
-    - Head 2..4: Beta/Theta-band (alpha ~ 0.92 - 0.97, morphemes & syntax)
-    - Head 5..7: Delta/Infraslow-band (alpha ~ 0.990 - 0.997, episodic context anchors)
-    """
+class ConfigurableSSDCore(nn.Module):
     def __init__(self, text_dim: int = 128, unified_dim: int = 256, hidden_dim: int = 512,
-                 num_heads: int = 8, head_k: int = 32, head_v: int = 64, use_spectrum: bool = True):
+                 num_heads: int = 8, head_k: int = 32, head_v: int = 64, use_spectrum: bool = False):
         super().__init__()
         self.text_dim = text_dim
         self.unified_dim = unified_dim
@@ -147,9 +139,11 @@ class MultiRateDecaySSDCore(nn.Module):
         self.v_proj = nn.Linear(unified_dim, num_heads * head_v)
 
         if use_spectrum:
+            # Biological Frequency Spectrum (Gamma to Delta bands)
             spectrum_init = torch.linspace(1.15, 5.80, num_heads).view(1, num_heads, 1, 1)
             self.decay_logits = nn.Parameter(spectrum_init)
         else:
+            # Baseline: Uniform initialization around 2.0
             self.decay_logits = nn.Parameter(torch.randn(1, num_heads, 1, 1) * 0.1 + 2.0)
 
         self.out_proj = nn.Linear(hidden_dim, hidden_dim)
@@ -201,20 +195,20 @@ class MultiRateDecaySSDCore(nn.Module):
 # BENCHMARK AGENTS
 # =============================================================================
 
-class BaselineAgent(nn.Module):
-    """Baseline v15.2: Uniform Decay Initialization + Fixed 1/sqrt(D) Scaling."""
-    def __init__(self, config):
+class ParityBenchmarkAgent(nn.Module):
+    def __init__(self, config, use_spectrum: bool = False):
         super().__init__()
         self.config = config
         self.hidden_dim = config.net.hidden_dim
         self.unified_dim = config.net.unified_dim
         self.text_dim = config.net.text_dim
         self.text_gen_dim = config.net.text_gen_dim
+        self.use_spectrum = use_spectrum
         self.inv_sqrt_text_dim = 1.0 / math.sqrt(self.text_dim)
 
         self.pos_embeddings = OffsetPositionalByteEmbedding(self.text_gen_dim, self.text_dim, device_str=device_str)
-        self.ssd_core = MultiRateDecaySSDCore(
-            self.text_dim, self.unified_dim, self.hidden_dim, 8, 32, 64, use_spectrum=False
+        self.ssd_core = ConfigurableSSDCore(
+            self.text_dim, self.unified_dim, self.hidden_dim, 8, 32, 64, use_spectrum=use_spectrum
         )
         self.channel_mixer = ParallelSwiGLUBlock(hidden_dim=self.hidden_dim, expand_dim=1536)
         self.attractor_head = DesaturatedHopfieldAttractorHead(
@@ -235,57 +229,63 @@ class BaselineAgent(nn.Module):
         h_proj = self.motor_text_proj(h_relaxed)
         logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
         loss = criterion(logits_flat, chunk_targets.contiguous().view(-1))
-        return loss, m_next, logits_flat
-
-
-class ProposedMultiRateSpectrumAgent(nn.Module):
-    """Proposed EXP-29: Multi-Rate Frequency Spectrum + Learnable Logit Scale gamma."""
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        self.hidden_dim = config.net.hidden_dim
-        self.unified_dim = config.net.unified_dim
-        self.text_dim = config.net.text_dim
-        self.text_gen_dim = config.net.text_gen_dim
-
-        self.pos_embeddings = OffsetPositionalByteEmbedding(self.text_gen_dim, self.text_dim, device_str=device_str)
-        self.ssd_core = MultiRateDecaySSDCore(
-            self.text_dim, self.unified_dim, self.hidden_dim, 8, 32, 64, use_spectrum=True
-        )
-        self.channel_mixer = ParallelSwiGLUBlock(hidden_dim=self.hidden_dim, expand_dim=1536)
-        self.attractor_head = DesaturatedHopfieldAttractorHead(
-            hidden_dim=self.hidden_dim, vocab_size=self.text_gen_dim, num_attractors=64, device=device_str
-        )
-        self.motor_text_proj = nn.Sequential(
-            nn.Linear(self.hidden_dim, self.text_dim),
-            nn.SiLU(),
-            nn.LayerNorm(self.text_dim)
-        )
-        self.logit_scale = nn.Parameter(torch.tensor(math.sqrt(float(self.text_dim))))
-
-    def forward_chunk(self, chunk_emb: torch.Tensor, chunk_targets: torch.Tensor, 
-                      m_prev: torch.Tensor, u_t: torch.Tensor, criterion: nn.Module):
-        h_ssm, m_next = self.ssd_core.forward_chunk_ssd(chunk_emb, m_prev, u_t, dt=1.0)
-        h_reasoned = self.channel_mixer(h_ssm)
-        h_relaxed = self.attractor_head.relax_to_minima(h_reasoned)[0]
-        
-        h_proj = self.motor_text_proj(h_relaxed)
-        raw_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight)
-        eff_scale = self.logit_scale / float(self.text_dim)
-        logits_flat = raw_logits * eff_scale
-
-        loss = criterion(logits_flat, chunk_targets.contiguous().view(-1))
-        return loss, m_next, logits_flat
+        return loss, m_next
 
 
 # =============================================================================
-# BENCHMARK EXECUTION SUITE
+# KEP RULE #7: PRODUCTION DATASET PIPELINE
+# =============================================================================
+
+class ProductionParityDataset(Dataset):
+    """Loads a slice of the real 52k Alpaca-GPT4 dataset for rigorous evaluation."""
+    def __init__(self, hf_dataset, tokenizer, max_samples=1600, max_len=512):
+        self.samples = []
+        count = 0
+        for item in hf_dataset:
+            instruction = item.get("instruction", "").strip()
+            output = item.get("output", "").strip()
+            if instruction and output:
+                formatted_dialog = f"User: {instruction}\nKaryon: {output}"
+                ids = tokenizer.encode(formatted_dialog)
+                if len(ids) > max_len:
+                    ids = ids[:max_len-1] + [257]
+                if len(ids) > 20:
+                    self.samples.append(torch.tensor(ids, dtype=torch.long))
+                    count += 1
+                    if count >= max_samples:
+                        break
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        return self.samples[idx]
+
+def collate_fn(batch):
+    return pad_sequence(batch, batch_first=True, padding_value=256)
+
+
+# =============================================================================
+# BENCHMARK EXECUTION SUITE UNDER KEP RULE #7
 # =============================================================================
 
 def run_isolated_benchmark():
     print(f"\n{'='*85}")
-    print(f" === RUNNING KEP HYPOTHESIS #29 BENCHMARK (MULTI-RATE SPECTRUM): {device_str.upper()} ===")
+    print(f" === RUNNING KEP EXP-29 BENCHMARK UNDER KEP RULE #7 (PROD DATASET PARITY) ===")
+    print(f" Context Hardware: {device_str.upper()} | Dataset: vicgalle/alpaca-gpt4")
     print(f"{'='*85}\n")
+
+    tokenizer = ByteTokenizer()
+    print("[KEP Data Loader] Pulling real evaluation dataset from vicgalle/alpaca-gpt4...")
+    raw_dataset = load_dataset("vicgalle/alpaca-gpt4", split="train")
+    
+    # 50 batches of 32 = 1600 diverse open-domain conversations (819,200 bytes)
+    eval_dataset = ProductionParityDataset(raw_dataset, tokenizer, max_samples=1600, max_len=512)
+    batch_size = 32
+    eval_loader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn, drop_last=True)
+    num_eval_batches = len(eval_loader)
+
+    print(f"[KEP Data Loader] Parity Dataset Ready: {len(eval_dataset)} samples | {num_eval_batches} Batches (B=32, Seq=512)\n")
 
     config = CoREConfig()
     config.net.hidden_dim = 512
@@ -293,57 +293,49 @@ def run_isolated_benchmark():
     config.net.text_dim = 128
     config.net.text_gen_dim = 258
 
-    batch_size = 32
-    seq_len = 512
     chunk_size = 32
-    num_eval_steps = 35
-
-    criterion = nn.CrossEntropyLoss(ignore_index=256)
-    tokenizer = ByteTokenizer()
+    seq_len = 512
     num_chunks = seq_len // chunk_size
-
-    sample_text = (
-        "User: Explain why the Sun radiates energy and how photosynthesis works.\n"
-        "Karyon: The Sun generates radiant solar energy through nuclear fusion in its core. "
-        "Plants absorb this light energy using chlorophyll pigments to convert carbon dioxide and water into glucose."
-    )
-    tokens_raw = tokenizer.encode(sample_text)
-    repeats = ((seq_len + 1) // len(tokens_raw)) + 2
-    full_tokens = (tokens_raw * repeats)[:seq_len + 1]
-
-    input_tokens = torch.tensor([full_tokens[:seq_len]], dtype=torch.long, device=device).repeat(batch_size, 1)
-    target_tokens = torch.tensor([full_tokens[1:seq_len + 1]], dtype=torch.long, device=device).repeat(batch_size, 1)
+    criterion = nn.CrossEntropyLoss(ignore_index=256)
 
     # -------------------------------------------------------------------------
-    # TEST 1: BASELINE (Uniform Decay + Fixed 1/sqrt(D) Scaling)
+    # TEST 1: BASELINE (Uniform Decay on REAL 50-batch dataset)
     # -------------------------------------------------------------------------
-    print("[1/2] Evaluating BASELINE (Uniform Decay alpha ~ 0.88, Fixed 1/sqrt(D))...")
-    base_model = BaselineAgent(config).to(device)
+    print(f"[1/2] Evaluating BASELINE (Uniform Decay) across {num_eval_batches} real open-domain batches...")
+    torch.manual_seed(42)
+    base_model = ParityBenchmarkAgent(config, use_spectrum=False).to(device)
     base_opt = torch.optim.Adam(base_model.parameters(), lr=3e-3)
     hu_base = HomeostaticUnit(batch_size=batch_size, device=device_str)
 
     base_times, base_losses = [], []
 
-    for step in range(num_eval_steps):
+    for b_idx, batch_tokens in enumerate(eval_loader):
+        batch_tokens = batch_tokens.to(device)
+        input_seq = batch_tokens[:, :-1]
+        target_seq = batch_tokens[:, 1:]
+
         base_opt.zero_grad()
         if device.type == 'cuda': torch.cuda.synchronize()
         t0 = time.perf_counter()
 
         m_prev = torch.zeros(batch_size, 8, 32, 64, device=device)
         u_t = hu_base.state.clone().detach()
-
         batch_losses = []
+
         for chunk_idx in range(num_chunks):
             c_start = chunk_idx * chunk_size
             c_end = (chunk_idx + 1) * chunk_size
 
-            chunk_emb = base_model.pos_embeddings(input_tokens[:, c_start:c_end], start_pos=c_start, apply_rf=True)
-            chunk_targets = target_tokens[:, c_start:c_end]
+            chunk_emb = base_model.pos_embeddings(input_seq[:, c_start:c_end], start_pos=c_start, apply_rf=True)
+            chunk_targets = target_seq[:, c_start:c_end]
 
-            chunk_loss, m_prev, _ = base_model.forward_chunk(chunk_emb, chunk_targets, m_prev, u_t, criterion)
+            chunk_loss, m_prev = base_model.forward_chunk(chunk_emb, chunk_targets, m_prev, u_t, criterion)
             (chunk_loss / float(num_chunks)).backward()
             batch_losses.append(chunk_loss.item())
 
+            with torch.no_grad():
+                has_eos = (input_seq[:, c_start:c_end] == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
+                m_prev = m_prev * (1.0 - has_eos)
             m_prev = m_prev.detach()
 
         base_opt.step()
@@ -354,63 +346,46 @@ def run_isolated_benchmark():
         base_losses.append(sum(batch_losses) / len(batch_losses))
 
     # -------------------------------------------------------------------------
-    # TEST 2: PROPOSED (EXP-29: Multi-Rate Frequency Spectrum + Adaptive gamma)
+    # TEST 2: PROPOSED (Multi-Rate Spectrum on IDENTICAL 50-batch dataset)
     # -------------------------------------------------------------------------
-    print("[2/2] Evaluating PROPOSED (Multi-Rate Spectrum alpha in [0.76, 0.997] + Adaptive Logit Scale)...")
-    prop_model = ProposedMultiRateSpectrumAgent(config).to(device)
-    
-    decay_params = []
-    no_decay_params = []
-    for name, p in prop_model.named_parameters():
-        if p.requires_grad:
-            if p.dim() < 2 or "norm" in name or "bias" in name or "decay_logits" in name or "logit_scale" in name:
-                no_decay_params.append(p)
-            else:
-                decay_params.append(p)
-
-    prop_opt = torch.optim.AdamW([
-        {"params": decay_params, "weight_decay": 0.01},
-        {"params": no_decay_params, "weight_decay": 0.0}
-    ], lr=3e-3)
-
-    def lr_lambda(current_step: int):
-        warmup = 5
-        if current_step < warmup:
-            return float(current_step + 1) / float(warmup)
-        progress = float(current_step - warmup) / float(max(1, num_eval_steps - warmup))
-        return 0.1 + 0.9 * 0.5 * (1.0 + math.cos(math.pi * progress))
-
-    scheduler = torch.optim.lr_scheduler.LambdaLR(prop_opt, lr_lambda)
+    print(f"[2/2] Evaluating PROPOSED (Bio Multi-Rate Spectrum) across {num_eval_batches} real batches...")
+    torch.manual_seed(42)
+    prop_model = ParityBenchmarkAgent(config, use_spectrum=True).to(device)
+    prop_opt = torch.optim.Adam(prop_model.parameters(), lr=3e-3)
     hu_prop = HomeostaticUnit(batch_size=batch_size, device=device_str)
 
     prop_times, prop_losses = [], []
 
-    for step in range(num_eval_steps):
+    for b_idx, batch_tokens in enumerate(eval_loader):
+        batch_tokens = batch_tokens.to(device)
+        input_seq = batch_tokens[:, :-1]
+        target_seq = batch_tokens[:, 1:]
+
         prop_opt.zero_grad()
         if device.type == 'cuda': torch.cuda.synchronize()
         t0 = time.perf_counter()
 
         m_prev = torch.zeros(batch_size, 8, 32, 64, device=device)
         u_t = hu_prop.state.clone().detach()
-
         batch_losses = []
+
         for chunk_idx in range(num_chunks):
             c_start = chunk_idx * chunk_size
             c_end = (chunk_idx + 1) * chunk_size
 
-            chunk_emb = prop_model.pos_embeddings(input_tokens[:, c_start:c_end], start_pos=c_start, apply_rf=True)
-            chunk_targets = target_tokens[:, c_start:c_end]
+            chunk_emb = prop_model.pos_embeddings(input_seq[:, c_start:c_end], start_pos=c_start, apply_rf=True)
+            chunk_targets = target_seq[:, c_start:c_end]
 
-            chunk_loss, m_prev, _ = prop_model.forward_chunk(chunk_emb, chunk_targets, m_prev, u_t, criterion)
+            chunk_loss, m_prev = prop_model.forward_chunk(chunk_emb, chunk_targets, m_prev, u_t, criterion)
             (chunk_loss / float(num_chunks)).backward()
             batch_losses.append(chunk_loss.item())
 
+            with torch.no_grad():
+                has_eos = (input_seq[:, c_start:c_end] == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
+                m_prev = m_prev * (1.0 - has_eos)
             m_prev = m_prev.detach()
 
-        torch.nn.utils.clip_grad_norm_(prop_model.parameters(), max_norm=2.0)
         prop_opt.step()
-        scheduler.step()
-
         if device.type == 'cuda': torch.cuda.synchronize()
         step_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -432,38 +407,37 @@ def run_isolated_benchmark():
     final_prop_loss = prop_losses[-1]
 
     print("\n" + "="*90)
-    print(" === [KEP RULE #6 TELEMETRY BENCHMARK REPORT: MULTI-RATE SPECTRUM] ===")
+    print(" === [KEP RULE #6 TELEMETRY REPORT: PROD DATASET PARITY (50 REAL BATCHES)] ===")
     print("="*90)
-    print(f"{'Performance Metric':<35} | {'Baseline (Uniform)':<22} | {'Proposed (Multi-Rate)':<22} | {'Delta':<10}")
+    print(f"{'Performance Metric':<35} | {'Baseline (Uniform)':<22} | {'Proposed (Bio Spectrum)':<22} | {'Delta':<10}")
     print("-" * 95)
     print(f"{'Step Duration (ms)':<35} | {avg_base_time:<22.2f} | {avg_prop_time:<22.2f} | {avg_prop_time - avg_base_time:+6.1f} ms")
     print(f"{'Throughput Speed (tok/s)':<35} | {base_tok_per_sec:<22.1f} | {prop_tok_per_sec:<22.1f} | {prop_tok_per_sec/base_tok_per_sec:+.2f}x (⚡⚡⚡)")
     print(f"{'Peak VRAM Memory (MB)':<35} | {base_vram:<22.1f} | {base_vram:<22.1f} | {'0.0 MB (Lean)':<10}")
-    print(f"{'Initial Loss (Step 1)':<35} | {base_losses[0]:<22.4f} | {prop_losses[0]:<22.4f} | {prop_losses[0] - base_losses[0]:+6.4f}")
-    print(f"{'Final Loss (Step 35)':<35} | {final_base_loss:<22.4f} | {final_prop_loss:<22.4f} | {final_prop_loss - final_base_loss:+6.4f}")
-    print(f"{'Perplexity (PPL Step 35)':<35} | {math.exp(final_base_loss):<22.2f} | {math.exp(final_prop_loss):<22.2f} | {math.exp(final_prop_loss) - math.exp(final_base_loss):+6.2f}")
+    print(f"{'Initial Real Loss (Batch 1)':<35} | {base_losses[0]:<22.4f} | {prop_losses[0]:<22.4f} | {prop_losses[0] - base_losses[0]:+6.4f}")
+    print(f"{'Final Real Loss (Batch 50)':<35} | {final_base_loss:<22.4f} | {final_prop_loss:<22.4f} | {final_prop_loss - final_base_loss:+6.4f}")
+    print(f"{'Perplexity (Real PPL)':<35} | {math.exp(final_base_loss):<22.2f} | {math.exp(final_prop_loss):<22.2f} | {math.exp(final_prop_loss) - math.exp(final_base_loss):+6.2f}")
     print("="*90)
 
-    # Inspect Spectrum Heads in Proposed Model
     with torch.no_grad():
         alpha_spectrum = torch.sigmoid(prop_model.ssd_core.decay_logits).view(-1).tolist()
         print("\n[Biological Frequency Spectrum across SSD Heads]:")
         bands = ["Gamma (Local)", "Gamma (Phoneme)", "Beta (Morpheme)", "Beta (Word)", 
                  "Theta (Clause)", "Theta (Sentence)", "Delta (Paragraph)", "Delta (Context Anchor)"]
         for h_idx, (a_val, b_name) in enumerate(zip(alpha_spectrum, bands)):
-            print(f"  Head {h_idx+1} | alpha = {a_val:.4f} | Neural Band: {b_name}")
+            print(f"  Head {h_idx+1} | alpha = {a_val:.4f} | Band: {b_name}")
 
     # =========================================================================
     # KEP RULE #4: DIAGNOSTIC SPEECH SAMPLING (TOP-P = 0.90)
     # =========================================================================
     print("\n" + "="*90)
-    print(" === [KEP RULE #4 DIAGNOSTIC SPEECH SAMPLING (TOP-P = 0.90)] ===")
+    print(" === [KEP RULE #4 DIAGNOSTIC SPEECH SAMPLING ON AUDITED SOUL (TOP-P = 0.90)] ===")
     print("="*90)
 
-    prompt = "User: Explain why the Sun radiates energy and how photosynthesis works.\nKaryon:"
+    prompt = "User: What is the primary source of energy for Earth?\nKaryon:"
     p_ids = torch.tensor(tokenizer.encode(prompt), dtype=torch.long, device=device).unsqueeze(0)
 
-    def generate_eval(model, name, is_prop=False):
+    def generate_eval(model, name):
         model.eval()
         with torch.no_grad():
             p_emb = model.pos_embeddings(p_ids, start_pos=0, apply_rf=True)
@@ -489,11 +463,7 @@ def run_isolated_benchmark():
                 h_relaxed = model.attractor_head.relax_to_minima(h_step)[0]
                 
                 h_proj = model.motor_text_proj(h_relaxed)
-                raw_l = F.linear(h_proj, model.pos_embeddings.byte_embed.weight)
-                if is_prop:
-                    logits = (raw_l * (model.logit_scale / float(model.text_dim))) / 0.7
-                else:
-                    logits = (raw_l * model.inv_sqrt_text_dim) / 0.7
+                logits = (F.linear(h_proj, model.pos_embeddings.byte_embed.weight) * model.inv_sqrt_text_dim) / 0.7
                 logits[:, 256:] = -1e9
 
                 sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
@@ -515,14 +485,14 @@ def run_isolated_benchmark():
 
         print(f"[{name}] -> \"{''.join(chars)}\"")
 
-    generate_eval(base_model, "Baseline (Uniform alpha ~ 0.88)", is_prop=False)
-    generate_eval(prop_model, "Proposed (Multi-Rate Spectrum alpha in [0.76, 0.997])", is_prop=True)
+    generate_eval(base_model, "Baseline (Uniform alpha ~ 0.88)")
+    generate_eval(prop_model, "Proposed (Bio-Spectrum alpha in [0.76, 0.997])")
     print("="*90 + "\n")
 
     # =========================================================================
     # KEP RULE #2: STRICT 3-TIER VERDICT EVALUATION PROTOCOL
     # =========================================================================
-    print("--- [KEP RULE #2 VERDICT EVALUATION] ---")
+    print("--- [KEP RULE #2 VERDICT EVALUATION UNDER RULE #7 PARITY] ---")
     
     is_nan_or_diverged = math.isnan(final_prop_loss) or math.isinf(final_prop_loss)
     throughput_retained = prop_tok_per_sec >= (base_tok_per_sec * 0.80)
@@ -530,22 +500,17 @@ def run_isolated_benchmark():
     loss_degraded = (final_prop_loss > final_base_loss + 0.05)
 
     if not is_nan_or_diverged and significant_loss_drop and throughput_retained:
-        print("🟢 KEP VERDICT: POSITIVE (Multi-Rate Frequency Spectrum Validated!).")
-        print(f"   Reason: Loss dropped by {final_base_loss - final_prop_loss:.4f} with preserved {prop_tok_per_sec:.1f} tok/s throughput.")
+        print("🟢 KEP VERDICT: POSITIVE (Multi-Rate Frequency Spectrum Validated on Real Dataset!).")
+        print(f"   Reason: Real open-domain loss dropped by {final_base_loss - final_prop_loss:.4f} across 50 diverse batches.")
         print("   Action: Adopt Multi-Rate Frequency Spectrum into production karyon_core!")
     elif not is_nan_or_diverged and not loss_degraded and throughput_retained:
-        print("⚪ KEP VERDICT: NEUTRAL (Hypothesis showed no statistically significant gain).")
-        print(f"   Reason: Loss delta ({final_prop_loss - final_base_loss:+.4f}) within noise boundary. No regression, but no clear gain.")
+        print("⚪ KEP VERDICT: NEUTRAL (No statistically significant gain on real dataset).")
+        print(f"   Reason: Loss delta ({final_prop_loss - final_base_loss:+.4f}) within noise boundary.")
         print("   Action: Do not merge into production. Archive in experiments/archive/.")
     else:
-        print("🔴 KEP VERDICT: REJECTED (Hypothesis degraded model performance).")
-        if is_nan_or_diverged:
-            print("   Reason: Numerical divergence / NaN encountered.")
-        elif not throughput_retained:
-            print(f"   Reason: Throughput dropped below threshold ({prop_tok_per_sec:.1f} tok/s vs {base_tok_per_sec:.1f} tok/s).")
-        else:
-            print(f"   Reason: Loss degraded by {final_prop_loss - final_base_loss:+.4f} (PPL increased).")
-        print("   Action: Log rejection reasons in Master Architecture Registry and discard changes.")
+        print("🔴 KEP VERDICT: REJECTED (Degradation on real dataset).")
+        print(f"   Reason: Real loss degraded by {final_prop_loss - final_base_loss:+.4f}.")
+        print("   Action: Log rejection reasons in Master Architecture Registry and discard.")
     print("="*90 + "\n")
 
 
