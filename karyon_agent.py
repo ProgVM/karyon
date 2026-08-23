@@ -1,9 +1,9 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v17.0 (NAN-PROOF NATIVE CORTICAL ENGINE MASTER)
+KARYON AGENT CORE v17.1 (MONOLITHIC NATIVE CORTICAL ENGINE MASTER)
 Full-Sequence Zero-Loop C++20 Hierarchical Cortical Scan (>100k tok/s),
-Logit Soft-Capping (30.0 * tanh), NaN-Proof SFT Masked Loss,
+Logit Soft-Capping (30.0 * tanh), NaN-Proof SFT Masked Loss, DFET Gating,
 Lexical Afferent-Efferent Weight Tying, and Ashby Somatic Ultrastability.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
@@ -60,7 +60,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v17.0 NAN-PROOF CORTICAL MASTER)
+# MASTER CORE AGENT (v17.1 MONOLITHIC MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -245,6 +245,111 @@ class CoREAgent(nn.Module):
             return raw_b.decode('utf-8', errors='replace')
         return self.tokenizer.decode(ids)
 
+    def evaluate_dfet_gating(self, free_energy_val: float, moving_mean: float, moving_std: float, na_level: float) -> bool:
+        """Evaluates Dynamic Free Energy Thresholding (DFET v3) Plasticity Gating."""
+        base_k = self.config.train.dfet_k_sigma_base
+        na_weight = self.config.train.dfet_k_sigma_na_weight
+        min_k = self.config.train.dfet_min_k_sigma
+        
+        k_sigma = max(min_k, base_k - na_weight * na_level)
+        dynamic_threshold = moving_mean + k_sigma * moving_std
+        return free_energy_val > dynamic_threshold
+
+    def forward_step(self, sensor_inputs: Dict[str, torch.Tensor], h_prev_fast: torch.Tensor, 
+                     h_prev_slow: torch.Tensor, u_t: torch.Tensor, episodic_memory=None, 
+                     dt: float = 1.0, attention_temp: float = 0.05, m_states: List[torch.Tensor] = None):
+        batch_size = h_prev_fast.size(0)
+        
+        text_in = sensor_inputs.get('text', torch.zeros(batch_size, self.config.net.text_dim, device=self.device))
+        if text_in.dim() == 3:
+            text_in = text_in.reshape(batch_size, self.config.net.text_dim)
+            
+        vision_in = sensor_inputs.get('vision', torch.zeros(batch_size, self.config.net.vision_dim, device=self.device))
+        motor_in = sensor_inputs.get('motor_efference', torch.zeros(batch_size, self.config.net.action_dim, device=self.device))
+        
+        w_current, attn_weights, channel_names, epistemic_entropy = self.gateway(
+            text_in, vision_in, motor_in, h_prev_fast, u_t
+        )
+        
+        curiosity     = u_t.select(1, 0).unsqueeze(1)
+        energy        = u_t.select(1, 1).unsqueeze(1)
+        noradrenaline = u_t.select(1, 4).unsqueeze(1)
+        
+        volitional_recall_gate = torch.sigmoid(2.0 * noradrenaline + 1.5 * curiosity - 0.5 * (1.0 - energy))
+        na_trigger = getattr(self.config.memory, 'volitional_na_trigger', 0.12)
+        should_search_memory = (episodic_memory is not None) and (noradrenaline.mean().item() > na_trigger) and (episodic_memory.size.max().item() > 0)
+
+        if should_search_memory:
+            with torch.no_grad():
+                retrieved_memory, max_sim = episodic_memory.read(
+                    w_current.detach(), attention_temp, 
+                    self.config.memory.default_read_threshold,
+                    self.config.memory.sigmoid_gating_beta
+                )
+                if retrieved_memory.dim() > 2:
+                    retrieved_memory = retrieved_memory.reshape(batch_size, self.unified_dim)
+            w_integrated = w_current + retrieved_memory.detach() * volitional_recall_gate
+        else:
+            w_integrated = w_current
+            
+        # Native C++20 Multi-Layer Cortical Processing
+        t_seq = text_in.unsqueeze(1)
+        x = self.input_proj(t_seq)
+        
+        if m_states is None or len(m_states) != self.num_layers or m_states[0].size(0) != batch_size:
+            m_states = [torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device) for _ in range(self.num_layers)]
+            
+        cortical_out = self.cortical_stack.forward_stack(x, m_states, u_t, dt)
+        x_out, next_m_list = cortical_out[0], cortical_out[1]
+        
+        h_reasoned = x_out.squeeze(1)
+        h_next_fast = h_reasoned
+        h_next_slow = h_next_fast
+        
+        w_pred, kl_div, _, z_t = self.world_model(h_prev_fast, h_next_slow, w_current)
+        
+        cosine_sim = F.cosine_similarity(w_current, w_pred, dim=-1, eps=1e-8).unsqueeze(-1)
+        rec_loss = 1.0 - cosine_sim
+        free_energy = kl_div + rec_loss
+
+        relax_out = self.attractor_head.relax_to_minima(h_reasoned)
+        h_relaxed = relax_out[0]
+        
+        outputs = self.output_gateway(h_relaxed)
+        h_proj = self.motor_text_proj(h_relaxed)
+        
+        raw_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight)
+        outputs["text_generation"] = 30.0 * torch.tanh(raw_logits / 30.0)
+        
+        state_value = self.critic(h_reasoned)
+        eff_dt = torch.tensor([[dt]], device=self.device)
+        return h_next_fast, h_next_slow, outputs, state_value, w_pred, free_energy, kl_div, w_current, attn_weights, channel_names, epistemic_entropy, eff_dt, next_m_list
+
+    def forward(self, *args, **kwargs):
+        return self.forward_step(*args, **kwargs)
+
+    def forward_chunk_ssd(self, chunk_emb: torch.Tensor, chunk_targets: torch.Tensor, 
+                          m_list: List[torch.Tensor], u_t: torch.Tensor, criterion: nn.Module):
+        x = self.input_proj(chunk_emb)
+        cortical_out = self.cortical_stack.forward_stack(x, m_list, u_t, 1.0)
+        x_out, next_m_list = cortical_out[0], cortical_out[1]
+
+        h_chunk = x_out.reshape(-1, self.hidden_dim)
+        h_relaxed = self.attractor_head.relax_to_minima(h_chunk)[0]
+        
+        h_proj = self.motor_text_proj(h_relaxed)
+        raw_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight)
+        bounded_logits = 30.0 * torch.tanh(raw_logits / 30.0)
+
+        targets_flat = chunk_targets.contiguous().view(-1)
+        valid_targets = (targets_flat != 256)
+        if valid_targets.any():
+            loss = criterion(bounded_logits, targets_flat)
+            loss = torch.nan_to_num(loss, nan=0.0, posinf=10.0, neginf=0.0)
+        else:
+            loss = (bounded_logits * 0.0).sum()
+        return loss, next_m_list, h_chunk
+
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, 
                          criterion_speech: nn.Module, episodic_memory=None, loss_free_energy_weight: float = 0.05, 
                          chunk_size: int = 64, optimizer: torch.optim.Optimizer = None) -> Tuple[float, float, float, List[torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -269,8 +374,6 @@ class CoREAgent(nn.Module):
         
         h_proj = self.motor_text_proj(h_relaxed)
         raw_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight)
-        
-        # Logit Soft-Capping prevents float overflow and NaN forever!
         bounded_logits = 30.0 * torch.tanh(raw_logits / 30.0)
 
         # 4. NaN-Proof SFT Masked CrossEntropy Loss
@@ -307,9 +410,10 @@ class CoREAgent(nn.Module):
     ) -> Generator[Dict[str, Any], None, None]:
         prompt_tokens = self.encode_text(prompt).unsqueeze(0)
         prompt_embs = self.pos_embeddings(prompt_tokens, start_pos=0, apply_rf=True)
+        batch_size = prompt_tokens.size(0)
         
-        if m_states is None or len(m_states) != self.num_layers:
-            m_states = [torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device) for _ in range(self.num_layers)]
+        if m_states is None or len(m_states) != self.num_layers or m_states[0].size(0) != batch_size:
+            m_states = [torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device) for _ in range(self.num_layers)]
             
         yield {"status": "speech_start"}
         
