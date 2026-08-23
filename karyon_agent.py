@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from karyon_config import CoREConfig
 from karyon_core import (
     ByteTokenizer,
     HomeostaticUnit,
@@ -377,6 +378,81 @@ class CoREAgent(nn.Module):
             raw_b = self.tokenizer.decode_bytes(ids)
             return raw_b.decode('utf-8', errors='replace')
         return self.tokenizer.decode(ids)
+
+    def forward_step(self, sensor_inputs: Dict[str, torch.Tensor], h_prev_fast: torch.Tensor, 
+                     h_prev_slow: torch.Tensor, u_t: torch.Tensor, episodic_memory=None, 
+                     dt: float = 1.0, attention_temp: float = 0.05, m_states: List[torch.Tensor] = None):
+        batch_size = h_prev_fast.size(0)
+        
+        text_in = sensor_inputs.get('text', torch.zeros(batch_size, self.config.net.text_dim, device=self.device))
+        if text_in.dim() == 3:
+            text_in = text_in.reshape(batch_size, self.config.net.text_dim)
+            
+        vision_in = sensor_inputs.get('vision', torch.zeros(batch_size, self.config.net.vision_dim, device=self.device))
+        motor_in = sensor_inputs.get('motor_efference', torch.zeros(batch_size, self.config.net.action_dim, device=self.device))
+        
+        w_current, attn_weights, channel_names, epistemic_entropy = self.gateway(
+            text_in, vision_in, motor_in, h_prev_fast, u_t
+        )
+        
+        curiosity     = u_t.select(1, 0).unsqueeze(1)
+        energy        = u_t.select(1, 1).unsqueeze(1)
+        noradrenaline = u_t.select(1, 4).unsqueeze(1)
+        
+        volitional_recall_gate = torch.sigmoid(2.0 * noradrenaline + 1.5 * curiosity - 0.5 * (1.0 - energy))
+        na_trigger = getattr(self.config.memory, 'volitional_na_trigger', 0.12)
+        should_search_memory = (episodic_memory is not None) and (noradrenaline.mean().item() > na_trigger) and (episodic_memory.size.max().item() > 0)
+
+        if should_search_memory:
+            with torch.no_grad():
+                retrieved_memory, max_sim = episodic_memory.read(
+                    w_current.detach(), attention_temp, 
+                    self.config.memory.default_read_threshold,
+                    self.config.memory.sigmoid_gating_beta
+                )
+                if retrieved_memory.dim() > 2:
+                    retrieved_memory = retrieved_memory.reshape(batch_size, self.unified_dim)
+            w_integrated = w_current + retrieved_memory.detach() * volitional_recall_gate
+        else:
+            w_integrated = w_current
+            
+        # Multi-Layer Cortical Processing
+        t_seq = text_in.unsqueeze(1)
+        x = self.input_proj(t_seq)
+        
+        if m_states is None or len(m_states) != self.num_layers:
+            m_states = [torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device) for _ in range(self.num_layers)]
+            
+        next_m_list = []
+        for i, layer in enumerate(self.cortical_stack):
+            x, m_next = layer(x, m_states[i], u_t, dt=dt)
+            next_m_list.append(m_next)
+            
+        x = self.final_norm(x)
+        h_reasoned = x.squeeze(1)
+        h_next_fast = h_reasoned
+        h_next_slow = h_next_fast
+        
+        w_pred, kl_div, _, z_t = self.world_model(h_prev_fast, h_next_slow, w_current)
+        
+        cosine_sim = F.cosine_similarity(w_current, w_pred, dim=-1, eps=1e-8).unsqueeze(-1)
+        rec_loss = 1.0 - cosine_sim
+        free_energy = kl_div + rec_loss
+
+        relax_out = self.attractor_head.relax_to_minima(h_reasoned)
+        h_relaxed = relax_out[0]
+        
+        outputs = self.output_gateway(h_relaxed)
+        h_proj = self.motor_text_proj(h_relaxed)
+        tied_text_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
+        outputs["text_generation"] = tied_text_logits
+        
+        state_value = self.critic(h_reasoned)
+        eff_dt = torch.tensor([[dt]], device=self.device)
+        return h_next_fast, h_next_slow, outputs, state_value, w_pred, free_energy, kl_div, w_current, attn_weights, channel_names, epistemic_entropy, eff_dt, next_m_list
+
+    def forward(self, *args, **kwargs):
+        return self.forward_step(*args, **kwargs)
 
     def forward_chunk_ssd(self, chunk_emb: torch.Tensor, chunk_targets: torch.Tensor, 
                           m_list: List[torch.Tensor], u_t: torch.Tensor, criterion: nn.Module):
