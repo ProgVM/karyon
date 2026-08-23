@@ -1,9 +1,9 @@
 # train_single_pass.py
 """
 ===============================================================================
-KARYON MULTI-PASS HIGH-VELOCITY STREAMING RUNTIME (N=3)
+KARYON MASSIVE HIGH-VELOCITY STREAMING RUNTIME (52k DATASET, N=5)
 Integrated with Native C++20 Clean SSD Core (>170,000 tok/s), Full-Sequence
-LM Training, Rolling Receptive Field Consistency, and KEP Rule #6 Diagnostics.
+LM Training, Full-Text Speech Sampling, and KEP Rule #6 Deep Diagnostics.
 ===============================================================================
 """
 
@@ -76,8 +76,8 @@ if not os.path.exists(kcore_path):
     logger.warning(f"Container '{kcore_path}' not found! Automatically building base model via init_priors...")
     initialize_priors(recreate=True, filepath=kcore_path, device=device)
 
-logger.info("Loading Conversational Data Stream (alpaca-gpt4)...")
-dataset = load_dataset("vicgalle/alpaca-gpt4", split="train[:10000]")
+logger.info("Loading COMPLETE Conversational Dataset (52,002 samples from vicgalle/alpaca-gpt4)...")
+dataset = load_dataset("vicgalle/alpaca-gpt4", split="train")
 
 tokenizer = ByteTokenizer()
 
@@ -107,12 +107,12 @@ def collate_fn(batch):
 
 BATCH_SIZE = 32
 MAX_SEQ_LEN = 512
-NUM_PASSES = 3
+NUM_PASSES = 5 # 5 Full Passes over all 52,002 samples (~2.5 minutes total!)
 
 train_dataset = StreamingDataset(dataset, tokenizer, max_len=MAX_SEQ_LEN)
 stream_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn, drop_last=True)
 
-logger.info(f"Data Stream Ready. Samples: {len(train_dataset)} | Batches: {len(stream_loader)} | Passes: {NUM_PASSES}")
+logger.info(f"Full Dataset Ready. Total Samples: {len(train_dataset)} | Batches: {len(stream_loader)} | Passes: {NUM_PASSES}")
 
 core_config = CoREConfig()
 core_config.net.text_dim = 128
@@ -151,7 +151,6 @@ episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_conf
 # Load state directly from .kcore container
 h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device)
 
-# Single unified high-performance optimizer
 optimizer = optim.Adam(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.0)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
@@ -166,7 +165,7 @@ total_skipped_batches = 0
 total_adapted_batches = 0
 
 def run_diagnostic_text_sample(agent, memory, hu_state, config):
-    """KEP Rule #4: Live Diagnostic Text Sample with Rolling Buffer K=4 Consistency."""
+    """KEP Rule #4: Live Diagnostic Text Sample with Multi-Sentence Full-Text Output."""
     agent.eval()
     diag_prompt = "User: What is the primary source of energy for Earth?\nKaryon:"
     diag_hu = HomeostaticUnit(batch_size=1, device=agent.device_str)
@@ -188,7 +187,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
             hu=diag_hu,
             episodic_memory=diag_mem,
             config=config,
-            max_generated_tokens=60,
+            max_generated_tokens=70,
             temperature=0.7,
             top_p=0.90
         )
@@ -199,7 +198,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.train()
     return "".join(generated_chars).strip()
 
-logger.info(f"Starting Multi-Pass High-Speed Session ({NUM_PASSES} Passes @ 176k tok/s)...")
+logger.info(f"Starting Massive Session ({NUM_PASSES} Passes over 52k samples @ 176k tok/s)...")
 
 for pass_idx in range(NUM_PASSES):
     logger.info(f"\n{'='*85}\n === [STARTING PASS {pass_idx+1}/{NUM_PASSES} (EPOCH {saved_epoch + pass_idx + 1})] ===\n{'='*85}")
@@ -244,7 +243,7 @@ for pass_idx in range(NUM_PASSES):
 
         t_opt_ms = 0.0
         if should_adapt:
-            pass_scale = 1.0 / (1.0 + 0.3 * pass_idx)
+            pass_scale = 1.0 / (1.0 + 0.25 * pass_idx)
             effective_lr = (3e-3 * pass_scale) * (1.0 + 1.0 * na_val)
             for param_group in optimizer.param_groups:
                 param_group['lr'] = effective_lr
@@ -268,8 +267,8 @@ for pass_idx in range(NUM_PASSES):
         batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
         tokens_per_sec = (current_batch_size * seq_len) / (batch_total_ms / 1000.0)
 
-        # KEP Rule #6: Deep Process Diagnostics Dashboard
-        if (batch_idx + 1) % 20 == 0 or batch_idx == len(stream_loader) - 1:
+        # KEP Rule #6: Deep Process Diagnostics Dashboard (Каждые 50 батчей на большом датасете)
+        if (batch_idx + 1) % 50 == 0 or batch_idx == len(stream_loader) - 1:
             perplexity = math.exp(min(speech_loss_val, 20.0))
             curiosity, energy, stability, health, na, da = curr_u_t[0].tolist()
             peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device == 'cuda' else 0.0
@@ -290,12 +289,12 @@ for pass_idx in range(NUM_PASSES):
             print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy:.3f} | Arousal(NA): {na:.3f}")
             print("="*85)
 
-        # KEP Rule #4: Live Diagnostic Speech Sample every 30 batches
-        if (batch_idx + 1) % 30 == 0:
+        # KEP Rule #4: Live Diagnostic Speech Sample каждые 100 батчей
+        if (batch_idx + 1) % 100 == 0:
             diag_sample = run_diagnostic_text_sample(agent_brain, episodic_mem, curr_u_t, core_config)
             logger.info(f"💬 [KEP Rule #4 Diagnostic Speech Sample @ Pass {pass_idx+1} Step {batch_idx+1}] -> \"{diag_sample}\"\n")
 
     # Persist progress after each pass
     save_karyon(agent_brain, episodic_mem, hu, h_curr[0:1], h_curr[0:1], epoch=saved_epoch + pass_idx + 1, story_idx=len(stream_loader) * BATCH_SIZE * (pass_idx + 1), filepath=kcore_path)
 
-logger.info(f"Multi-Pass Session Complete! Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches}.")
+logger.info(f"Massive Session Complete! Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches}.")

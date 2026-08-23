@@ -1,10 +1,10 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v13.0 (PRODUCTION MASTER CLEAN SSD)
+KARYON AGENT CORE v14.0 (PRODUCTION MASTER FULL-TEXT SSD)
 Full-Sequence Calibrated Parallel State-Space Duality Engine (176,000+ tok/s),
-Rolling-Buffer Receptive Field Consistency, Afferent-Efferent Lexical Tying,
-Desaturated Hopfield Attractor Memory, and Event Boundary Reset.
+Multi-Sentence Autoregressive Generation with EOS-Strict Termination,
+Rolling-Buffer Receptive Field Consistency, and Event Boundary Reset.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -59,7 +59,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v13.0 PRODUCTION MASTER CLEAN SSD)
+# MASTER CORE AGENT (v14.0 FULL-TEXT SSD)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -306,7 +306,7 @@ class CoREAgent(nn.Module):
         h_proj = self.motor_text_proj(h_relaxed)
         logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
 
-        # 3. Batched Target Loss (Full sequence target matching)
+        # 3. Batched Target Loss
         targets_flat = chunk_targets.contiguous().view(-1)
         loss = criterion(logits_flat, targets_flat)
         return loss, m_next, h_chunk, eff_dt
@@ -411,9 +411,10 @@ class CoREAgent(nn.Module):
         cog_action = torch.tensor([[0]], dtype=torch.int64, device=self.device)
 
         total_prompt_len = prompt_tokens.size(1)
+        consecutive_newlines = 0
 
         for step in range(max_generated_tokens):
-            # Rolling K=4 window for causal convolution consistency
+            # Rolling K=4 window for exact causal convolution consistency
             context_window = rolling_token_ids[-4:]
             window_t = torch.tensor([context_window], dtype=torch.long, device=self.device)
             window_start_pos = (total_prompt_len + step) - (len(context_window) - 1)
@@ -452,8 +453,15 @@ class CoREAgent(nn.Module):
             hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)
             rolling_token_ids.append(next_token_id)
             
-            if next_token_id == 257 or next_token_id == 10:
+            # FULL-TEXT FIX: Stop strictly on EOS (257) or double newline (\n\n), NOT on first single '\n'
+            if next_token_id == 257:
                 break
+            if next_token_id == 10:
+                consecutive_newlines += 1
+                if consecutive_newlines >= 2 and step > 10:
+                    break
+            else:
+                consecutive_newlines = 0
                 
             token_char = chr(next_token_id) if 32 <= next_token_id <= 126 or next_token_id in [9, 10, 13] else ' '
             
