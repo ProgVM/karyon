@@ -1,11 +1,11 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v15.0 (PRODUCTION MASTER SWIGLU HYBRID)
+KARYON AGENT CORE v15.1 (PRODUCTION MASTER SWIGLU HYBRID)
 Integrated Parallel State-Space Duality Engine (Time-Mixing, 160k+ tok/s),
 Native C++20 Parallel SwiGLU Block (Channel-Mixing Knowledge Synthesis),
 Causal N-gram Byte Receptive Field (K=4), Afferent-Efferent Lexical Tying,
-Desaturated Hopfield Attractors, and Event Boundary Theta Phase Reset.
+Unified-Dim Episodic Memory Alignment, and Event Boundary Reset.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -61,7 +61,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v15.0 PRODUCTION MASTER SWIGLU HYBRID)
+# MASTER CORE AGENT (v15.1 PRODUCTION MASTER SWIGLU HYBRID)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -116,7 +116,7 @@ class CoREAgent(nn.Module):
         # 3. Native C++20 Channel-Mixing SwiGLU Knowledge Synthesis Block
         self.channel_mixer = ParallelSwiGLUBlock(
             hidden_dim=self.hidden_dim,
-            expand_dim=1024,
+            expand_dim=1536,
             device=self.device_str
         )
         
@@ -204,6 +204,11 @@ class CoREAgent(nn.Module):
                 for sub_p_name, sub_p in self.pos_embeddings.named_parameters():
                     if sub_p_name == p_name:
                         self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("ssd_core."):
+                p_name = name.replace("ssd_core.", "")
+                for sub_p_name, sub_p in self.ssd_core.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
             elif name.startswith("critic.weight"):
                 self._safe_copy_param(self.critic.weight.data, tensor)
             elif name.startswith("critic.bias"):
@@ -236,7 +241,6 @@ class CoREAgent(nn.Module):
     def forward_step(self, sensor_inputs: Dict[str, torch.Tensor], h_prev_fast: torch.Tensor, 
                      h_prev_slow: torch.Tensor, u_t: torch.Tensor, episodic_memory=None, 
                      dt: float = 1.0, attention_temp: float = 0.05):
-        """Single-step multi-modal perception with SwiGLU channel-mixing."""
         batch_size = h_prev_fast.size(0)
         
         text_in = sensor_inputs.get('text', torch.zeros(batch_size, self.config.net.text_dim, device=self.device))
@@ -277,7 +281,7 @@ class CoREAgent(nn.Module):
         ssd_out = self.ssd_core.forward_chunk_parallel_ssd(t_seq, m_dummy, u_t, dt)
         h_ssm, _, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
         
-        # 2. Channel-Mixing SwiGLU
+        # 2. Channel-Mixing SwiGLU (1536 dim)
         h_reasoned = self.channel_mixer(h_ssm)
         h_next_fast = h_reasoned
         h_next_slow = h_next_fast
@@ -372,13 +376,13 @@ class CoREAgent(nn.Module):
                 has_eos = (chunk_input_tokens == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
                 m_curr = m_curr * (1.0 - has_eos)
 
-            # Somatic Homeostasis Update
+            # Somatic Homeostasis Update (Strict 256-dim projection)
             with torch.no_grad():
                 curr_loss_val = chunk_loss.detach().item()
                 if episodic_memory is not None and curr_loss_val > 1.2:
-                    w_rep = h_chunk[-batch_size:].detach()
-                    if w_rep.size(-1) != self.unified_dim:
-                        w_rep = self.motor_text_proj(w_rep)
+                    # Map the last token representation strictly to unified_dim (256)
+                    w_chunk_last = self.ssd_core.sensory_proj(chunk_emb[:, -1:]) # [Batch, 1, 256]
+                    w_rep = w_chunk_last.squeeze(1).detach() # Shape: [Batch, 256]
                     episodic_memory.write(w_rep, w_rep, 3)
 
                 ema_surprise = (1.0 - alpha_ema) * ema_surprise + alpha_ema * (curr_loss_val / 4.0)
