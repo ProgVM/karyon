@@ -1,8 +1,8 @@
 # init_priors.py
 """
 ===============================================================================
-KARYON IDENTITY PRIORS INITIALIZATION (v16.5 MASTER)
-Projects Existential Identity and Cognitive Priors into Native C++20 Cortical Neocortex.
+KARYON IDENTITY PRIORS INITIALIZATION (v17.2 MASTER)
+Projects Existential Identity and Cognitive Priors into C++20 Chunked Cortical Neocortex.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -45,12 +45,12 @@ def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore
     core_config = CoREConfig()
     core_config.net.text_dim = 128
     core_config.net.unified_dim = 256
-    core_config.net.hidden_dim = 768
+    core_config.net.hidden_dim = 512
     core_config.net.latent_dim = 128
     core_config.net.text_gen_dim = 258
     core_config.net.num_layers = 2
-    core_config.net.expand_dim = 2048
-    core_config.net.num_heads = 12
+    core_config.net.expand_dim = 1536
+    core_config.net.num_heads = 8
     core_config.net.head_k = 32
     core_config.net.head_v = 64
     core_config.train.batch_size = 1
@@ -73,13 +73,12 @@ def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore
     zero_err = torch.tensor([[0.0]], device=device)
     cog_act = torch.tensor([[1]], dtype=torch.int64, device=device)
 
-    logger.info("Projecting existential identity priors into native C++20 cortical latent space...")
+    logger.info("Projecting existential identity priors into native C++20 chunked cortical latent space...")
     with torch.no_grad():
         for prior in identity_priors:
             q_ids = agent_brain.encode_text(prior["question"])
             q_emb = agent_brain.pos_embeddings(q_ids.unsqueeze(0), start_pos=0, apply_rf=True)
             
-            # Single compiled C++20 cortical scan call
             x_q = agent_brain.input_proj(q_emb)
             cortical_out_q = agent_brain.cortical_stack.forward_stack(x_q, m_states, hu.state, 1.0)
             x_q, m_states = cortical_out_q[0], cortical_out_q[1]
@@ -90,7 +89,6 @@ def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore
             a_ids = agent_brain.encode_text(prior["answer"])
             a_emb = agent_brain.pos_embeddings(a_ids.unsqueeze(0), start_pos=0, apply_rf=True)
             
-            # Single compiled C++20 cortical scan call
             x_a = agent_brain.input_proj(a_emb)
             cortical_out_a = agent_brain.cortical_stack.forward_stack(x_a, m_states, hu.state, 1.0)
             x_a, m_states = cortical_out_a[0], cortical_out_a[1]

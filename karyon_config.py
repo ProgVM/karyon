@@ -1,9 +1,8 @@
 # karyon_config.py
 """
 ===============================================================================
-KARYON MASTER CONFIGURATION REGISTRY v5.4
-Unified Settings for Multi-Layer Cortical SSD, Predictive Coding, and Ashby Homeostasis.
-Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
+KARYON MASTER CONFIGURATION REGISTRY v5.5
+Unified Settings for C++20 Chunked Cortical SSD (Q=64), SFT Masking, and Ashby Homeostasis.
 ===============================================================================
 """
 
@@ -63,8 +62,8 @@ class NetworkConfig:
     hidden_dim: int = 512
     latent_dim: int = 128
     
-    # Hierarchical Cortical Neocortex Topology (v16.0)
-    num_layers: int = 4
+    # 2-Layer High-Velocity Cortical Stack (Q=64)
+    num_layers: int = 2
     expand_dim: int = 1536
     num_heads: int = 8
     head_k: int = 32
@@ -73,7 +72,7 @@ class NetworkConfig:
 
 @dataclass
 class MemoryConfig:
-    """Vectorized Episodic Memory & Volitional Read Gating Settings (KEP #8)."""
+    """Vectorized Episodic Memory & Volitional Read Gating Settings."""
     max_capacity: int = 1000
     protected_slots: int = 3
     default_read_threshold: float = 0.50
@@ -93,7 +92,7 @@ class TrainConfig:
     min_learning_rate: float = 1e-4
     warmup_steps: int = 200
     weight_decay: float = 0.01
-    grad_clip_norm: float = 3.0
+    grad_clip_norm: float = 2.0
     loss_free_energy_weight: float = 0.05
     loss_speech_weight: float = 1.00
     chunk_size: int = 64

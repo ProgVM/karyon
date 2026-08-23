@@ -53,9 +53,9 @@ public:
 // 2. HOMEOSTATIC SOMATIC CONTROLLER (ASHBY ULTRASTABILITY)
 // ============================================================================
 struct HomeostaticUnit {
-    torch::Tensor state;                  // Shape: [batch_size, 6]
-    torch::Tensor prev_pain;              // Shape: [batch_size, 1]
-    torch::Tensor consecutive_inactivity; // Shape: [batch_size, 1]
+    torch::Tensor state;
+    torch::Tensor prev_pain;
+    torch::Tensor consecutive_inactivity;
     std::string device;
 
     HomeostaticUnit(int64_t batch_size = 1, std::string device_str = "cpu") 
@@ -263,7 +263,7 @@ public:
 };
 
 // ============================================================================
-// 6. NATIVE C++20 HIERARCHICAL CORTICAL NEOCORTEX STACK (MULTI-LAYER SSD+SWIGLU)
+// 6. NATIVE C++20 HIERARCHICAL CHUNKED CORTICAL STACK (SSD + SWIGLU, Q=64)
 // ============================================================================
 class HierarchicalCorticalStackImpl : public torch::nn::Module {
 public:
@@ -273,6 +273,7 @@ public:
     int64_t num_heads;
     int64_t head_k;
     int64_t head_v;
+    int64_t chunk_size;
     float inv_sqrt_k;
 
     std::vector<torch::nn::LayerNorm> ssd_norms;
@@ -289,11 +290,11 @@ public:
 
     torch::nn::LayerNorm final_norm{nullptr};
 
-    HierarchicalCorticalStackImpl(int64_t num_layers = 2, int64_t hidden_dim = 768, int64_t expand_dim = 2048,
-                                  int64_t num_heads = 12, int64_t head_k = 32, int64_t head_v = 64,
-                                  std::string device_str = "cpu")
+    HierarchicalCorticalStackImpl(int64_t num_layers = 2, int64_t hidden_dim = 512, int64_t expand_dim = 1536,
+                                  int64_t num_heads = 8, int64_t head_k = 32, int64_t head_v = 64,
+                                  int64_t chunk_size = 64, std::string device_str = "cpu")
         : num_layers(num_layers), hidden_dim(hidden_dim), expand_dim(expand_dim),
-          num_heads(num_heads), head_k(head_k), head_v(head_v) {
+          num_heads(num_heads), head_k(head_k), head_v(head_v), chunk_size(chunk_size) {
 
         inv_sqrt_k = 1.0f / std::sqrt(static_cast<float>(head_k));
         auto opts = torch::TensorOptions().dtype(torch::kFloat32);
@@ -345,7 +346,10 @@ public:
         auto na = u_t.slice(1, 4, 5).view({batch_size, 1, 1, 1});
         auto da = u_t.slice(1, 5, 6).view({batch_size, 1, 1, 1});
 
-        auto pos = torch::arange(seq_len, x.options().dtype(torch::kFloat32));
+        int64_t Q = std::min(chunk_size, seq_len);
+        int64_t num_chunks = (seq_len + Q - 1) / Q;
+
+        auto pos = torch::arange(Q, x.options().dtype(torch::kFloat32));
         auto diff = pos.unsqueeze(1) - pos.unsqueeze(0);
         auto causal_mask = (diff >= 0).to(torch::kFloat32);
 
@@ -358,43 +362,77 @@ public:
             float layer_temporal_scale = 1.0f / (1.0f + 0.5f * static_cast<float>(l));
             auto eff_dt = torch::clamp(dt * layer_temporal_scale * (1.0f - 0.4f * na + 0.4f * da), 0.20f, 2.00f);
 
-            // 1. Time-Mixing SSD Block with Pre-LN Residual
-            auto x_norm = ssd_norms[l]->forward(curr_x);
-            auto q = (q_projs[l]->forward(x_norm).view({batch_size, seq_len, num_heads, head_k}).transpose(1, 2)) * inv_sqrt_k;
-            auto k = k_projs[l]->forward(x_norm).view({batch_size, seq_len, num_heads, head_k}).transpose(1, 2);
-            auto v = v_projs[l]->forward(x_norm).view({batch_size, seq_len, num_heads, head_v}).transpose(1, 2);
-
             auto alpha = torch::pow(torch::sigmoid(decay_logits_vec[l]), eff_dt);
             auto beta = 1.0f - alpha;
 
             auto decay_weights = torch::pow(alpha, diff.clamp_min(0)) * causal_mask * beta;
-            auto s_matrix = torch::matmul(q, k.transpose(-1, -2)) * decay_weights;
-            auto y_intra = torch::matmul(s_matrix, v);
-
-            auto decay_to_start = torch::pow(alpha, (pos + 1.0f).view({1, 1, seq_len, 1}));
-            auto y_inter = torch::matmul(q * decay_to_start, m_prev_list[l]);
-
-            auto y_total = (y_intra + y_inter).transpose(1, 2).reshape({batch_size, seq_len, num_heads * head_v});
-            auto ssd_out = out_projs[l]->forward(y_total);
-            curr_x = curr_x + ssd_out; // Pre-LN Residual 1
-
-            // Matrix State Update
-            auto decay_to_end = torch::pow(alpha, (static_cast<float>(seq_len) - 1.0f - pos).view({1, 1, seq_len, 1}));
-            auto k_decayed = k * decay_to_end;
-            auto kv_chunk_update = torch::matmul(k_decayed.transpose(-1, -2), v);
-
+            auto decay_to_start = torch::pow(alpha, (pos + 1.0f).view({1, 1, Q, 1}));
+            auto decay_to_end = torch::pow(alpha, (static_cast<float>(Q) - 1.0f - pos).view({1, 1, Q, 1}));
+            auto alpha_chunk = torch::pow(alpha, static_cast<float>(Q));
             constexpr float sigma = 1e-3f;
-            auto dW = torch::randn_like(m_prev_list[l]) * torch::sqrt(eff_dt) * sigma;
-            auto alpha_chunk = torch::pow(alpha, static_cast<float>(seq_len));
-            auto m_next = alpha_chunk * m_prev_list[l] + beta * kv_chunk_update + dW;
-            m_next_list.push_back(m_next);
 
-            // 2. Channel-Mixing SwiGLU Block with Pre-LN Residual
-            auto sw_norm = swiglu_norms[l]->forward(curr_x);
-            auto gate = torch::silu(w_gates[l]->forward(sw_norm));
-            auto up = w_ups[l]->forward(sw_norm);
-            auto sw_out = w_downs[l]->forward(gate * up);
-            curr_x = curr_x + sw_out; // Pre-LN Residual 2
+            auto m_curr = m_prev_list[l];
+            std::vector<torch::Tensor> chunk_outputs;
+            chunk_outputs.reserve(num_chunks);
+
+            for (int64_t c = 0; c < num_chunks; ++c) {
+                int64_t start_idx = c * Q;
+                int64_t end_idx = std::min(start_idx + Q, seq_len);
+                int64_t cur_len = end_idx - start_idx;
+
+                auto x_c = curr_x.slice(1, start_idx, end_idx);
+
+                // 1. Time-Mixing SSD on chunk Q
+                auto x_norm = ssd_norms[l]->forward(x_c);
+                auto q = (q_projs[l]->forward(x_norm).view({batch_size, cur_len, num_heads, head_k}).transpose(1, 2)) * inv_sqrt_k;
+                auto k = k_projs[l]->forward(x_norm).view({batch_size, cur_len, num_heads, head_k}).transpose(1, 2);
+                auto v = v_projs[l]->forward(x_norm).view({batch_size, cur_len, num_heads, head_v}).transpose(1, 2);
+
+                torch::Tensor y_intra, y_inter, kv_chunk_update;
+
+                if (cur_len == Q) {
+                    auto s_matrix = torch::matmul(q, k.transpose(-1, -2)) * decay_weights;
+                    y_intra = torch::matmul(s_matrix, v);
+                    y_inter = torch::matmul(q * decay_to_start, m_curr);
+                    auto k_decayed = k * decay_to_end;
+                    kv_chunk_update = torch::matmul(k_decayed.transpose(-1, -2), v);
+                } else {
+                    auto pos_short = torch::arange(cur_len, x.options().dtype(torch::kFloat32));
+                    auto diff_short = pos_short.unsqueeze(1) - pos_short.unsqueeze(0);
+                    auto mask_short = (diff_short >= 0).to(torch::kFloat32);
+                    auto dw_short = torch::pow(alpha, diff_short.clamp_min(0)) * mask_short * beta;
+                    auto s_matrix = torch::matmul(q, k.transpose(-1, -2)) * dw_short;
+                    y_intra = torch::matmul(s_matrix, v);
+
+                    auto dts_short = torch::pow(alpha, (pos_short + 1.0f).view({1, 1, cur_len, 1}));
+                    y_inter = torch::matmul(q * dts_short, m_curr);
+
+                    auto dte_short = torch::pow(alpha, (static_cast<float>(cur_len) - 1.0f - pos_short).view({1, 1, cur_len, 1}));
+                    auto k_decayed = k * dte_short;
+                    kv_chunk_update = torch::matmul(k_decayed.transpose(-1, -2), v);
+                }
+
+                auto y_total = (y_intra + y_inter).transpose(1, 2).reshape({batch_size, cur_len, num_heads * head_v});
+                auto ssd_out = out_projs[l]->forward(y_total);
+                auto x_post_ssd = x_c + ssd_out;
+
+                // 2. Channel-Mixing SwiGLU Block
+                auto sw_norm = swiglu_norms[l]->forward(x_post_ssd);
+                auto gate = torch::silu(w_gates[l]->forward(sw_norm));
+                auto up = w_ups[l]->forward(sw_norm);
+                auto sw_out = w_downs[l]->forward(gate * up);
+                auto x_chunk_out = x_post_ssd + sw_out;
+
+                chunk_outputs.push_back(x_chunk_out);
+
+                // Update recurrent matrix state M_c
+                auto cur_alpha_chunk = (cur_len == Q) ? alpha_chunk : torch::pow(alpha, static_cast<float>(cur_len));
+                auto dW = torch::randn_like(m_curr) * torch::sqrt(eff_dt) * sigma;
+                m_curr = cur_alpha_chunk * m_curr + beta * kv_chunk_update + dW;
+            }
+
+            curr_x = torch::cat(chunk_outputs, 1);
+            m_next_list.push_back(m_curr);
         }
 
         auto final_out = final_norm->forward(curr_x);
@@ -671,9 +709,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("__call__", &CausalByteReceptiveFieldImpl::forward);
 
     py::class_<HierarchicalCorticalStackImpl, torch::nn::Module, std::shared_ptr<HierarchicalCorticalStackImpl>>(m, "HierarchicalCorticalStack")
-        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
-             py::arg("num_layers") = 2, py::arg("hidden_dim") = 768, py::arg("expand_dim") = 2048,
-             py::arg("num_heads") = 12, py::arg("head_k") = 32, py::arg("head_v") = 64, py::arg("device") = "cpu")
+        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
+             py::arg("num_layers") = 2, py::arg("hidden_dim") = 512, py::arg("expand_dim") = 1536,
+             py::arg("num_heads") = 8, py::arg("head_k") = 32, py::arg("head_v") = 64,
+             py::arg("chunk_size") = 64, py::arg("device") = "cpu")
         .def("forward_stack", &HierarchicalCorticalStackImpl::forward_stack,
              py::arg("x"), py::arg("m_prev_list"), py::arg("u_t"), py::arg("dt") = 1.0f)
         .def("parameters", [](std::shared_ptr<HierarchicalCorticalStackImpl> m) { return m->parameters(); })

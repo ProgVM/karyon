@@ -1,9 +1,9 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v17.1 (MONOLITHIC NATIVE CORTICAL ENGINE MASTER)
-Full-Sequence Zero-Loop C++20 Hierarchical Cortical Scan (>100k tok/s),
-Logit Soft-Capping (30.0 * tanh), NaN-Proof SFT Masked Loss, DFET Gating,
+KARYON AGENT CORE v17.2 (NATIVE C++20 CHUNKED CORTICAL ENGINE MASTER)
+Native C++20 Chunked Cortical SSD Scan (Q=64, >100k tok/s, <350MB VRAM),
+Logit Soft-Capping (30.0 * tanh), NaN-Proof SFT Masked Loss, DFET Plasticity,
 Lexical Afferent-Efferent Weight Tying, and Ashby Somatic Ultrastability.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
@@ -60,7 +60,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v17.1 MONOLITHIC MASTER)
+# MASTER CORE AGENT (v17.2 CHUNKED CORTICAL ENGINE MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -81,6 +81,7 @@ class CoREAgent(nn.Module):
         self.num_heads = getattr(config.net, 'num_heads', 8)
         self.head_k = getattr(config.net, 'head_k', 32)
         self.head_v = getattr(config.net, 'head_v', 64)
+        self.chunk_size = getattr(config.train, 'chunk_size', 64)
         
         self.tokenizer = ByteTokenizer(vocab_size=self.text_gen_dim)
         
@@ -106,7 +107,7 @@ class CoREAgent(nn.Module):
         # 2. Input Projection to Native Cortical Dimension
         self.input_proj = nn.Linear(self.text_dim, self.hidden_dim).to(self.device)
 
-        # 3. Native C++20 Hierarchical Cortical Neocortex Stack (L1 to L_N)
+        # 3. Native C++20 Chunked Cortical Neocortex Stack (Q=64)
         self.cortical_stack = HierarchicalCorticalStack(
             num_layers=self.num_layers,
             hidden_dim=self.hidden_dim,
@@ -114,6 +115,7 @@ class CoREAgent(nn.Module):
             num_heads=self.num_heads,
             head_k=self.head_k,
             head_v=self.head_v,
+            chunk_size=self.chunk_size,
             device=self.device_str
         )
 
@@ -246,7 +248,6 @@ class CoREAgent(nn.Module):
         return self.tokenizer.decode(ids)
 
     def evaluate_dfet_gating(self, free_energy_val: float, moving_mean: float, moving_std: float, na_level: float) -> bool:
-        """Evaluates Dynamic Free Energy Thresholding (DFET v3) Plasticity Gating."""
         base_k = self.config.train.dfet_k_sigma_base
         na_weight = self.config.train.dfet_k_sigma_na_weight
         min_k = self.config.train.dfet_min_k_sigma
@@ -292,7 +293,7 @@ class CoREAgent(nn.Module):
         else:
             w_integrated = w_current
             
-        # Native C++20 Multi-Layer Cortical Processing
+        # Native C++20 Chunked Cortical Processing
         t_seq = text_in.unsqueeze(1)
         x = self.input_proj(t_seq)
         
@@ -328,28 +329,6 @@ class CoREAgent(nn.Module):
     def forward(self, *args, **kwargs):
         return self.forward_step(*args, **kwargs)
 
-    def forward_chunk_ssd(self, chunk_emb: torch.Tensor, chunk_targets: torch.Tensor, 
-                          m_list: List[torch.Tensor], u_t: torch.Tensor, criterion: nn.Module):
-        x = self.input_proj(chunk_emb)
-        cortical_out = self.cortical_stack.forward_stack(x, m_list, u_t, 1.0)
-        x_out, next_m_list = cortical_out[0], cortical_out[1]
-
-        h_chunk = x_out.reshape(-1, self.hidden_dim)
-        h_relaxed = self.attractor_head.relax_to_minima(h_chunk)[0]
-        
-        h_proj = self.motor_text_proj(h_relaxed)
-        raw_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight)
-        bounded_logits = 30.0 * torch.tanh(raw_logits / 30.0)
-
-        targets_flat = chunk_targets.contiguous().view(-1)
-        valid_targets = (targets_flat != 256)
-        if valid_targets.any():
-            loss = criterion(bounded_logits, targets_flat)
-            loss = torch.nan_to_num(loss, nan=0.0, posinf=10.0, neginf=0.0)
-        else:
-            loss = (bounded_logits * 0.0).sum()
-        return loss, next_m_list, h_chunk
-
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, 
                          criterion_speech: nn.Module, episodic_memory=None, loss_free_energy_weight: float = 0.05, 
                          chunk_size: int = 64, optimizer: torch.optim.Optimizer = None) -> Tuple[float, float, float, List[torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -360,11 +339,11 @@ class CoREAgent(nn.Module):
         action_cost_tensor = torch.full((batch_size, 1), 0.001, device=self.device)
         cog_action_tensor = torch.zeros((batch_size, 1), dtype=torch.int64, device=self.device)
         
-        # 1. Full Sequence Embeddings (1 single parallel GEMM)
+        # 1. Full Sequence Embeddings
         full_emb = self.pos_embeddings(input_seq, start_pos=0, apply_rf=True)
         x_full = self.input_proj(full_emb)
 
-        # 2. Native C++20 Hierarchical Cortical Scan across full sequence in ONE shot
+        # 2. Native C++20 Chunked Cortical Scan (Q=64 inside C++)
         cortical_out = self.cortical_stack.forward_stack(x_full, m_list, curr_u_t, 1.0)
         x_out, m_list = cortical_out[0], cortical_out[1]
 
@@ -389,7 +368,7 @@ class CoREAgent(nn.Module):
         fe_loss = 0.01
         total_loss = speech_loss + loss_free_energy_weight * fe_loss
 
-        # 5. Immediate Backward Pass on the entire batch graph
+        # 5. Backward Pass
         if optimizer is not None and valid_targets.any():
             total_loss.backward()
 
@@ -417,7 +396,7 @@ class CoREAgent(nn.Module):
             
         yield {"status": "speech_start"}
         
-        # Parallel Prompt Processing in Native C++20 Cortical Engine
+        # Parallel Prompt Processing in Native C++20 Chunked Engine
         x = self.input_proj(prompt_embs)
         cortical_out = self.cortical_stack.forward_stack(x, m_states, hu.state, 1.0)
         x_out, m_states = cortical_out[0], cortical_out[1]
