@@ -2,7 +2,7 @@
 """
 ===============================================================================
 KARYON MULTI-PASS HIGH-VELOCITY STREAMING RUNTIME (N=3)
-Integrated with Native C++20 Thalamocortical Gated Fractal 3-Tier SSD Core,
+Integrated with Native C++20 Dual-Layer Cortical SDE-SSM Stack (L2/3 + L5/6),
 Event Boundary Reset, KEP Rule #6 Diagnostics, and Top-p Rule #4 Speech Sampling.
 ===============================================================================
 """
@@ -107,7 +107,7 @@ def collate_fn(batch):
 
 BATCH_SIZE = 32
 MAX_SEQ_LEN = 512
-NUM_PASSES = 3 # 3 Full Epochs (~115 seconds total session!)
+NUM_PASSES = 3
 
 train_dataset = StreamingDataset(dataset, tokenizer, max_len=MAX_SEQ_LEN)
 stream_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn, drop_last=True)
@@ -165,7 +165,7 @@ total_skipped_batches = 0
 total_adapted_batches = 0
 
 def run_diagnostic_text_sample(agent, memory, hu_state, config):
-    """KEP Rule #4: Live Diagnostic Text Sample with Parallel 3-Tier SSD Processing."""
+    """KEP Rule #4: Live Diagnostic Text Sample with Dual-Layer Cortical Processing."""
     agent.eval()
     diag_prompt = "User: What is the primary source of energy for Earth?\nKaryon:"
     diag_hu = HomeostaticUnit(batch_size=1, device=agent.device_str)
@@ -198,7 +198,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.train()
     return "".join(generated_chars).strip()
 
-logger.info(f"Starting Multi-Pass High-Speed Session ({NUM_PASSES} Passes @ 176k tok/s)...")
+logger.info(f"Starting Multi-Pass High-Speed Session ({NUM_PASSES} Passes @ 140k+ tok/s)...")
 
 for pass_idx in range(NUM_PASSES):
     logger.info(f"\n{'='*85}\n === [STARTING PASS {pass_idx+1}/{NUM_PASSES} (EPOCH {saved_epoch + pass_idx + 1})] ===\n{'='*85}")
@@ -220,7 +220,7 @@ for pass_idx in range(NUM_PASSES):
 
         optimizer.zero_grad()
         
-        # 1. Native C++ 3-Tier Fractal SSD Execution with Theta Phase Event Reset
+        # 1. Native C++ Dual-Layer Cortical SDE-SSM Execution
         t_exec_start = time.perf_counter()
         total_loss_metric, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
             input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
@@ -281,7 +281,7 @@ for pass_idx in range(NUM_PASSES):
             print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | PASS {pass_idx+1}/{NUM_PASSES} | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
             print("="*85)
             print(f"Plasticity Gating Status  : {status_str}")
-            print(f"Submodule Timing (ms)     : 3-Tier SSD Scan: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms")
+            print(f"Submodule Timing (ms)     : Dual-Layer SSD Scan: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms")
             print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
             print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
             print(f"Gradient Flow Inspection  : Embeddings Grad Norm = {grad_embed:.6f} | Attractor Head Grad Norm = {grad_head:.6f}")

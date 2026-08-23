@@ -227,7 +227,7 @@ public:
 };
 
 // ============================================================================
-// 5. CAUSAL BYTE RECEPTIVE FIELD (NATIVE C++ K=4 DEPTHWISE CONV1D)
+// 5. CAUSAL BYTE RECEPTIVE FIELD (NON-LINEAR DEPTHWISE 1D CONV + SILU)
 // ============================================================================
 class CausalByteReceptiveFieldImpl : public torch::nn::Module {
 public:
@@ -256,16 +256,16 @@ public:
             x_trans, 
             torch::nn::functional::PadFuncOptions({kernel_size - 1, 0}).mode(torch::kConstant).value(0.0)
         );
-        auto conv_out = conv->forward(x_padded);
+        auto conv_out = torch::silu(conv->forward(x_padded));
         auto out = norm->forward(conv_out.transpose(1, 2) + x_seq);
         return out;
     }
 };
 
 // ============================================================================
-// 6. THALAMOCORTICAL GATED FRACTAL SSD CORE (3-TIER MULTI-RATE MEMORY)
+// 6. CALIBRATED PARALLEL STATE-SPACE DUALITY CORE (NATIVE C++20 SSD)
 // ============================================================================
-class ThalamocorticalGatedFractalSSDCoreImpl : public torch::nn::Module {
+class CalibratedParallelSSDCoreImpl : public torch::nn::Module {
 public:
     int64_t text_dim;
     int64_t unified_dim;
@@ -279,18 +279,13 @@ public:
     torch::nn::Linear q_proj{nullptr};
     torch::nn::Linear k_proj{nullptr};
     torch::nn::Linear v_proj{nullptr};
-
-    torch::Tensor decay_fast;
-    torch::Tensor decay_meso;
-    torch::Tensor decay_macro;
-
-    torch::nn::Linear gain_router{nullptr};
+    torch::Tensor decay_logits;
     torch::nn::Linear out_proj{nullptr};
     torch::nn::LayerNorm norm{nullptr};
 
-    ThalamocorticalGatedFractalSSDCoreImpl(int64_t text_dim = 128, int64_t unified_dim = 256, int64_t hidden_dim = 512,
-                                         int64_t num_heads = 8, int64_t head_k = 32, int64_t head_v = 64,
-                                         std::string device_str = "cpu")
+    CalibratedParallelSSDCoreImpl(int64_t text_dim = 128, int64_t unified_dim = 256, int64_t hidden_dim = 512,
+                                 int64_t num_heads = 8, int64_t head_k = 32, int64_t head_v = 64,
+                                 std::string device_str = "cpu")
         : text_dim(text_dim), unified_dim(unified_dim), hidden_dim(hidden_dim),
           num_heads(num_heads), head_k(head_k), head_v(head_v) {
 
@@ -303,12 +298,8 @@ public:
 
         auto opts = torch::TensorOptions().dtype(torch::kFloat32);
         if (device_str.find("cuda") != std::string::npos) opts = opts.device(torch::kCUDA);
+        decay_logits = register_parameter("decay_logits", torch::randn({1, num_heads, 1, 1}, opts) * 0.1f + 2.0f);
 
-        decay_fast = register_parameter("decay_fast", torch::full({1, num_heads, 1, 1}, 2.2f, opts));
-        decay_meso = register_parameter("decay_meso", torch::full({1, num_heads, 1, 1}, 4.5f, opts));
-        decay_macro = register_parameter("decay_macro", torch::full({1, num_heads, 1, 1}, 7.8f, opts));
-
-        gain_router = register_module("gain_router", torch::nn::Linear(unified_dim, num_heads * 3));
         out_proj = register_module("out_proj", torch::nn::Linear(hidden_dim, hidden_dim));
         norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
 
@@ -317,8 +308,8 @@ public:
         }
     }
 
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward_chunk_gated_ssd(
-        torch::Tensor chunk_emb, torch::Tensor m_fast, torch::Tensor m_meso, torch::Tensor m_macro, torch::Tensor u_t, float dt = 1.0f) {
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_chunk_parallel_ssd(
+        torch::Tensor chunk_emb, torch::Tensor m_prev, torch::Tensor u_t, float dt = 1.0f) {
 
         int64_t batch_size = chunk_emb.size(0);
         int64_t chunk_len = chunk_emb.size(1);
@@ -334,63 +325,37 @@ public:
         auto k = k_proj->forward(w_chunk).view({batch_size, chunk_len, num_heads, head_k}).transpose(1, 2);
         auto v = v_proj->forward(w_chunk).view({batch_size, chunk_len, num_heads, head_v}).transpose(1, 2);
 
-        auto alpha_f = torch::pow(torch::sigmoid(decay_fast), eff_dt);
-        auto alpha_m = torch::pow(torch::sigmoid(decay_meso), eff_dt);
-        auto alpha_M = torch::pow(torch::sigmoid(decay_macro), eff_dt);
+        auto alpha = torch::pow(torch::sigmoid(decay_logits), eff_dt);
+        auto beta = 1.0f - alpha;
 
-        auto beta_f = 1.0f - alpha_f;
-        auto beta_m = 1.0f - alpha_m;
-        auto beta_M = 1.0f - alpha_M;
-
-        // 2. Intra-chunk Causal Attention Matrix (Gamma-scale)
+        // 2. Intra-chunk Causal Attention Matrix
         auto pos = torch::arange(chunk_len, chunk_emb.options().dtype(torch::kFloat32));
         auto diff = pos.unsqueeze(1) - pos.unsqueeze(0);
         auto causal_mask = (diff >= 0).to(torch::kFloat32);
 
-        auto decay_weights_f = torch::pow(alpha_f, diff.clamp_min(0)) * causal_mask * beta_f;
-        auto s_matrix = torch::matmul(q, k.transpose(-1, -2)) * decay_weights_f;
+        auto decay_weights = torch::pow(alpha, diff.clamp_min(0)) * causal_mask * beta;
+        auto s_matrix = torch::matmul(q, k.transpose(-1, -2)) * decay_weights;
         auto y_intra = torch::matmul(s_matrix, v);
 
-        // 3. 3-Tier Multi-Rate Retrieval
-        auto decay_start_f = torch::pow(alpha_f, (pos + 1.0f).view({1, 1, chunk_len, 1}));
-        auto decay_start_m = torch::pow(alpha_m, (pos + 1.0f).view({1, 1, chunk_len, 1}));
-        auto decay_start_M = torch::pow(alpha_M, (pos + 1.0f).view({1, 1, chunk_len, 1}));
+        // 3. Inter-chunk Retrieval
+        auto decay_to_start = torch::pow(alpha, (pos + 1.0f).view({1, 1, chunk_len, 1}));
+        auto y_inter = torch::matmul(q * decay_to_start, m_prev);
 
-        auto y_inter_f = torch::matmul(q * decay_start_f, m_fast);
-        auto y_inter_m = torch::matmul(q * decay_start_m, m_meso);
-        auto y_inter_M = torch::matmul(q * decay_start_M, m_macro);
-
-        auto y_fast_total = y_intra + y_inter_f;
-
-        // 4. Thalamocortical Dynamic Gain Routing (Variance Conserved!)
-        auto router_logits = gain_router->forward(w_chunk).view({batch_size, chunk_len, num_heads, 3}).transpose(1, 2);
-        auto gain_probs = torch::softmax(router_logits, -1);
-
-        auto g_fast  = gain_probs.slice(-1, 0, 1);
-        auto g_meso  = gain_probs.slice(-1, 1, 2);
-        auto g_macro = gain_probs.slice(-1, 2, 3);
-
-        auto y_routed = g_fast * y_fast_total + g_meso * y_inter_m + g_macro * y_inter_M;
-        auto y_total = y_routed.transpose(1, 2).reshape({batch_size * chunk_len, hidden_dim});
+        auto y_total = (y_intra + y_inter).transpose(1, 2).reshape({batch_size * chunk_len, hidden_dim});
         auto h_chunk = norm->forward(out_proj->forward(y_total) + y_total);
 
-        // 5. Multi-Rate Matrix Updates
-        auto decay_end_f = torch::pow(alpha_f, (static_cast<float>(chunk_len) - 1.0f - pos).view({1, 1, chunk_len, 1}));
-        auto decay_end_m = torch::pow(alpha_m, (static_cast<float>(chunk_len) - 1.0f - pos).view({1, 1, chunk_len, 1}));
-        auto decay_end_M = torch::pow(alpha_M, (static_cast<float>(chunk_len) - 1.0f - pos).view({1, 1, chunk_len, 1}));
-
-        auto kv_update_f = torch::matmul((k * decay_end_f).transpose(-1, -2), v);
-        auto kv_update_m = torch::matmul((k * decay_end_m).transpose(-1, -2), v);
-        auto kv_update_M = torch::matmul((k * decay_end_M).transpose(-1, -2), v);
+        // 4. Matrix State Update for Next Chunk
+        auto decay_to_end = torch::pow(alpha, (static_cast<float>(chunk_len) - 1.0f - pos).view({1, 1, chunk_len, 1}));
+        auto k_decayed = k * decay_to_end;
+        auto kv_chunk_update = torch::matmul(k_decayed.transpose(-1, -2), v);
 
         constexpr float sigma = 1e-3f;
-        auto dW = torch::randn_like(m_fast) * torch::sqrt(eff_dt) * sigma;
+        auto dW = torch::randn_like(m_prev) * torch::sqrt(eff_dt) * sigma;
 
-        auto m_next_fast  = torch::pow(alpha_f, static_cast<float>(chunk_len)) * m_fast  + beta_f * kv_update_f + dW;
-        auto m_next_meso  = torch::pow(alpha_m, static_cast<float>(chunk_len)) * m_meso  + beta_m * kv_update_m + dW * 0.5f;
-        auto m_next_macro = torch::pow(alpha_M, static_cast<float>(chunk_len)) * m_macro + beta_M * kv_update_M + dW * 0.2f;
+        auto alpha_chunk = torch::pow(alpha, static_cast<float>(chunk_len));
+        auto m_next = alpha_chunk * m_prev + beta * kv_chunk_update + dW;
 
-        return std::make_tuple(h_chunk, m_next_fast, m_next_meso, m_next_macro, eff_dt.view({batch_size, 1}));
+        return std::make_tuple(h_chunk, m_next, eff_dt.view({batch_size, 1}));
     }
 };
 
@@ -615,7 +580,7 @@ public:
 };
 
 // ============================================================================
-// 10. PYBIND11 MODULE BINDINGS (ALL 9 CORE COGNITIVE SYSTEMS)
+// 10. PYBIND11 MODULE BINDINGS
 // ============================================================================
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::class_<ByteTokenizer>(m, "ByteTokenizer")
@@ -662,17 +627,16 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("named_parameters", [](std::shared_ptr<CausalByteReceptiveFieldImpl> m) { return m->named_parameters(); })
         .def("__call__", &CausalByteReceptiveFieldImpl::forward);
 
-    // THALAMOCORTICAL GATED FRACTAL SSD CORE (3-TIER MULTI-SCALE)
-    py::class_<ThalamocorticalGatedFractalSSDCoreImpl, torch::nn::Module, std::shared_ptr<ThalamocorticalGatedFractalSSDCoreImpl>>(m, "ThalamocorticalGatedFractalSSDCore")
+    py::class_<CalibratedParallelSSDCoreImpl, torch::nn::Module, std::shared_ptr<CalibratedParallelSSDCoreImpl>>(m, "CalibratedParallelSSDCore")
         .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
              py::arg("text_dim") = 128, py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512,
              py::arg("num_heads") = 8, py::arg("head_k") = 32, py::arg("head_v") = 64, py::arg("device") = "cpu")
-        .def("forward_chunk_gated_ssd", &ThalamocorticalGatedFractalSSDCoreImpl::forward_chunk_gated_ssd,
-             py::arg("chunk_emb"), py::arg("m_fast"), py::arg("m_meso"), py::arg("m_macro"), py::arg("u_t"), py::arg("dt") = 1.0f)
-        .def("parameters", [](std::shared_ptr<ThalamocorticalGatedFractalSSDCoreImpl> m) { return m->parameters(); })
-        .def("named_parameters", [](std::shared_ptr<ThalamocorticalGatedFractalSSDCoreImpl> m) { return m->named_parameters(); })
-        .def("__call__", &ThalamocorticalGatedFractalSSDCoreImpl::forward_chunk_gated_ssd,
-             py::arg("chunk_emb"), py::arg("m_fast"), py::arg("m_meso"), py::arg("m_macro"), py::arg("u_t"), py::arg("dt") = 1.0f);
+        .def("forward_chunk_parallel_ssd", &CalibratedParallelSSDCoreImpl::forward_chunk_parallel_ssd,
+             py::arg("chunk_emb"), py::arg("m_prev"), py::arg("u_t"), py::arg("dt") = 1.0f)
+        .def("parameters", [](std::shared_ptr<CalibratedParallelSSDCoreImpl> m) { return m->parameters(); })
+        .def("named_parameters", [](std::shared_ptr<CalibratedParallelSSDCoreImpl> m) { return m->named_parameters(); })
+        .def("__call__", &CalibratedParallelSSDCoreImpl::forward_chunk_parallel_ssd,
+             py::arg("chunk_emb"), py::arg("m_prev"), py::arg("u_t"), py::arg("dt") = 1.0f);
 
     py::class_<DesaturatedHopfieldAttractorHeadImpl, torch::nn::Module, std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl>>(m, "DesaturatedHopfieldAttractorHead")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
