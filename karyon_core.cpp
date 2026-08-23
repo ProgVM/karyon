@@ -447,7 +447,7 @@ public:
     torch::nn::Linear posterior_net{nullptr};
     torch::nn::Sequential decoder_net{nullptr};
 
-    LatentPredictorImpl(int64_dim hidden_dim = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
+    LatentPredictorImpl(int64_t hidden_dim = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
         : hidden_dim(hidden_dim), unified_dim(unified_dim), latent_dim(latent_dim) {
         
         prior_net = register_module("prior_net", torch::nn::Linear(hidden_dim, latent_dim * 2));
