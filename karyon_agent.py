@@ -1,11 +1,11 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v15.1 (PRODUCTION MASTER SWIGLU HYBRID)
+KARYON AGENT CORE v15.2 (PRODUCTION MASTER SWIGLU HYBRID)
 Integrated Parallel State-Space Duality Engine (Time-Mixing, 160k+ tok/s),
 Native C++20 Parallel SwiGLU Block (Channel-Mixing Knowledge Synthesis),
 Causal N-gram Byte Receptive Field (K=4), Afferent-Efferent Lexical Tying,
-Unified-Dim Episodic Memory Alignment, and Event Boundary Reset.
+Encapsulated Unified-Dim Episodic Projection, and Event Boundary Reset.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -61,7 +61,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v15.1 PRODUCTION MASTER SWIGLU HYBRID)
+# MASTER CORE AGENT (v15.2 PRODUCTION MASTER SWIGLU HYBRID)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -113,7 +113,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 3. Native C++20 Channel-Mixing SwiGLU Knowledge Synthesis Block
+        # 3. Native C++20 Channel-Mixing SwiGLU Knowledge Synthesis Block (1536 dim)
         self.channel_mixer = ParallelSwiGLUBlock(
             hidden_dim=self.hidden_dim,
             expand_dim=1536,
@@ -144,6 +144,9 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
+        # 7. Dedicated Episodic Projection (text_dim 128 -> unified_dim 256)
+        self.episodic_sensory_proj = nn.Linear(self.text_dim, self.unified_dim).to(self.device)
+
         # Afferent-Efferent Tied Motor Projection Head
         self.motor_text_proj = nn.Sequential(
             nn.Linear(self.hidden_dim, self.text_dim),
@@ -159,6 +162,7 @@ class CoREAgent(nn.Module):
     def get_all_parameters(self) -> List[nn.Parameter]:
         params = (
             list(self.pos_embeddings.parameters()) + 
+            list(self.episodic_sensory_proj.parameters()) +
             list(self.motor_text_proj.parameters()) + 
             list(self.critic.parameters())
         )
@@ -171,7 +175,9 @@ class CoREAgent(nn.Module):
         sd = {
             'text_embeddings.weight': self.pos_embeddings.byte_embed.weight.detach().cpu(),
             'critic.weight': self.critic.weight.detach().cpu(),
-            'critic.bias': self.critic.bias.detach().cpu()
+            'critic.bias': self.critic.bias.detach().cpu(),
+            'episodic_sensory_proj.weight': self.episodic_sensory_proj.weight.detach().cpu(),
+            'episodic_sensory_proj.bias': self.episodic_sensory_proj.bias.detach().cpu()
         }
         for name, param in self.pos_embeddings.named_parameters():
             sd[f"pos_embeddings.{name}"] = param.detach().cpu()
@@ -209,6 +215,10 @@ class CoREAgent(nn.Module):
                 for sub_p_name, sub_p in self.ssd_core.named_parameters():
                     if sub_p_name == p_name:
                         self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("episodic_sensory_proj."):
+                p_name = name.replace("episodic_sensory_proj.", "")
+                if hasattr(self.episodic_sensory_proj, p_name):
+                    self._safe_copy_param(getattr(self.episodic_sensory_proj, p_name).data, tensor)
             elif name.startswith("critic.weight"):
                 self._safe_copy_param(self.critic.weight.data, tensor)
             elif name.startswith("critic.bias"):
@@ -376,13 +386,12 @@ class CoREAgent(nn.Module):
                 has_eos = (chunk_input_tokens == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
                 m_curr = m_curr * (1.0 - has_eos)
 
-            # Somatic Homeostasis Update (Strict 256-dim projection)
+            # Somatic Homeostasis Update (Encapsulated 256-dim sensory projection)
             with torch.no_grad():
                 curr_loss_val = chunk_loss.detach().item()
                 if episodic_memory is not None and curr_loss_val > 1.2:
-                    # Map the last token representation strictly to unified_dim (256)
-                    w_chunk_last = self.ssd_core.sensory_proj(chunk_emb[:, -1:]) # [Batch, 1, 256]
-                    w_rep = w_chunk_last.squeeze(1).detach() # Shape: [Batch, 256]
+                    # Clean projection of the active token to unified_dim (256)
+                    w_rep = self.episodic_sensory_proj(chunk_emb[:, -1]).detach() # Shape: [Batch, 256]
                     episodic_memory.write(w_rep, w_rep, 3)
 
                 ema_surprise = (1.0 - alpha_ema) * ema_surprise + alpha_ema * (curr_loss_val / 4.0)
