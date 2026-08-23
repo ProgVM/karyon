@@ -1,6 +1,6 @@
 # experiments/exp_matrix_state_capacity_4x.py
 """
-feat(exp): implement 4x associative matrix state capacity scaling (65k scalars) in exp-31
+feat(exp): fix value dimension projection in 4x matrix memory benchmark exp-31
 
 ===============================================================================
 KARYON EXPERIMENTAL BENCHMARK: EXP-31 (4X ASSOCIATIVE MATRIX MEMORY SCALING)
@@ -185,7 +185,9 @@ class ConfigurableCapacitySSDCore(nn.Module):
         y_inter = torch.matmul(q * decay_to_start, m_prev)
 
         y_total = (y_intra + y_inter).transpose(1, 2).reshape(batch_size * chunk_len, self.num_heads * self.head_v)
-        h_chunk = self.norm(self.out_proj(y_total) + y_total)
+        
+        # Linear out_proj maps from (num_heads * head_v) to hidden_dim (512)
+        h_chunk = self.norm(self.out_proj(y_total))
 
         decay_to_end = alpha ** ((float(chunk_len) - 1.0 - pos).view(1, 1, chunk_len, 1))
         k_decayed = k * decay_to_end
