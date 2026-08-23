@@ -1,6 +1,6 @@
 # experiments/exp_deep_stacked_ssd.py
 """
-feat(exp): implement 4-layer hierarchical cortical ssd-swiglu stack and cosine annealing
+feat(exp): fix pybind constructor signatures in 4-layer cortical ssd stack benchmark
 
 ===============================================================================
 KARYON EXPERIMENTAL BENCHMARK: EXP-28 (DEEP HIERARCHICAL CORTICAL SSD STACK)
@@ -56,7 +56,12 @@ torch._dynamo = dynamo_mod
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from karyon_config import CoREConfig
-from karyon_core import ByteTokenizer, HomeostaticUnit, DesaturatedHopfieldAttractorHead
+from karyon_core import (
+    ByteTokenizer,
+    HomeostaticUnit,
+    CausalByteReceptiveField,
+    DesaturatedHopfieldAttractorHead
+)
 
 torch.set_grad_enabled(True)
 device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -64,30 +69,16 @@ device = torch.device(device_str)
 
 
 # =============================================================================
-# MODULE 1: CAUSAL RECEPTIVE FIELD & POSITIONAL EMBEDDINGS
+# MODULE 1: POSITIONAL BYTE EMBEDDING WITH CAUSAL RECEPTIVE FIELD
 # =============================================================================
 
-class CausalByteReceptiveField(nn.Module):
-    def __init__(self, text_dim: int = 128, kernel_size: int = 4):
-        super().__init__()
-        self.kernel_size = kernel_size
-        self.conv = nn.Conv1d(text_dim, text_dim, kernel_size=kernel_size, groups=text_dim, bias=False)
-        self.norm = nn.LayerNorm(text_dim)
-
-    def forward(self, x_seq: torch.Tensor) -> torch.Tensor:
-        x_trans = x_seq.transpose(1, 2)
-        x_padded = F.pad(x_trans, (self.kernel_size - 1, 0), mode='constant', value=0.0)
-        conv_out = self.conv(x_padded)
-        return self.norm(conv_out.transpose(1, 2) + x_seq)
-
-
 class OffsetPositionalByteEmbedding(nn.Module):
-    def __init__(self, vocab_size: int = 258, text_dim: int = 128, max_len: int = 8192):
+    def __init__(self, vocab_size: int = 258, text_dim: int = 128, max_len: int = 8192, device_str: str = 'cpu'):
         super().__init__()
         self.vocab_size = vocab_size
         self.text_dim = text_dim
         self.byte_embed = nn.Embedding(vocab_size, text_dim)
-        self.receptive_field = CausalByteReceptiveField(text_dim=text_dim, kernel_size=4)
+        self.receptive_field = CausalByteReceptiveField(text_dim=text_dim, kernel_size=4, device=device_str)
         
         pe = torch.zeros(max_len, text_dim)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
@@ -114,7 +105,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 class HierarchicalSSDLayer(nn.Module):
     """
     Cortical Time-Mixing Layer operating on a specific temporal frequency band.
-    Deeper layers integrate over progressively slower continuous timescales (Δt_l).
+    Deeper layers integrate over progressively slower continuous timescales (dt_l).
     """
     def __init__(self, in_dim: int = 512, hidden_dim: int = 512, num_heads: int = 8, 
                  head_k: int = 32, head_v: int = 64, layer_idx: int = 0):
@@ -240,7 +231,12 @@ class SingleLayerBaselineAgent(nn.Module):
         self.text_gen_dim = config.net.text_gen_dim
         self.inv_sqrt_text_dim = 1.0 / math.sqrt(self.text_dim)
 
-        self.pos_embeddings = OffsetPositionalByteEmbedding(self.text_gen_dim, self.text_dim)
+        self.pos_embeddings = OffsetPositionalByteEmbedding(
+            vocab_size=self.text_gen_dim, 
+            text_dim=self.text_dim, 
+            max_len=8192, 
+            device_str=device_str
+        )
         self.input_proj = nn.Linear(self.text_dim, self.hidden_dim)
         
         self.block = CorticalBlock(
@@ -248,7 +244,12 @@ class SingleLayerBaselineAgent(nn.Module):
             head_k=32, head_v=64, layer_idx=0
         )
         
-        self.attractor_head = DesaturatedHopfieldAttractorHead(self.hidden_dim, self.text_gen_dim, device_str)
+        self.attractor_head = DesaturatedHopfieldAttractorHead(
+            hidden_dim=self.hidden_dim, 
+            vocab_size=self.text_gen_dim, 
+            num_attractors=64, 
+            device=device_str
+        )
         self.motor_text_proj = nn.Sequential(
             nn.Linear(self.hidden_dim, self.text_dim),
             nn.SiLU(),
@@ -282,7 +283,12 @@ class DeepCorticalStackedAgent(nn.Module):
         self.text_gen_dim = config.net.text_gen_dim
         self.inv_sqrt_text_dim = 1.0 / math.sqrt(self.text_dim)
 
-        self.pos_embeddings = OffsetPositionalByteEmbedding(self.text_gen_dim, self.text_dim)
+        self.pos_embeddings = OffsetPositionalByteEmbedding(
+            vocab_size=self.text_gen_dim, 
+            text_dim=self.text_dim, 
+            max_len=8192, 
+            device_str=device_str
+        )
         self.input_proj = nn.Linear(self.text_dim, self.hidden_dim)
 
         # Multi-Layer Cortical Neocortical Hierarchy (L1 to L4)
@@ -295,7 +301,12 @@ class DeepCorticalStackedAgent(nn.Module):
         ])
         
         self.final_norm = nn.LayerNorm(self.hidden_dim)
-        self.attractor_head = DesaturatedHopfieldAttractorHead(self.hidden_dim, self.text_gen_dim, device_str)
+        self.attractor_head = DesaturatedHopfieldAttractorHead(
+            hidden_dim=self.hidden_dim, 
+            vocab_size=self.text_gen_dim, 
+            num_attractors=64, 
+            device=device_str
+        )
         self.motor_text_proj = nn.Sequential(
             nn.Linear(self.hidden_dim, self.text_dim),
             nn.SiLU(),
@@ -401,7 +412,20 @@ def run_isolated_benchmark():
     # -------------------------------------------------------------------------
     print("[2/2] Evaluating PROPOSED (4-Layer Cortical Stack, 13.5M Params + Cosine Annealing)...")
     prop_model = DeepCorticalStackedAgent(config, num_layers=4, expand_dim=1536).to(device)
-    prop_opt = torch.optim.AdamW(prop_model.parameters(), lr=3e-3, weight_decay=0.01)
+    
+    decay_params = []
+    no_decay_params = []
+    for name, p in prop_model.named_parameters():
+        if p.requires_grad:
+            if p.dim() < 2 or "norm" in name or "bias" in name or "decay_logits" in name or "attractor_basins" in name:
+                no_decay_params.append(p)
+            else:
+                decay_params.append(p)
+
+    prop_opt = torch.optim.AdamW([
+        {"params": decay_params, "weight_decay": 0.01},
+        {"params": no_decay_params, "weight_decay": 0.0}
+    ], lr=3e-3)
     
     # Cosine Annealing with Warmup
     def lr_lambda(current_step: int):
