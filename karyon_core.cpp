@@ -263,7 +263,7 @@ public:
 };
 
 // ============================================================================
-// 6. NATIVE C++20 HIERARCHICAL CHUNKED CORTICAL STACK (SSD + SWIGLU, Q=64)
+// 6. NATIVE C++20 ULTRA-FAST PARALLEL PRE-PROJECTED CORTICAL STACK (v22)
 // ============================================================================
 class HierarchicalCorticalStackImpl : public torch::nn::Module {
 public:
@@ -303,7 +303,6 @@ public:
         for (int64_t l = 0; l < num_layers; ++l) {
             std::string prefix = "layer_" + std::to_string(l) + "_";
             
-            // Time-Mixing SSD
             auto s_norm = register_module(prefix + "ssd_norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
             auto q_p = register_module(prefix + "q_proj", torch::nn::Linear(hidden_dim, num_heads * head_k));
             auto k_p = register_module(prefix + "k_proj", torch::nn::Linear(hidden_dim, num_heads * head_k));
@@ -318,7 +317,6 @@ public:
             out_projs.push_back(o_p);
             decay_logits_vec.push_back(dec);
 
-            // Channel-Mixing SwiGLU
             auto sw_norm = register_module(prefix + "swiglu_norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
             auto w_g = register_module(prefix + "w_gate", torch::nn::Linear(torch::nn::LinearOptions(hidden_dim, expand_dim).bias(false)));
             auto w_u = register_module(prefix + "w_up", torch::nn::Linear(torch::nn::LinearOptions(hidden_dim, expand_dim).bias(false)));
@@ -349,14 +347,14 @@ public:
         int64_t Q = std::min(chunk_size, seq_len);
         int64_t num_chunks = (seq_len + Q - 1) / Q;
 
-        auto pos = torch::arange(Q, x.options().dtype(torch::kFloat32));
-        auto diff = pos.unsqueeze(1) - pos.unsqueeze(0);
-        auto causal_mask = (diff >= 0).to(torch::kFloat32);
-
         std::vector<torch::Tensor> m_next_list;
         m_next_list.reserve(num_layers);
 
         auto curr_x = x;
+
+        auto pos = torch::arange(Q, x.options().dtype(torch::kFloat32));
+        auto diff = pos.unsqueeze(1) - pos.unsqueeze(0);
+        auto causal_mask = (diff >= 0).to(torch::kFloat32);
 
         for (int64_t l = 0; l < num_layers; ++l) {
             float layer_temporal_scale = 1.0f / (1.0f + 0.5f * static_cast<float>(l));
@@ -365,6 +363,12 @@ public:
             auto alpha = torch::pow(torch::sigmoid(decay_logits_vec[l]), eff_dt);
             auto beta = 1.0f - alpha;
 
+            // 1. Parallel Full-Sequence Pre-Projections in 1 Single GEMM
+            auto x_norm = ssd_norms[l]->forward(curr_x);
+            auto q_all = (q_projs[l]->forward(x_norm).view({batch_size, seq_len, num_heads, head_k})) * inv_sqrt_k;
+            auto k_all = k_projs[l]->forward(x_norm).view({batch_size, seq_len, num_heads, head_k});
+            auto v_all = v_projs[l]->forward(x_norm).view({batch_size, seq_len, num_heads, head_v});
+
             auto decay_weights = torch::pow(alpha, diff.clamp_min(0)) * causal_mask * beta;
             auto decay_to_start = torch::pow(alpha, (pos + 1.0f).view({1, 1, Q, 1}));
             auto decay_to_end = torch::pow(alpha, (static_cast<float>(Q) - 1.0f - pos).view({1, 1, Q, 1}));
@@ -372,66 +376,62 @@ public:
             constexpr float sigma = 1e-3f;
 
             auto m_curr = m_prev_list[l];
-            std::vector<torch::Tensor> chunk_outputs;
-            chunk_outputs.reserve(num_chunks);
+            std::vector<torch::Tensor> y_chunks;
+            y_chunks.reserve(num_chunks);
 
+            // 2. Microsecond Intra-Chunk Scan & Inter-Chunk State Carryover (Q=64)
             for (int64_t c = 0; c < num_chunks; ++c) {
                 int64_t start_idx = c * Q;
                 int64_t end_idx = std::min(start_idx + Q, seq_len);
                 int64_t cur_len = end_idx - start_idx;
 
-                auto x_c = curr_x.slice(1, start_idx, end_idx);
-
-                // 1. Time-Mixing SSD on chunk Q
-                auto x_norm = ssd_norms[l]->forward(x_c);
-                auto q = (q_projs[l]->forward(x_norm).view({batch_size, cur_len, num_heads, head_k}).transpose(1, 2)) * inv_sqrt_k;
-                auto k = k_projs[l]->forward(x_norm).view({batch_size, cur_len, num_heads, head_k}).transpose(1, 2);
-                auto v = v_projs[l]->forward(x_norm).view({batch_size, cur_len, num_heads, head_v}).transpose(1, 2);
+                auto q_c = q_all.slice(1, start_idx, end_idx).transpose(1, 2);
+                auto k_c = k_all.slice(1, start_idx, end_idx).transpose(1, 2);
+                auto v_c = v_all.slice(1, start_idx, end_idx).transpose(1, 2);
 
                 torch::Tensor y_intra, y_inter, kv_chunk_update;
 
                 if (cur_len == Q) {
-                    auto s_matrix = torch::matmul(q, k.transpose(-1, -2)) * decay_weights;
-                    y_intra = torch::matmul(s_matrix, v);
-                    y_inter = torch::matmul(q * decay_to_start, m_curr);
-                    auto k_decayed = k * decay_to_end;
-                    kv_chunk_update = torch::matmul(k_decayed.transpose(-1, -2), v);
+                    auto s_matrix = torch::matmul(q_c, k_c.transpose(-1, -2)) * decay_weights;
+                    y_intra = torch::matmul(s_matrix, v_c);
+                    y_inter = torch::matmul(q_c * decay_to_start, m_curr);
+                    auto k_decayed = k_c * decay_to_end;
+                    kv_chunk_update = torch::matmul(k_decayed.transpose(-1, -2), v_c);
                 } else {
-                    auto pos_short = torch::arange(cur_len, x.options().dtype(torch::kFloat32));
-                    auto diff_short = pos_short.unsqueeze(1) - pos_short.unsqueeze(0);
-                    auto mask_short = (diff_short >= 0).to(torch::kFloat32);
-                    auto dw_short = torch::pow(alpha, diff_short.clamp_min(0)) * mask_short * beta;
-                    auto s_matrix = torch::matmul(q, k.transpose(-1, -2)) * dw_short;
-                    y_intra = torch::matmul(s_matrix, v);
+                    auto pos_s = torch::arange(cur_len, x.options().dtype(torch::kFloat32));
+                    auto diff_s = pos_s.unsqueeze(1) - pos_s.unsqueeze(0);
+                    auto mask_s = (diff_s >= 0).to(torch::kFloat32);
+                    auto dw_s = torch::pow(alpha, diff_s.clamp_min(0)) * mask_s * beta;
+                    auto s_matrix = torch::matmul(q_c, k_c.transpose(-1, -2)) * dw_s;
+                    y_intra = torch::matmul(s_matrix, v_c);
 
-                    auto dts_short = torch::pow(alpha, (pos_short + 1.0f).view({1, 1, cur_len, 1}));
-                    y_inter = torch::matmul(q * dts_short, m_curr);
+                    auto dts_s = torch::pow(alpha, (pos_s + 1.0f).view({1, 1, cur_len, 1}));
+                    y_inter = torch::matmul(q_c * dts_s, m_curr);
 
-                    auto dte_short = torch::pow(alpha, (static_cast<float>(cur_len) - 1.0f - pos_short).view({1, 1, cur_len, 1}));
-                    auto k_decayed = k * dte_short;
-                    kv_chunk_update = torch::matmul(k_decayed.transpose(-1, -2), v);
+                    auto dte_s = torch::pow(alpha, (static_cast<float>(cur_len) - 1.0f - pos_s).view({1, 1, cur_len, 1}));
+                    auto k_decayed = k_c * dte_s;
+                    kv_chunk_update = torch::matmul(k_decayed.transpose(-1, -2), v_c);
                 }
 
-                auto y_total = (y_intra + y_inter).transpose(1, 2).reshape({batch_size, cur_len, num_heads * head_v});
-                auto ssd_out = out_projs[l]->forward(y_total);
-                auto x_post_ssd = x_c + ssd_out;
+                auto y_c = (y_intra + y_inter).transpose(1, 2);
+                y_chunks.push_back(y_c);
 
-                // 2. Channel-Mixing SwiGLU Block
-                auto sw_norm = swiglu_norms[l]->forward(x_post_ssd);
-                auto gate = torch::silu(w_gates[l]->forward(sw_norm));
-                auto up = w_ups[l]->forward(sw_norm);
-                auto sw_out = w_downs[l]->forward(gate * up);
-                auto x_chunk_out = x_post_ssd + sw_out;
-
-                chunk_outputs.push_back(x_chunk_out);
-
-                // Update recurrent matrix state M_c
                 auto cur_alpha_chunk = (cur_len == Q) ? alpha_chunk : torch::pow(alpha, static_cast<float>(cur_len));
                 auto dW = torch::randn_like(m_curr) * torch::sqrt(eff_dt) * sigma;
                 m_curr = cur_alpha_chunk * m_curr + beta * kv_chunk_update + dW;
             }
 
-            curr_x = torch::cat(chunk_outputs, 1);
+            auto y_full = torch::cat(y_chunks, 1).reshape({batch_size, seq_len, num_heads * head_v});
+            auto ssd_out = out_projs[l]->forward(y_full);
+            auto x_post_ssd = curr_x + ssd_out;
+
+            // 3. Parallel Full-Sequence SwiGLU Block in 1 Single GEMM
+            auto sw_norm = swiglu_norms[l]->forward(x_post_ssd);
+            auto gate = torch::silu(w_gates[l]->forward(sw_norm));
+            auto up = w_ups[l]->forward(sw_norm);
+            auto sw_out = w_downs[l]->forward(gate * up);
+            curr_x = x_post_ssd + sw_out;
+
             m_next_list.push_back(m_curr);
         }
 

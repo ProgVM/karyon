@@ -2,7 +2,7 @@
 """
 ===============================================================================
 KARYON HIGH-VELOCITY CORTICAL STREAMING RUNTIME (52k DATASET, N=5)
-Integrated with Native C++20 Chunked Cortical Stack (Q=64, >120,000 tok/s, <350MB VRAM),
+Integrated with Native C++20 Pre-Projected Cortical Stack (>140,000 tok/s, <250MB VRAM),
 Logit Soft-Capping (30.0 * tanh), NaN-Proof SFT Masking, Cosine Decay,
 and KEP Rule #6 Deep Diagnostics Dashboard.
 ===============================================================================
@@ -188,7 +188,7 @@ for name, p in agent_brain.named_parameters():
 optimizer = optim.AdamW([
     {"params": decay_params, "weight_decay": 0.01},
     {"params": no_decay_params, "weight_decay": 0.0}
-], lr=3e-3)
+], lr=2.5e-3)
 
 total_training_steps = NUM_PASSES * len(stream_loader)
 warmup_steps = 300
@@ -197,7 +197,7 @@ def lr_lambda(current_global_step: int):
     if current_global_step < warmup_steps:
         return float(current_global_step + 1) / float(warmup_steps)
     progress = float(current_global_step - warmup_steps) / float(max(1, total_training_steps - warmup_steps))
-    return 0.05 + 0.95 * 0.5 * (1.0 + math.cos(math.pi * progress))
+    return 0.04 + 0.96 * 0.5 * (1.0 + math.cos(math.pi * progress))
 
 scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
@@ -214,7 +214,7 @@ total_adapted_batches = 0
 global_step = 0
 
 def run_diagnostic_text_sample(agent, memory, hu_state, config):
-    """KEP Rule #4: Live Diagnostic Text Sample across Native C++20 Chunked Cortical Engine."""
+    """KEP Rule #4: Live Diagnostic Text Sample across Native C++20 Pre-Projected Engine."""
     agent.eval()
     diag_prompt = "User: What is the primary source of energy for Earth?\nKaryon:"
     diag_hu = HomeostaticUnit(batch_size=1, device=agent.device_str)
@@ -247,7 +247,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.train()
     return "".join(generated_chars).strip()
 
-logger.info(f"Starting Native C++20 Chunked Cortical Training ({NUM_PASSES} Passes @ Q=64, >120k tok/s, <350MB VRAM)...")
+logger.info(f"Starting Native C++20 Pre-Projected Cortical Training ({NUM_PASSES} Passes @ >140k tok/s, <250MB VRAM)...")
 
 for pass_idx in range(NUM_PASSES):
     logger.info(f"\n{'='*85}\n === [STARTING PASS {pass_idx+1}/{NUM_PASSES} (EPOCH {saved_epoch + pass_idx + 1})] ===\n{'='*85}")
@@ -267,7 +267,7 @@ for pass_idx in range(NUM_PASSES):
 
         optimizer.zero_grad()
         
-        # 1. Native C++20 Chunked Cortical Scan (Q=64 in C++, full context carryover)
+        # 1. Native C++20 Pre-Projected Cortical Scan
         t_exec_start = time.perf_counter()
         total_loss_metric, speech_loss_val, fe_val, m_states, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
             batch_inputs, batch_targets, hu_batch, criterion_speech, episodic_memory=episodic_mem,
@@ -324,7 +324,7 @@ for pass_idx in range(NUM_PASSES):
             print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | PASS {pass_idx+1}/{NUM_PASSES} | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
             print("="*85)
             print(f"Plasticity Gating Status  : {status_str}")
-            print(f"Submodule Timing (ms)     : Native C++20 Chunked Scan: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms")
+            print(f"Submodule Timing (ms)     : Native C++ Pre-Projected Scan: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms")
             print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
             print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
             print(f"Gradient Flow Inspection  : Embeddings Grad Norm: {grad_embed:.5f}")

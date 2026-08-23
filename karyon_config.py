@@ -1,8 +1,8 @@
 # karyon_config.py
 """
 ===============================================================================
-KARYON MASTER CONFIGURATION REGISTRY v5.5
-Unified Settings for C++20 Chunked Cortical SSD (Q=64), SFT Masking, and Ashby Homeostasis.
+KARYON MASTER CONFIGURATION REGISTRY v5.6
+Unified Settings for Ultra-Fast Parallel Pre-Projected Cortical Engine (Q=64).
 ===============================================================================
 """
 
@@ -88,9 +88,9 @@ class MemoryConfig:
 class TrainConfig:
     """Training, Optimization, and Dynamic Plasticity Gating (DFET v3)."""
     batch_size: int = 32
-    learning_rate: float = 3e-3
+    learning_rate: float = 2.5e-3
     min_learning_rate: float = 1e-4
-    warmup_steps: int = 200
+    warmup_steps: int = 300
     weight_decay: float = 0.01
     grad_clip_norm: float = 2.0
     loss_free_energy_weight: float = 0.05
