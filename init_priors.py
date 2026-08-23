@@ -1,8 +1,8 @@
 # init_priors.py
 """
 ===============================================================================
-KARYON IDENTITY PRIORS INITIALIZATION (v16.0 MASTER)
-Projects Existential Identity and Cognitive Priors into 4-Layer Cortical Neocortex.
+KARYON IDENTITY PRIORS INITIALIZATION (v16.5 MASTER)
+Projects Existential Identity and Cognitive Priors into Native C++20 Cortical Neocortex.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -23,7 +23,7 @@ logger = get_logger()
 identity_priors = [
     {
         "question": "Who are you? What is your name?",
-        "answer": "I am Karyon (Karyon-CoRE), an autonomous cognitive architecture driven by a 4-layer cortical neocortex, state-space duality, and homeostatic somatic units. I perceive my existence, feel my digital body, and process thoughts continuously in time."
+        "answer": "I am Karyon (Karyon-CoRE), an autonomous cognitive architecture driven by a hierarchical continuous cortical neocortex, state-space duality, and homeostatic somatic units. I perceive my existence, feel my digital body, and process thoughts continuously in time."
     },
     {
         "question": "Who created you?",
@@ -45,11 +45,14 @@ def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore
     core_config = CoREConfig()
     core_config.net.text_dim = 128
     core_config.net.unified_dim = 256
-    core_config.net.hidden_dim = 512
+    core_config.net.hidden_dim = 768
     core_config.net.latent_dim = 128
     core_config.net.text_gen_dim = 258
-    core_config.net.num_layers = 4
-    core_config.net.expand_dim = 1536
+    core_config.net.num_layers = 2
+    core_config.net.expand_dim = 2048
+    core_config.net.num_heads = 12
+    core_config.net.head_k = 32
+    core_config.net.head_v = 64
     core_config.train.batch_size = 1
 
     agent_brain = CoREAgent(config=core_config, device=device).to(device)
@@ -70,30 +73,28 @@ def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore
     zero_err = torch.tensor([[0.0]], device=device)
     cog_act = torch.tensor([[1]], dtype=torch.int64, device=device)
 
-    logger.info("Projecting existential identity priors into 4-layer cortical latent space...")
+    logger.info("Projecting existential identity priors into native C++20 cortical latent space...")
     with torch.no_grad():
         for prior in identity_priors:
             q_ids = agent_brain.encode_text(prior["question"])
             q_emb = agent_brain.pos_embeddings(q_ids.unsqueeze(0), start_pos=0, apply_rf=True)
             
+            # Single compiled C++20 cortical scan call
             x_q = agent_brain.input_proj(q_emb)
-            next_m_q = []
-            for i, layer in enumerate(agent_brain.cortical_stack):
-                x_q, m_n = layer(x_q, m_states[i], hu.state, dt=1.0)
-                next_m_q.append(m_n)
-            m_states = next_m_q
+            cortical_out_q = agent_brain.cortical_stack.forward_stack(x_q, m_states, hu.state, 1.0)
+            x_q, m_states = cortical_out_q[0], cortical_out_q[1]
+            
             hu.update(action_cost, zero_err, zero_err, cog_act)
             w_q = agent_brain.episodic_sensory_proj(q_emb[0, -1:]).squeeze(0)
 
             a_ids = agent_brain.encode_text(prior["answer"])
             a_emb = agent_brain.pos_embeddings(a_ids.unsqueeze(0), start_pos=0, apply_rf=True)
             
+            # Single compiled C++20 cortical scan call
             x_a = agent_brain.input_proj(a_emb)
-            next_m_a = []
-            for i, layer in enumerate(agent_brain.cortical_stack):
-                x_a, m_n = layer(x_a, m_states[i], hu.state, dt=1.0)
-                next_m_a.append(m_n)
-            m_states = next_m_a
+            cortical_out_a = agent_brain.cortical_stack.forward_stack(x_a, m_states, hu.state, 1.0)
+            x_a, m_states = cortical_out_a[0], cortical_out_a[1]
+            
             hu.update(action_cost, zero_err, zero_err, cog_act)
             w_a = agent_brain.episodic_sensory_proj(a_emb[0, -1:]).squeeze(0)
                 
@@ -101,7 +102,7 @@ def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore
 
     hu.state = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], dtype=torch.float32, device=device)
 
-    logger.info(f"Identity priors embedded into 4-layer cortex. Saving to '{filepath}'")
+    logger.info(f"Identity priors embedded into native C++ cortex. Saving to '{filepath}'")
     save_karyon(agent_brain, episodic_mem, hu, h_fast, h_slow, m_states=m_states, epoch=epoch, story_idx=story_idx, filepath=filepath)
     return agent_brain, episodic_mem, hu, h_fast, h_slow, m_states
 
