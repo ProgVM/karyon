@@ -2,9 +2,9 @@
 """
 ===============================================================================
 KARYON HIGH-VELOCITY CORTICAL STREAMING RUNTIME (52k DATASET, N=5)
-Powered by Native C++20 Hierarchical Cortical Stack (18.5M Params, >100k tok/s),
-SFT Prompt Masking (Zero-Loss User Prompts), Unscaled Natural Dynamic Logits,
-Extended 64-Byte Chunks, and KEP Rule #6 Deep Diagnostics Dashboard.
+Integrated with Native C++20 Hierarchical Cortical Stack (>120,000 tok/s),
+Logit Soft-Capping (30.0 * tanh), NaN-Proof SFT Masking, Cosine Decay,
+and KEP Rule #6 Deep Diagnostics Dashboard.
 ===============================================================================
 """
 
@@ -83,12 +83,6 @@ dataset = load_dataset("vicgalle/alpaca-gpt4", split="train")
 tokenizer = ByteTokenizer()
 
 class SFTMaskedDataset(Dataset):
-    """
-    SFT Dataset with Prompt Loss Masking:
-    - Input sequence contains full conversation: 'User: ...\nKaryon: ...'
-    - Target sequence masks user prompt with 256 (ignore_index), so gradients
-      focus 100% of capacity on generating accurate Karyon responses!
-    """
     def __init__(self, hf_dataset, tokenizer, max_len=512):
         self.samples = []
         prefix_tag = "User: "
@@ -101,7 +95,7 @@ class SFTMaskedDataset(Dataset):
                 prompt_str = f"{prefix_tag}{instruction}{sep_tag}"
                 full_str = f"{prompt_str}{output}"
 
-                prompt_ids = tokenizer.encode(prompt_str)[:-1] # Remove EOS from prompt prefix
+                prompt_ids = tokenizer.encode(prompt_str)[:-1]
                 full_ids = tokenizer.encode(full_str)
 
                 if len(full_ids) > max_len:
@@ -111,7 +105,6 @@ class SFTMaskedDataset(Dataset):
                     input_ids = full_ids[:-1]
                     target_ids = full_ids[1:]
 
-                    # Mask user prompt in targets with 256 (ignore_index)
                     prompt_len_in_target = min(len(prompt_ids) - 1, len(target_ids))
                     masked_targets = [256] * prompt_len_in_target + target_ids[prompt_len_in_target:]
 
@@ -146,18 +139,17 @@ logger.info(f"SFT Masked Dataset Ready. Total Samples: {len(train_dataset)} | Ba
 core_config = CoREConfig()
 core_config.net.text_dim = 128
 core_config.net.unified_dim = 256
-core_config.net.hidden_dim = 768
+core_config.net.hidden_dim = 512
 core_config.net.latent_dim = 128
 core_config.net.num_layers = 2
-core_config.net.expand_dim = 2048
-core_config.net.num_heads = 12
+core_config.net.expand_dim = 1536
+core_config.net.num_heads = 8
 core_config.net.head_k = 32
 core_config.net.head_v = 64
 core_config.net.text_gen_dim = 258
 core_config.train.batch_size = BATCH_SIZE
 core_config.train.chunk_size = CHUNK_SIZE
 
-# Extract DNA Genome dimensions from container manifest
 if os.path.exists(kcore_path):
     with open(kcore_path, 'rb') as f:
         f.seek(8)
@@ -182,7 +174,6 @@ agent_brain = CoREAgent(config=core_config, device=device).to(device)
 hu = HomeostaticUnit(batch_size=BATCH_SIZE, device=device)
 episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_config.net.unified_dim, max_capacity=1000, device=device)
 
-# Load state directly from .kcore container
 h_fast, h_slow, m_states, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device)
 
 decay_params = []
@@ -197,7 +188,7 @@ for name, p in agent_brain.named_parameters():
 optimizer = optim.AdamW([
     {"params": decay_params, "weight_decay": 0.01},
     {"params": no_decay_params, "weight_decay": 0.0}
-], lr=3e-3)
+], lr=2e-3)
 
 total_training_steps = NUM_PASSES * len(stream_loader)
 warmup_steps = 300
@@ -256,7 +247,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.train()
     return "".join(generated_chars).strip()
 
-logger.info(f"Starting Native C++20 Cortical Training ({NUM_PASSES} Passes @ 18.5M Params, >100k tok/s)...")
+logger.info(f"Starting NaN-Proof Native C++20 Cortical Training ({NUM_PASSES} Passes @ >100k tok/s)...")
 
 for pass_idx in range(NUM_PASSES):
     logger.info(f"\n{'='*85}\n === [STARTING PASS {pass_idx+1}/{NUM_PASSES} (EPOCH {saved_epoch + pass_idx + 1})] ===\n{'='*85}")
@@ -276,7 +267,7 @@ for pass_idx in range(NUM_PASSES):
 
         optimizer.zero_grad()
         
-        # 1. Native C++20 Hierarchical Cortical Scan with SFT Prompt Masking
+        # 1. Full-Sequence Zero-Loop Native C++20 Cortical Scan
         t_exec_start = time.perf_counter()
         total_loss_metric, speech_loss_val, fe_val, m_states, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
             batch_inputs, batch_targets, hu_batch, criterion_speech, episodic_memory=episodic_mem,
@@ -295,12 +286,12 @@ for pass_idx in range(NUM_PASSES):
         is_speech_unmastered = speech_loss_val > SPEECH_MASTERY_SETPOINT
         is_statistical_outlier = agent_brain.evaluate_dfet_gating(fe_val, moving_mean_fe, moving_std_fe, na_val)
         
-        should_adapt = is_fe_unmastered or is_speech_unmastered or is_statistical_outlier
+        should_adapt = (is_fe_unmastered or is_speech_unmastered or is_statistical_outlier) and not math.isnan(speech_loss_val)
 
         t_opt_ms = 0.0
         if should_adapt:
             t_opt_start = time.perf_counter()
-            torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=3.0)
+            torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=2.0)
             optimizer.step()
             scheduler.step()
             t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
@@ -323,7 +314,7 @@ for pass_idx in range(NUM_PASSES):
 
         # KEP Rule #6: Deep Process Diagnostics Dashboard
         if (batch_idx + 1) % 50 == 0 or batch_idx == len(stream_loader) - 1:
-            perplexity = math.exp(min(speech_loss_val, 20.0))
+            perplexity = math.exp(min(speech_loss_val, 20.0)) if not math.isnan(speech_loss_val) else float('nan')
             curiosity, energy, stability, health, na, da = curr_u_t[0].tolist()
             peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device == 'cuda' else 0.0
 
@@ -333,7 +324,7 @@ for pass_idx in range(NUM_PASSES):
             print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | PASS {pass_idx+1}/{NUM_PASSES} | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
             print("="*85)
             print(f"Plasticity Gating Status  : {status_str}")
-            print(f"Submodule Timing (ms)     : Native C++20 Cortical Scan: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms")
+            print(f"Submodule Timing (ms)     : Full C++ Cortical Scan: {t_exec_ms:.1f}ms | Step: {t_opt_ms:.1f}ms")
             print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
             print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
             print(f"Gradient Flow Inspection  : Embeddings Grad Norm: {grad_embed:.5f}")
