@@ -283,7 +283,7 @@ public:
     torch::nn::Linear out_proj{nullptr};
     torch::nn::LayerNorm norm{nullptr};
 
-    CalibratedParallelSSDCoreImpl(int64_t text_dim = 128, int64_t unified_dim = 256, int64_dim hidden_dim = 512,
+    CalibratedParallelSSDCoreImpl(int64_t text_dim = 128, int64_t unified_dim = 256, int64_t hidden_dim = 512,
                                  int64_t num_heads = 8, int64_t head_k = 32, int64_t head_v = 64,
                                  std::string device_str = "cpu")
         : text_dim(text_dim), unified_dim(unified_dim), hidden_dim(hidden_dim),
@@ -382,7 +382,6 @@ public:
     }
 
     torch::Tensor forward(torch::Tensor x_flat) {
-        // x_flat shape: [Batch * ChunkLen, HiddenDim]
         auto gate = torch::silu(w_gate->forward(x_flat));
         auto up = w_up->forward(x_flat);
         auto ffn_out = w_down->forward(gate * up);
