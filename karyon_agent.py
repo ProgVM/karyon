@@ -1,10 +1,10 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v11.0 (PRODUCTION MASTER DUAL-LAYER CORTEX)
-Hierarchical 2-Layer Cortical SDE-SSM Stack (L2/3 Syntax + L5/6 Semantics),
-Non-Linear Causal Receptive Field (K=4 SiLU), Afferent-Efferent Weight Tying,
-Desaturated Hopfield Attractors, and Event Boundary Theta Phase Reset.
+KARYON AGENT CORE v12.0 (PRODUCTION MASTER CORTICAL STACK)
+Dual-Layer Cortical SDE-SSM Stack with Rolling-Buffer Receptive Field Consistency,
+Afferent-Efferent Lexical Weight Tying, Desaturated Hopfield Attractor Landscape,
+and Theta-Phase Event Boundary Reset.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -29,7 +29,7 @@ from karyon_core import (
 
 
 # =============================================================================
-# MODULE 1: POSITIONAL BYTE EMBEDDING WITH NON-LINEAR RECEPTIVE FIELD
+# MODULE 1: POSITIONAL BYTE EMBEDDING WITH RECEPTIVE FIELD
 # =============================================================================
 
 class OffsetPositionalByteEmbedding(nn.Module):
@@ -59,7 +59,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v11.0 DUAL-LAYER CORTEX)
+# MASTER CORE AGENT (v12.0 PRODUCTION MASTER CORTICAL STACK)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -156,6 +156,9 @@ class CoREAgent(nn.Module):
         
         self.critic = nn.Linear(self.hidden_dim, 1).to(self.device)
 
+        self._cached_zero_vision = torch.zeros(1, config.net.vision_dim, device=self.device)
+        self._cached_zero_motor = torch.zeros(1, config.net.action_dim, device=self.device)
+
     def get_all_parameters(self) -> List[nn.Parameter]:
         params = (
             list(self.pos_embeddings.parameters()) + 
@@ -243,7 +246,6 @@ class CoREAgent(nn.Module):
     def forward_step(self, sensor_inputs: Dict[str, torch.Tensor], h_prev_fast: torch.Tensor, 
                      h_prev_slow: torch.Tensor, u_t: torch.Tensor, episodic_memory=None, 
                      dt: float = 1.0, attention_temp: float = 0.05):
-        """Single-step 2-layer cortical perception."""
         batch_size = h_prev_fast.size(0)
         
         text_in = sensor_inputs.get('text', torch.zeros(batch_size, self.config.net.text_dim, device=self.device))
@@ -278,15 +280,13 @@ class CoREAgent(nn.Module):
         else:
             w_integrated = w_current
             
-        # 2-Layer Cortical Feedforward Step
+        # 2-Layer Cortical Step
         t_seq = text_in.unsqueeze(1)
         m_dummy = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
         
-        # Layer 1 (Syntax)
         ssd1_out = self.ssd_layer1.forward_chunk_parallel_ssd(t_seq, m_dummy, u_t, dt)
         h1, _, eff_dt = ssd1_out[0], ssd1_out[1], ssd1_out[2]
         
-        # Layer 2 (Semantics with Residual Skip)
         ssd2_out = self.ssd_layer2.forward_chunk_parallel_ssd(h1.unsqueeze(1), m_dummy, u_t, dt)
         h2 = ssd2_out[0]
         
@@ -337,7 +337,7 @@ class CoREAgent(nn.Module):
         h_proj = self.motor_text_proj(h_relaxed)
         logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
 
-        # 4. Batched Target Loss
+        # 4. Batched Target Loss with ignore_index=256 support
         loss = criterion(logits_flat, chunk_targets.contiguous().view(-1))
         return loss, m1_next, m2_next, h_total_chunk, eff_dt
 
@@ -355,7 +355,6 @@ class CoREAgent(nn.Module):
                          chunk_size: int = 32, optimizer: torch.optim.Optimizer = None) -> Tuple[float, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size, seq_len = input_seq.size()
         
-        # 2-Layer Cortical Matrix States
         m1_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
         m2_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
         
@@ -380,7 +379,6 @@ class CoREAgent(nn.Module):
 
             chunk_emb = self.pos_embeddings(chunk_input_tokens, start_pos=c_start, apply_rf=True)
 
-            # Dual-Layer Hierarchical SSD Scan (>140k tok/s)
             chunk_loss, m1_curr, m2_curr, h_chunk, last_eff_dt = self.forward_chunk_ssd(
                 chunk_emb, chunk_target_tokens, m1_curr, m2_curr, curr_u_t, criterion_speech
             )
@@ -427,6 +425,10 @@ class CoREAgent(nn.Module):
         config, known_priors: List[str] = None, projected_priors: torch.Tensor = None, 
         max_generated_tokens: int = 120, temperature: float = 0.7, top_p: float = 0.90
     ) -> Generator[Dict[str, Any], None, None]:
+        """
+        Autoregressive Generation with Rolling Receptive Field Buffer (K=4).
+        Eliminates Train-Test mismatch by passing rolling 4-byte history to CausalByteReceptiveField.
+        """
         prompt_tokens = self.encode_text(prompt).unsqueeze(0)
         prompt_embs = self.pos_embeddings(prompt_tokens, start_pos=0, apply_rf=True)
         
@@ -445,7 +447,8 @@ class CoREAgent(nn.Module):
         
         h_total_chunk = self.layer2_norm(h1_chunk + h2_chunk)
         
-        curr_token = prompt_tokens[0, -1].reshape(1, 1)
+        # Maintain rolling token history buffer for exact causal convolution receptive consistency
+        rolling_token_ids = prompt_tokens[0].tolist()
         energy_action_cost = torch.tensor([[0.002]], device=self.device)
         zero_pred_err = torch.tensor([[0.0]], device=self.device)
         cog_action = torch.tensor([[0]], dtype=torch.int64, device=self.device)
@@ -453,8 +456,14 @@ class CoREAgent(nn.Module):
         total_prompt_len = prompt_tokens.size(1)
 
         for step in range(max_generated_tokens):
-            current_pos = total_prompt_len + step
-            t_emb = self.pos_embeddings(curr_token, start_pos=current_pos, apply_rf=False)
+            # Take last 4 tokens for K=4 causal convolution buffer
+            context_window = rolling_token_ids[-4:]
+            window_t = torch.tensor([context_window], dtype=torch.long, device=self.device)
+            window_start_pos = (total_prompt_len + step) - (len(context_window) - 1)
+            
+            # Apply receptive field with K=4 context
+            window_emb = self.pos_embeddings(window_t, start_pos=window_start_pos, apply_rf=True)
+            t_emb = window_emb[:, -1:, :] # Take active token slice after convolution
             
             ssd1_out = self.ssd_layer1.forward_chunk_parallel_ssd(t_emb, m1, hu.state, 1.0)
             h1_out, m1 = ssd1_out[0], ssd1_out[1]
@@ -483,12 +492,12 @@ class CoREAgent(nn.Module):
             next_token_id = next_token.item()
 
             hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)
+            rolling_token_ids.append(next_token_id)
             
             if next_token_id == 257 or next_token_id == 10:
                 break
                 
             token_char = chr(next_token_id) if 32 <= next_token_id <= 126 or next_token_id in [9, 10, 13] else ' '
-            curr_token = next_token.reshape(1, 1)
             
             yield {
                 "status": "token",
