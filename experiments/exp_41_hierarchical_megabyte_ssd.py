@@ -2,7 +2,7 @@
 ===============================================================================
 KARYON EXPERIMENTAL BENCHMARK: EXP-41 (HIERARCHICAL MEGABYTE SSM / HOURGLASS)
 Full-Scale Evaluation of 2-Tier Hierarchical Cortical Patch SSD (P=4, N=512)
-with NaN-Proof Modern Hopfield Dot-Product Attractor vs Baseline Flat 1-Byte SSD.
+with Double LayerNorm FP16 Variance Stabilization vs Baseline Flat 1-Byte SSD.
 Protocol: KEP v5.0 (Rules #1, #2, #3, #4, #6, #7).
 Biophysical Grounding: Cortical Temporal Hierarchy (Murray 2014) & BLT (Meta 2024).
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
@@ -80,7 +80,7 @@ device = torch.device(device_str)
 use_amp = (device_str == 'cuda')
 torch.set_grad_enabled(True)
 
-print(f"\n[EXP-41] Initializing Stable Hierarchical MegaByte SSD Benchmark on: {device_str.upper()}")
+print(f"\n[EXP-41] Initializing Stabilized MegaByte SSD Benchmark on: {device_str.upper()}")
 
 
 # =============================================================================
@@ -98,7 +98,6 @@ class StableHopfieldAttractorHead(nn.Module):
         self.norm = nn.LayerNorm(hidden_dim)
 
     def relax_to_minima(self, h_state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Dot-Product Associative Energy (Singularity-Free & Fast)
         sim = torch.matmul(h_state, self.attractor_basins.transpose(0, 1)) * self.scale
         attn_weights = F.softmax(sim, dim=-1)
         attractor_shift = torch.matmul(attn_weights, self.attractor_basins)
@@ -281,7 +280,7 @@ class BaselineFlatAgent(nn.Module):
 
 
 # =============================================================================
-# 6. PROPOSED MODEL: EXP-41 HIERARCHICAL MEGABYTE SSM AGENT (P=4, N=512)
+# 6. PROPOSED MODEL: EXP-41 STABILIZED HIERARCHICAL MEGABYTE SSM (P=4, N=512)
 # =============================================================================
 class HierarchicalMegaByteSSDAgent(nn.Module):
     def __init__(self, patch_size: int = 4, device_str: str = 'cpu'):
@@ -305,12 +304,13 @@ class HierarchicalMegaByteSSDAgent(nn.Module):
             vocab_size=self.text_gen_dim, text_dim=self.text_dim, max_len=8192, device_str=device_str
         ).to(self.device)
 
-        # 1. Primary Sensory Cortex: Causal Strided Patch Encoder (4 bytes -> Z_macro 512D)
+        # 1. Primary Sensory Cortex: Causal Strided Patch Encoder with Finishing LayerNorm
         self.patch_encoder = nn.Sequential(
             nn.Linear(self.patch_size * self.text_dim, self.hidden_dim),
             nn.SiLU(),
             nn.LayerNorm(self.hidden_dim),
-            nn.Linear(self.hidden_dim, self.text_dim)
+            nn.Linear(self.hidden_dim, self.text_dim),
+            nn.LayerNorm(self.text_dim) # FP16 Variance Stabilizer
         ).to(self.device)
 
         # 2. Association / Prefrontal Cortex: Global Cognitive SSD Core (N=512 Macro-Tokens)
@@ -332,12 +332,13 @@ class HierarchicalMegaByteSSDAgent(nn.Module):
             nn.LayerNorm(self.text_dim)
         ).to(self.device)
 
-        # 4. Local Articulatory Cortex: Fuses Local Byte Embedding + Top-Down Macro Context
+        # 4. Local Articulatory Cortex with Finishing LayerNorm
         self.local_decoder = nn.Sequential(
             nn.Linear(self.text_dim + self.text_dim, self.hidden_dim),
             nn.SiLU(),
             nn.LayerNorm(self.hidden_dim),
-            nn.Linear(self.hidden_dim, self.text_dim)
+            nn.Linear(self.hidden_dim, self.text_dim),
+            nn.LayerNorm(self.text_dim) # FP16 Variance Stabilizer
         ).to(self.device)
 
         self.attractor_head = StableHopfieldAttractorHead(
@@ -403,7 +404,7 @@ class HierarchicalMegaByteSSDAgent(nn.Module):
         h_macro_causal = torch.cat([sos_expanded, h_global_all[:, :-1, :]], dim=1) # [B, N, 512]
 
         # 6. Broadcast Macro-Context & Project to Byte Space [B, S, 256]
-        macro_per_byte = h_macro_causal.repeat_interleave(self.patch_size, dim=1).view(batch_size * seq_len, self.hidden_dim)
+        macro_per_byte = h_macro_causal.repeat_interleave(self.patch_size, dim=1).contiguous().view(batch_size * seq_len, self.hidden_dim)
         h_macro_highway = self.macro_to_byte_proj(macro_per_byte).view(batch_size, seq_len, self.text_dim)
 
         # 7. Local Articulatory Decoder Fusion: (Local Byte + Top-Down Macro Context)
@@ -441,7 +442,7 @@ class HierarchicalMegaByteSSDAgent(nn.Module):
 
             sos_exp = self.sos_macro.repeat(1, 1, 1)
             h_macro_causal = torch.cat([sos_exp, h_macro[:, :-1, :]], dim=1)
-            macro_per_byte = h_macro_causal.repeat_interleave(self.patch_size, dim=1).view(t_eval.size(1), self.hidden_dim)
+            macro_per_byte = h_macro_causal.repeat_interleave(self.patch_size, dim=1).contiguous().view(t_eval.size(1), self.hidden_dim)
             h_macro_highway = self.macro_to_byte_proj(macro_per_byte).view(1, t_eval.size(1), self.text_dim)
 
             local_in = torch.cat([byte_emb, h_macro_highway], dim=-1)
@@ -600,10 +601,10 @@ def run_exp_41_benchmark():
     final_train_loss_base = sum(loss_history_base[-10:]) / 10.0
 
     # -------------------------------------------------------------------------
-    # PART B: RUN PROPOSED EXP-41 HIERARCHICAL MEGABYTE SSD (100 STEPS)
+    # PART B: RUN PROPOSED EXP-41 STABILIZED HIERARCHICAL MEGABYTE SSD
     # -------------------------------------------------------------------------
     print("\n" + "-"*85)
-    print(" [2/2] RUNNING PROPOSED: EXP-41 HIERARCHICAL MEGABYTE SSD (P=4, N=512)")
+    print(" [2/2] RUNNING PROPOSED: EXP-41 STABILIZED HIERARCHICAL MEGABYTE SSD (P=4, N=512)")
     print("-" * 85)
 
     model_prop = HierarchicalMegaByteSSDAgent(patch_size=4, device_str=device_str).to(device)
