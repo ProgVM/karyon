@@ -3,8 +3,8 @@
 ===============================================================================
 KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v17.0 MASTER)
 Real-time Social Active Inference Session with Somatic Feedback,
-Unshackled 256D State-Space Duality, Universal CPU/CUDA Execution,
-and Volitional Episodic Fact Recall.
+Unshackled 256D State-Space Duality, Calibrated Temperature (T=0.35),
+Deterministic Memory Tracking (dW=0), and Volitional Episodic Fact Recall.
 ===============================================================================
 """
 
@@ -97,6 +97,8 @@ if os.path.exists(kcore_path):
 tokenizer = ByteTokenizer(vocab_size=config.net.text_gen_dim)
 
 agent_brain = CoREAgent(config=config, device=device_str).to(device)
+agent_brain.eval() # Set to eval mode for deterministic dW=0 memory transition
+
 hu = HomeostaticUnit(batch_size=1, device=device_str)
 episodic_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=config.net.unified_dim, max_capacity=max_capacity, device=device_str)
 
@@ -153,8 +155,8 @@ while True:
         episodic_memory=episodic_mem,
         config=config,
         max_generated_tokens=120,
-        temperature=0.7,
-        top_p=0.90
+        temperature=0.35, # Calibrated byte-level temperature for crisp syntax
+        top_p=0.85
     )
     
     generated_tokens = []

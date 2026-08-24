@@ -283,10 +283,10 @@ public:
     torch::nn::Linear out_proj{nullptr};
     torch::nn::LayerNorm norm{nullptr};
 
-    CalibratedParallelSSDCoreImpl(int64_t text_dim = 256, int64_t unified_dim = 256, int64_t hidden_dim = 512,
+    CalibratedParallelSSDCoreImpl(int64_t text_dim = 256, int64_t unified_dim = 256, int64_dim_hidden = 512,
                                  int64_t num_heads = 8, int64_t head_k = 32, int64_t head_v = 64,
                                  std::string device_str = "cpu")
-        : text_dim(text_dim), unified_dim(unified_dim), hidden_dim(hidden_dim),
+        : text_dim(text_dim), unified_dim(unified_dim), hidden_dim(512),
           num_heads(num_heads), head_k(head_k), head_v(head_v) {
 
         inv_sqrt_k = 1.0f / std::sqrt(static_cast<float>(head_k));
@@ -314,7 +314,7 @@ public:
     }
 
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_chunk_parallel_ssd(
-        torch::Tensor chunk_emb, torch::Tensor m_prev, torch::Tensor u_t, float dt = 1.0f) {
+        torch::Tensor chunk_emb, torch::Tensor m_prev, torch::Tensor u_t, float dt = 1.0f, bool is_training = true) {
 
         int64_t batch_size = chunk_emb.size(0);
         int64_t chunk_len = chunk_emb.size(1);
@@ -350,11 +350,17 @@ public:
         auto k_decayed = k * decay_to_end;
         auto kv_chunk_update = torch::matmul(k_decayed.transpose(-1, -2), v);
 
-        constexpr float sigma = 1e-3f;
-        auto dW = torch::randn_like(m_prev) * torch::sqrt(eff_dt) * sigma;
-
         auto alpha_chunk = torch::pow(alpha, static_cast<float>(chunk_len));
-        auto m_next = alpha_chunk * m_prev + beta * kv_chunk_update + dW;
+        
+        // Deterministic Memory Transition during Inference (dW = 0)
+        torch::Tensor m_next;
+        if (is_training && this->is_training()) {
+            constexpr float sigma = 1e-3f;
+            auto dW = torch::randn_like(m_prev) * torch::sqrt(eff_dt) * sigma;
+            m_next = alpha_chunk * m_prev + beta * kv_chunk_update + dW;
+        } else {
+            m_next = alpha_chunk * m_prev + beta * kv_chunk_update;
+        }
 
         return std::make_tuple(h_chunk, m_next, eff_dt.view({batch_size, 1}));
     }
@@ -667,11 +673,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
              py::arg("text_dim") = 256, py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512,
              py::arg("num_heads") = 8, py::arg("head_k") = 32, py::arg("head_v") = 64, py::arg("device") = "cpu")
         .def("forward_chunk_parallel_ssd", &CalibratedParallelSSDCoreImpl::forward_chunk_parallel_ssd,
-             py::arg("chunk_emb"), py::arg("m_prev"), py::arg("u_t"), py::arg("dt") = 1.0f)
+             py::arg("chunk_emb"), py::arg("m_prev"), py::arg("u_t"), py::arg("dt") = 1.0f, py::arg("is_training") = true)
         .def("parameters", [](std::shared_ptr<CalibratedParallelSSDCoreImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<CalibratedParallelSSDCoreImpl> m) { return m->named_parameters(); })
         .def("__call__", &CalibratedParallelSSDCoreImpl::forward_chunk_parallel_ssd,
-             py::arg("chunk_emb"), py::arg("m_prev"), py::arg("u_t"), py::arg("dt") = 1.0f);
+             py::arg("chunk_emb"), py::arg("m_prev"), py::arg("u_t"), py::arg("dt") = 1.0f, py::arg("is_training") = true);
 
     py::class_<ParallelSwiGLUBlockImpl, torch::nn::Module, std::shared_ptr<ParallelSwiGLUBlockImpl>>(m, "ParallelSwiGLUBlock")
         .def(py::init<int64_t, int64_t, std::string>(),
