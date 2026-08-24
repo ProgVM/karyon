@@ -3,7 +3,7 @@
 ===============================================================================
 KARYON MASSIVE HIGH-VELOCITY STREAMING RUNTIME (52k DATASET, N=5)
 Unshackled Flow Architecture (v17.0 Master): 256D Input, 512D SSD, 2048D SwiGLU,
-Continuous Packed Streaming (S=2048, B=64), AMP FP16, AdamW (WD=0.01), Cosine LR.
+Continuous Packed Streaming (S=2048, B=64), Persistent Homeostasis, AMP FP16.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -233,7 +233,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
             episodic_memory=diag_mem,
             config=config,
             max_generated_tokens=75,
-            temperature=0.7,
+            temperature=0.45,
             top_p=0.90
         )
         for event in gen_stream:
@@ -246,7 +246,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
 logger.info(f"Starting High-Occupancy Session ({NUM_PASSES} Passes, B={BATCH_SIZE}, S={SEQ_LEN}, 131k tokens/step)...")
 
 # =============================================================================
-# 4. PRODUCTION MULTI-PASS STREAMING LOOP (B=64, S=2048, Q=64)
+# 4. PRODUCTION MULTI-PASS STREAMING LOOP (PERSISTENT HOMEOSTASIS)
 # =============================================================================
 for pass_idx in range(NUM_PASSES):
     logger.info(f"\n{'='*85}\n === [STARTING PASS {pass_idx+1}/{NUM_PASSES} (EPOCH {saved_epoch + pass_idx + 1})] ===\n{'='*85}")
@@ -258,8 +258,6 @@ for pass_idx in range(NUM_PASSES):
         current_batch_size = batch_tokens.size(0)
         seq_len = batch_tokens.size(1)
 
-        hu_batch = HomeostaticUnit(batch_size=current_batch_size, device=device_str)
-
         input_seq = batch_tokens[:, :-1]
         target_seq = batch_tokens[:, 1:]
 
@@ -269,12 +267,19 @@ for pass_idx in range(NUM_PASSES):
         t_exec_start = time.perf_counter()
         with torch.amp.autocast(device_type=device_str, dtype=torch.float16, enabled=use_amp):
             total_loss_tensor, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
-                input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
+                input_seq, target_seq, hu, criterion_speech, episodic_memory=episodic_mem,
                 loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE
             )
         t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
-        na_val = curr_u_t.select(1, 4).mean().item()
+        # Update Persistent Somatic State
+        action_cost_tensor = torch.full((current_batch_size, 1), 0.001, device=device)
+        pred_err_tensor = torch.full((current_batch_size, 1), float(speech_loss_val * 0.1), device=device)
+        entropy_tensor = torch.full((current_batch_size, 1), float(fe_val), device=device)
+        cog_act_tensor = torch.zeros((current_batch_size, 1), dtype=torch.int64, device=device)
+        hu.update(action_cost_tensor, pred_err_tensor, entropy_tensor, cog_act_tensor)
+
+        na_val = hu.state.select(1, 4).mean().item()
 
         # 2. Plasticity and Adaptation Step
         moving_mean_fe = (1.0 - alpha_ma) * moving_mean_fe + alpha_ma * fe_val
@@ -294,9 +299,16 @@ for pass_idx in range(NUM_PASSES):
             scaler.scale(total_loss_tensor).backward()
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=3.0)
+            
+            scale_before = scaler.get_scale()
             scaler.step(optimizer)
             scaler.update()
-            lr_scheduler.step()
+            scale_after = scaler.get_scale()
+            
+            # Step scheduler only when optimizer successfully updated weights
+            if scale_before <= scale_after:
+                lr_scheduler.step()
+                
             t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
             
             cur_lr = optimizer.param_groups[0]['lr']
@@ -306,7 +318,7 @@ for pass_idx in range(NUM_PASSES):
             optimizer.zero_grad()
             rest_recovery_rate = getattr(core_config.homeo, 'energy_recovery_rate', 0.0012)
             with torch.no_grad():
-                curr_u_t[:, 1] = torch.clamp(curr_u_t[:, 1] + rest_recovery_rate, 0.0, 1.0)
+                hu.state[:, 1] = torch.clamp(hu.state[:, 1] + rest_recovery_rate, 0.0, 1.0)
                 
             total_skipped_batches += 1
             status_str = f"RESTING / SKIPPED (0 Backprop FLOPs)"
@@ -318,7 +330,7 @@ for pass_idx in range(NUM_PASSES):
         # KEP Rule #6: Deep Process Diagnostics Dashboard
         if (batch_idx + 1) % 25 == 0 or batch_idx == len(stream_loader) - 1:
             perplexity = math.exp(min(speech_loss_val, 20.0))
-            curiosity, energy, stability, health, na, da = curr_u_t[0].tolist()
+            curiosity, energy, stability, health, na, da = hu.state[0].tolist()
             peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device_str == 'cuda' else 0.0
 
             grad_embed = agent_brain.pos_embeddings.byte_embed.weight.grad.norm().item() if agent_brain.pos_embeddings.byte_embed.weight.grad is not None else 0.0
@@ -339,7 +351,7 @@ for pass_idx in range(NUM_PASSES):
 
         # KEP Rule #4: Live Diagnostic Speech Sample
         if (batch_idx + 1) % 50 == 0:
-            diag_sample = run_diagnostic_text_sample(agent_brain, episodic_mem, curr_u_t, core_config)
+            diag_sample = run_diagnostic_text_sample(agent_brain, episodic_mem, hu.state, core_config)
             logger.info(f"💬 [KEP Rule #4 Diagnostic Speech Sample @ Pass {pass_idx+1} Step {batch_idx+1}] -> \"{diag_sample}\"\n")
 
     # Persist progress after each pass

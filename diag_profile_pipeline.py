@@ -1,8 +1,8 @@
 # diag_profile_pipeline.py
 """
 ===============================================================================
-KARYON PIPELINE MASTER DIAGNOSTIC & PROFILER v16.5
-Detailed Microsecond CUDA Event Profiling, Multi-Layer Cortical Stack Inspection,
+KARYON PIPELINE MASTER DIAGNOSTIC & PROFILER v17.0
+Detailed Microsecond CUDA Event Profiling, Unshackled Flow Inspection (256D -> 512D),
 Gradient Flow Verification, VRAM Analysis, and Real-Time Speech Diagnostics.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
@@ -56,19 +56,19 @@ from karyon_core import HomeostaticUnit, BatchedEpisodicMemory
 torch.set_grad_enabled(True)
 device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
 device = torch.device(device_str)
-print(f"[KEP Master Profiler v16.5] Running CUDA Pipeline Diagnostic on: {device_str.upper()}")
+print(f"[KEP Master Profiler v17.0] Running CUDA Pipeline Diagnostic on: {device_str.upper()}")
 
 
 def profile_master_karyon_pipeline():
     config = CoREConfig()
-    config.net.hidden_dim = 768
+    config.net.text_dim = 256
     config.net.unified_dim = 256
-    config.net.text_dim = 128
-    config.net.num_layers = 2
+    config.net.hidden_dim = 512
     config.net.expand_dim = 2048
-    config.net.num_heads = 12
+    config.net.num_heads = 8
     config.net.head_k = 32
     config.net.head_v = 64
+    config.net.num_attractors = 256
     config.train.chunk_size = 64
 
     agent = CoREAgent(config=config, device=device_str).to(device)
@@ -88,14 +88,13 @@ def profile_master_karyon_pipeline():
 
     time_embeddings = 0.0
     time_cortical_forward = 0.0
-    time_backward_pass = 0.0
     time_opt_step = 0.0
 
     if device.type == 'cuda':
         torch.cuda.reset_peak_memory_stats()
 
     print("\n" + "="*85)
-    print(" === MASTER PROFILING: NATIVE C++20 HIERARCHICAL CORTICAL PIPELINE (v16.5) ===")
+    print(" === MASTER PROFILING: UNSHACKLED FLOW CORTICAL PIPELINE (v17.0) ===")
     print("="*85)
 
     t_batch_start = time.perf_counter()
@@ -112,7 +111,7 @@ def profile_master_karyon_pipeline():
     # 2. Forward Sequence Timing
     if start_event: start_event.record()
     total_loss, speech_loss, fe_loss, m_states, h_proxy, curr_u_t, eff_dt = agent.forward_sequence(
-        dummy_tokens, target_tokens, hu, criterion, episodic_memory=episodic_mem, chunk_size=chunk_size, optimizer=optimizer
+        dummy_tokens, target_tokens, hu, criterion, episodic_memory=episodic_mem, chunk_size=chunk_size
     )
     if end_event:
         end_event.record()
@@ -121,6 +120,7 @@ def profile_master_karyon_pipeline():
 
     # 3. Optimizer Step Timing
     t_opt_0 = time.perf_counter()
+    total_loss.backward()
     torch.nn.utils.clip_grad_norm_(agent.get_all_parameters(), max_norm=3.0)
     optimizer.step()
     if device.type == 'cuda': torch.cuda.synchronize()
@@ -145,9 +145,9 @@ def profile_master_karyon_pipeline():
     # =========================================================================
     print(f"\n{'Submodule Component':<48} | {'Time (ms)':<14} | {'% of Batch':<12}")
     print("-" * 80)
-    print(f"{'1. Positional Byte Embeddings + Causal Conv1D':<48} | {time_embeddings:<14.2f} | {time_embeddings/total_batch_time_ms*100:<12.1f}%")
-    print(f"{'2. Native C++20 Cortical Forward & Backward':<48} | {time_cortical_forward:<14.2f} | {time_cortical_forward/total_batch_time_ms*100:<12.1f}%")
-    print(f"{'3. Optimizer Step & Gradient Clipping':<48} | {time_opt_step:<14.2f} | {time_opt_step/total_batch_time_ms*100:<12.1f}%")
+    print(f"{'1. Positional Byte Embeddings (256D) + Conv1D':<48} | {time_embeddings:<14.2f} | {time_embeddings/total_batch_time_ms*100:<12.1f}%")
+    print(f"{'2. Native C++20 Cortical Forward & Scan':<48} | {time_cortical_forward:<14.2f} | {time_cortical_forward/total_batch_time_ms*100:<12.1f}%")
+    print(f"{'3. Backward Autograd & Optimizer Step':<48} | {time_opt_step:<14.2f} | {time_opt_step/total_batch_time_ms*100:<12.1f}%")
     print("="*80)
     print(f"{'TOTAL BATCH TIME':<48} | {total_batch_time_ms:<14.2f} ms ({total_batch_time_sec:.3f} sec)")
     print(f"{'PEAK VRAM MEMORY ALLOCATED':<48} | {peak_vram_mb:<14.2f} MB")
@@ -191,7 +191,7 @@ def profile_master_karyon_pipeline():
     with torch.no_grad():
         gen_stream = agent.generate_thought_and_speech(
             prompt=diag_prompt,
-            m_states=None,
+            m_state=torch.zeros(1, agent.num_heads, agent.head_k, agent.head_v, device=device),
             h_state=torch.zeros(1, agent.hidden_dim, device=device),
             hu=diag_hu,
             episodic_memory=diag_mem,

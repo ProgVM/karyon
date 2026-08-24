@@ -3,8 +3,8 @@
 ===============================================================================
 KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v17.0 MASTER)
 Real-time Social Active Inference Session with Somatic Feedback,
-Unshackled 256D State-Space Duality, Calibrated Temperature (T=0.35),
-Deterministic Memory Tracking (dW=0), and Volitional Episodic Fact Recall.
+Multi-Turn Rolling Context Horizon (up to 2048 bytes), Universal CPU/CUDA Execution,
+Calibrated Sampling (T=0.45, p=0.90), and Volitional Episodic Fact Recall.
 ===============================================================================
 """
 
@@ -97,7 +97,7 @@ if os.path.exists(kcore_path):
 tokenizer = ByteTokenizer(vocab_size=config.net.text_gen_dim)
 
 agent_brain = CoREAgent(config=config, device=device_str).to(device)
-agent_brain.eval() # Set to eval mode for deterministic dW=0 memory transition
+agent_brain.eval()
 
 hu = HomeostaticUnit(batch_size=1, device=device_str)
 episodic_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=config.net.unified_dim, max_capacity=max_capacity, device=device_str)
@@ -108,6 +108,8 @@ logger.info(f"Loaded Karyon Soul (.kcore) | Device: {device_str.upper()} | Genom
 logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v17.0!")
 logger.info("Type 'exit' to save state and close.")
 
+# Multi-Turn Rolling Dialogue History (up to 2048 bytes)
+dialogue_history = ""
 prev_karyon_representation = None
 
 while True:
@@ -124,7 +126,12 @@ while True:
     if not user_input.strip():
         continue
 
-    formatted_turn = f"User: {user_input.strip()}\nKaryon:"
+    # Append turn to rolling context
+    turn_str = f"User: {user_input.strip()}\nKaryon:"
+    if len(dialogue_history) + len(turn_str) > 1800:
+        dialogue_history = dialogue_history[-1000:]
+    
+    full_prompt = (dialogue_history + " " + turn_str).strip() if dialogue_history else turn_str
 
     with torch.no_grad():
         user_tokens = agent_brain.encode_text(user_input)
@@ -148,18 +155,19 @@ while True:
             episodic_mem.write(prev_karyon_representation.detach(), w_human.detach(), 3)
 
     thought_generator = agent_brain.generate_thought_and_speech(
-        formatted_turn,
+        full_prompt,
         m_state=torch.zeros(1, agent_brain.num_heads, agent_brain.head_k, agent_brain.head_v, device=device),
         h_state=h_fast,
         hu=hu,
         episodic_memory=episodic_mem,
         config=config,
         max_generated_tokens=120,
-        temperature=0.35, # Calibrated byte-level temperature for crisp syntax
-        top_p=0.85
+        temperature=0.45,
+        top_p=0.90
     )
     
     generated_tokens = []
+    generated_chars = []
     
     for event in thought_generator:
         if event["status"] == "speech_start":
@@ -168,6 +176,7 @@ while True:
         elif event["status"] == "token":
             print(event["text"], end="", flush=True)
             generated_tokens.append(event["token_id"])
+            generated_chars.append(event["text"])
             
         elif event["status"] == "exhausted":
             print(event["text"], end="", flush=True)
@@ -178,6 +187,9 @@ while True:
             h_fast = event.get("h_state", h_fast)
             curiosity, energy, stability, health, na, da = hu.state[0].tolist()
             logger.info(f"Somatic State | Energy: {energy:.3f} | Health: {health:.3f} | Arousal (NA): {na:.3f} | Reward (DA): {da:.3f} | Human Surprise (F_t): {avg_human_surprise:.4f}")
+
+    response_text = "".join(generated_chars).strip()
+    dialogue_history = (dialogue_history + f" User: {user_input.strip()}\nKaryon: {response_text}").strip()
 
     if len(generated_tokens) > 0:
         with torch.no_grad():

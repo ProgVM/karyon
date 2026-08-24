@@ -319,6 +319,10 @@ public:
         int64_t batch_size = chunk_emb.size(0);
         int64_t chunk_len = chunk_emb.size(1);
 
+        if (u_t.size(0) != batch_size) {
+            u_t = u_t.expand({batch_size, -1});
+        }
+
         auto curiosity = u_t.slice(1, 0, 1).view({batch_size, 1, 1, 1});
         auto na        = u_t.slice(1, 4, 5).view({batch_size, 1, 1, 1});
         auto da        = u_t.slice(1, 5, 6).view({batch_size, 1, 1, 1});
@@ -495,13 +499,14 @@ public:
 };
 
 // ============================================================================
-// 10. HIGH-VELOCITY BATCHED EPISODIC MEMORY (STRICT 2D SHAPE-ALIGNED READ)
+// 10. HIGH-VELOCITY BATCHED EPISODIC MEMORY (OPTIMIZED ZERO-SYNC READ)
 // ============================================================================
 class BatchedEpisodicMemoryImpl : public torch::nn::Module {
 public:
     int64_t batch_size;
     int64_t memory_dim;
     int64_t max_capacity;
+    int64_t max_active_cpu;
 
     torch::Tensor keys;
     torch::Tensor values;
@@ -509,7 +514,7 @@ public:
     torch::Tensor size;
 
     BatchedEpisodicMemoryImpl(int64_t batch_size = 1, int64_t memory_dim = 256, int64_t max_capacity = 1000, std::string device_str = "cpu")
-        : batch_size(batch_size), memory_dim(memory_dim), max_capacity(max_capacity) {
+        : batch_size(batch_size), memory_dim(memory_dim), max_capacity(max_capacity), max_active_cpu(0) {
         
         auto opts = torch::TensorOptions().dtype(torch::kFloat32);
         if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
@@ -536,6 +541,7 @@ public:
         values.index_put_({batch_indices, pointer}, value);
 
         size = torch::clamp(size + 1, 0, max_capacity);
+        max_active_cpu = std::min(max_active_cpu + 1, max_capacity);
 
         auto next_ptr = pointer + 1;
         auto wrap_mask = next_ptr >= max_capacity;
@@ -551,7 +557,7 @@ public:
         }
 
         int64_t q_b = query.size(0);
-        int64_t max_active = size.max().item<int64_t>();
+        int64_t max_active = (max_active_cpu > 0) ? max_active_cpu : size.max().item<int64_t>();
 
         if (max_active == 0) {
             auto empty_val = torch::zeros({q_b, memory_dim}, query.options());
@@ -598,7 +604,7 @@ public:
     }
 
     void consolidate_and_prune(float similarity_threshold = 0.95f, int64_t protected_slots = 3) {
-        int64_t max_active = size.max().item<int64_t>();
+        int64_t max_active = (max_active_cpu > 0) ? max_active_cpu : size.max().item<int64_t>();
         if (max_active <= protected_slots) return;
 
         auto active_k = keys.slice(1, 0, max_active);

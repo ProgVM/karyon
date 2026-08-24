@@ -384,7 +384,7 @@ class CoREAgent(nn.Module):
 
     def generate_thought_and_speech(
         self, prompt: str, m_state: torch.Tensor, h_state: torch.Tensor, hu, episodic_memory, 
-        config, max_generated_tokens: int = 120, temperature: float = 0.7, top_p: float = 0.90
+        config, max_generated_tokens: int = 120, temperature: float = 0.45, top_p: float = 0.90
     ) -> Generator[Dict[str, Any], None, None]:
         # Strip trailing EOS so prompt remains open for continuation
         prompt_ids = [t for t in self.tokenizer.encode(prompt) if t != 257]

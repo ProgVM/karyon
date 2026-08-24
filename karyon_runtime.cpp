@@ -28,7 +28,7 @@ struct KaryonEntity {
     std::string response_buffer;
 
     KaryonEntity(const std::string& dev_str) 
-        : device(dev_str.find("cuda") != std::string::npos ? torch::kCUDA : torch::kCPU) {
+        : device((dev_str.find("cuda") != std::string::npos && torch::cuda::is_available()) ? torch::kCUDA : torch::kCPU) {
         motor_action_vec.resize(3, 0.0f);
         cog_action_vec.resize(3, 0.0f);
     }
@@ -69,9 +69,9 @@ KaryonEntity* karyon_load(const char* kcore_file_path, const char* device) {
     }
 
     auto opts = torch::TensorOptions().dtype(torch::kFloat32).device(entity->device);
-    // Synced with v16.5 Cortical dimension (768)
-    entity->h_fast = torch::zeros({1, 768}, opts);
-    entity->h_slow = torch::zeros({1, 768}, opts);
+    // Synced with v17.0 Master Cortical dimension (512D)
+    entity->h_fast = torch::zeros({1, 512}, opts);
+    entity->h_slow = torch::zeros({1, 512}, opts);
     entity->u_t = torch::tensor({{0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f}}, opts);
 
     return entity;
