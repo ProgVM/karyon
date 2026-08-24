@@ -119,10 +119,10 @@ public:
     torch::nn::LayerNorm channel_norm{nullptr};
     torch::nn::LayerNorm query_norm{nullptr};
 
-    SensoryGatewayImpl(int64_t unified_dim = 256, int64_t hidden_dim = 512, int64_dim_homeo = 6,
+    SensoryGatewayImpl(int64_t unified_dim = 256, int64_t hidden_dim = 512, int64_t homeo_dim = 6,
                        int64_t text_dim = 256, int64_t vision_dim = 256, int64_t action_dim = 3,
                        std::string device_str = "cpu")
-        : unified_dim(unified_dim), hidden_dim(hidden_dim), homeo_dim(6) {
+        : unified_dim(unified_dim), hidden_dim(hidden_dim), homeo_dim(homeo_dim) {
 
         text_proj = register_module("text_proj", torch::nn::Linear(text_dim, unified_dim));
         vision_proj = register_module("vision_proj", torch::nn::Linear(vision_dim, unified_dim));
@@ -286,7 +286,7 @@ public:
     CalibratedParallelSSDCoreImpl(int64_t text_dim = 256, int64_t unified_dim = 256, int64_t hidden_dim = 512,
                                  int64_t num_heads = 8, int64_t head_k = 32, int64_t head_v = 64,
                                  std::string device_str = "cpu")
-        : text_dim(text_dim), unified_dim(unified_dim), hidden_dim(512),
+        : text_dim(text_dim), unified_dim(unified_dim), hidden_dim(hidden_dim),
           num_heads(num_heads), head_k(head_k), head_v(head_v) {
 
         inv_sqrt_k = 1.0f / std::sqrt(static_cast<float>(head_k));
@@ -441,8 +441,8 @@ public:
     torch::nn::Linear posterior_net{nullptr};
     torch::nn::Sequential decoder_net{nullptr};
 
-    LatentPredictorImpl(int64_dim_hidden = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
-        : hidden_dim(512), unified_dim(unified_dim), latent_dim(latent_dim) {
+    LatentPredictorImpl(int64_t hidden_dim = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
+        : hidden_dim(hidden_dim), unified_dim(unified_dim), latent_dim(latent_dim) {
         
         prior_net = register_module("prior_net", torch::nn::Linear(hidden_dim, latent_dim * 2));
         posterior_net = register_module("posterior_net", torch::nn::Linear(hidden_dim + unified_dim, latent_dim * 2));
