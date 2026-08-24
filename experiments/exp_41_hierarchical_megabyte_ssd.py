@@ -2,7 +2,7 @@
 ===============================================================================
 KARYON EXPERIMENTAL BENCHMARK: EXP-41 (HIERARCHICAL MEGABYTE SSM / HOURGLASS)
 Full-Scale Evaluation of 2-Tier Hierarchical Cortical Patch SSD (P=4, N=512)
-vs Baseline Flat 1-Byte SSD (S=2048) on Real Dataset (vicgalle/alpaca-gpt4).
+with NaN-Proof Modern Hopfield Dot-Product Attractor vs Baseline Flat 1-Byte SSD.
 Protocol: KEP v5.0 (Rules #1, #2, #3, #4, #6, #7).
 Biophysical Grounding: Cortical Temporal Hierarchy (Murray 2014) & BLT (Meta 2024).
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
@@ -70,7 +70,6 @@ from karyon_core import (
     CausalByteReceptiveField,
     CalibratedParallelSSDCore,
     ParallelSwiGLUBlock,
-    DesaturatedHopfieldAttractorHead,
     BatchedEpisodicMemory
 )
 from karyon_logger import get_logger
@@ -81,11 +80,35 @@ device = torch.device(device_str)
 use_amp = (device_str == 'cuda')
 torch.set_grad_enabled(True)
 
-print(f"\n[EXP-41] Initializing Hierarchical MegaByte SSD Benchmark on: {device_str.upper()}")
+print(f"\n[EXP-41] Initializing Stable Hierarchical MegaByte SSD Benchmark on: {device_str.upper()}")
 
 
 # =============================================================================
-# 3. POSITIONAL BYTE EMBEDDING (UNSHACKLED 256D)
+# 3. NAN-PROOF MODERN CONTINUOUS HOPFIELD ATTRACTOR HEAD
+# =============================================================================
+class StableHopfieldAttractorHead(nn.Module):
+    """Modern Continuous Hopfield Network with Dot-Product Energy (Ramsauer 2020)."""
+    def __init__(self, hidden_dim=256, num_attractors=256, device_str='cpu'):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.num_attractors = num_attractors
+        self.scale = 1.0 / math.sqrt(hidden_dim)
+        
+        self.attractor_basins = nn.Parameter(torch.randn(num_attractors, hidden_dim) * 0.02)
+        self.norm = nn.LayerNorm(hidden_dim)
+
+    def relax_to_minima(self, h_state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Dot-Product Associative Energy (Singularity-Free & Fast)
+        sim = torch.matmul(h_state, self.attractor_basins.transpose(0, 1)) * self.scale
+        attn_weights = F.softmax(sim, dim=-1)
+        attractor_shift = torch.matmul(attn_weights, self.attractor_basins)
+        h_relaxed = self.norm(h_state + 0.25 * attractor_shift)
+        energy = -torch.logsumexp(sim, dim=-1, keepdim=True)
+        return h_relaxed, energy
+
+
+# =============================================================================
+# 4. POSITIONAL BYTE EMBEDDING (UNSHACKLED 256D)
 # =============================================================================
 class OffsetPositionalByteEmbedding(nn.Module):
     def __init__(self, vocab_size=258, text_dim=256, max_len=8192, device_str='cpu'):
@@ -114,7 +137,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# 4. BASELINE MODEL: FLAT 1-BYTE UNSHACKLED SSD (S=2048, 256D)
+# 5. BASELINE MODEL: FLAT 1-BYTE UNSHACKLED SSD (S=2048, 256D)
 # =============================================================================
 class BaselineFlatAgent(nn.Module):
     def __init__(self, device_str='cpu'):
@@ -143,9 +166,10 @@ class BaselineFlatAgent(nn.Module):
         self.channel_mixer = ParallelSwiGLUBlock(
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, device=device_str
         )
-        self.attractor_head = DesaturatedHopfieldAttractorHead(
-            hidden_dim=self.hidden_dim, vocab_size=self.text_gen_dim, num_attractors=256, device=device_str
-        )
+        self.attractor_head = StableHopfieldAttractorHead(
+            hidden_dim=self.hidden_dim, num_attractors=256, device_str=device_str
+        ).to(self.device)
+        
         self.motor_text_proj = nn.Sequential(
             nn.Linear(self.hidden_dim, self.text_dim),
             nn.SiLU(),
@@ -153,8 +177,12 @@ class BaselineFlatAgent(nn.Module):
         ).to(self.device)
 
     def get_all_parameters(self) -> List[nn.Parameter]:
-        params = list(self.pos_embeddings.parameters()) + list(self.motor_text_proj.parameters())
-        for sub in [self.ssd_core, self.channel_mixer, self.attractor_head]:
+        params = (
+            list(self.pos_embeddings.parameters()) + 
+            list(self.attractor_head.parameters()) + 
+            list(self.motor_text_proj.parameters())
+        )
+        for sub in [self.ssd_core, self.channel_mixer]:
             if hasattr(sub, 'parameters'):
                 params.extend(list(sub.parameters()))
         return params
@@ -181,7 +209,7 @@ class BaselineFlatAgent(nn.Module):
             h_chunk, m_curr = ssd_out[0], ssd_out[1]
             h_reasoned = self.channel_mixer(h_chunk)
 
-            h_relaxed = self.attractor_head.relax_to_minima(h_reasoned)[0]
+            h_relaxed, _ = self.attractor_head.relax_to_minima(h_reasoned)
             h_proj = self.motor_text_proj(h_relaxed)
             logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
 
@@ -222,7 +250,7 @@ class BaselineFlatAgent(nn.Module):
             h_step_ssm, m_curr = ssd_out[0], ssd_out[1]
             h_out = self.channel_mixer(h_step_ssm)
 
-            h_relaxed = self.attractor_head.relax_to_minima(h_out)[0]
+            h_relaxed, _ = self.attractor_head.relax_to_minima(h_out)
             h_proj = self.motor_text_proj(h_relaxed)
             
             logits = (F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim) / max(temperature, 1e-4)
@@ -253,7 +281,7 @@ class BaselineFlatAgent(nn.Module):
 
 
 # =============================================================================
-# 5. PROPOSED MODEL: EXP-41 HIERARCHICAL MEGABYTE SSM AGENT (P=4, N=512)
+# 6. PROPOSED MODEL: EXP-41 HIERARCHICAL MEGABYTE SSM AGENT (P=4, N=512)
 # =============================================================================
 class HierarchicalMegaByteSSDAgent(nn.Module):
     def __init__(self, patch_size: int = 4, device_str: str = 'cpu'):
@@ -282,7 +310,7 @@ class HierarchicalMegaByteSSDAgent(nn.Module):
             nn.Linear(self.patch_size * self.text_dim, self.hidden_dim),
             nn.SiLU(),
             nn.LayerNorm(self.hidden_dim),
-            nn.Linear(self.hidden_dim, self.text_dim) # Project to 256D for Global SSD
+            nn.Linear(self.hidden_dim, self.text_dim)
         ).to(self.device)
 
         # 2. Association / Prefrontal Cortex: Global Cognitive SSD Core (N=512 Macro-Tokens)
@@ -312,9 +340,9 @@ class HierarchicalMegaByteSSDAgent(nn.Module):
             nn.Linear(self.hidden_dim, self.text_dim)
         ).to(self.device)
 
-        self.attractor_head = DesaturatedHopfieldAttractorHead(
-            hidden_dim=self.text_dim, vocab_size=self.text_gen_dim, num_attractors=256, device=device_str
-        )
+        self.attractor_head = StableHopfieldAttractorHead(
+            hidden_dim=self.text_dim, num_attractors=256, device_str=device_str
+        ).to(self.device)
 
     def get_all_parameters(self) -> List[nn.Parameter]:
         params = (
@@ -322,9 +350,10 @@ class HierarchicalMegaByteSSDAgent(nn.Module):
             list(self.patch_encoder.parameters()) + 
             list(self.macro_to_byte_proj.parameters()) + 
             list(self.local_decoder.parameters()) + 
+            list(self.attractor_head.parameters()) + 
             [self.sos_macro]
         )
-        for sub in [self.global_ssd, self.global_swiglu, self.attractor_head]:
+        for sub in [self.global_ssd, self.global_swiglu]:
             if hasattr(sub, 'parameters'):
                 params.extend(list(sub.parameters()))
         return params
@@ -382,7 +411,7 @@ class HierarchicalMegaByteSSDAgent(nn.Module):
         h_local = self.local_decoder(local_in) # [B, S, 256]
 
         # 8. Modern Hopfield Attractor Stabilization + Tied Output
-        h_relaxed = self.attractor_head.relax_to_minima(h_local)[0]
+        h_relaxed, _ = self.attractor_head.relax_to_minima(h_local)
         logits = F.linear(h_relaxed, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
 
         loss = criterion(logits.view(-1, self.text_gen_dim), target_seq.contiguous().view(-1))
@@ -420,7 +449,7 @@ class HierarchicalMegaByteSSDAgent(nn.Module):
             
             cur_pos = cur_len - 1
             last_h = h_local[:, cur_pos, :]
-            last_relaxed = self.attractor_head.relax_to_minima(last_h)[0]
+            last_relaxed, _ = self.attractor_head.relax_to_minima(last_h)
             
             logits = (F.linear(last_relaxed, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim) / max(temperature, 1e-4)
             logits[:, 256:] = -1e9
@@ -450,7 +479,7 @@ class HierarchicalMegaByteSSDAgent(nn.Module):
 
 
 # =============================================================================
-# 6. DATASET: CONTINUOUS PACKED STREAMING (S=2048, 0% PADDING)
+# 7. DATASET: CONTINUOUS PACKED STREAMING (S=2048, 0% PADDING)
 # =============================================================================
 class ContinuousPackedDataset(Dataset):
     def __init__(self, hf_data, tokenizer, max_samples=100, seq_len=2048):
@@ -486,11 +515,11 @@ def collate_packed_fn(batch):
 
 
 # =============================================================================
-# 7. EXP-41 MASTER EXECUTION & AUTOMATED DECISION ENGINE
+# 8. EXP-41 MASTER EXECUTION & AUTOMATED DECISION ENGINE
 # =============================================================================
 def run_exp_41_benchmark():
     print("\n" + "="*85)
-    print(" === EXP-41: HIERARCHICAL MEGABYTE SSM CAPACITY BENCHMARK ===")
+    print(" === EXP-41: STABLE HIERARCHICAL MEGABYTE SSM CAPACITY BENCHMARK ===")
     print("="*85)
 
     tokenizer = ByteTokenizer()
@@ -505,11 +534,9 @@ def run_exp_41_benchmark():
     BATCH_SIZE = 16
     SEQ_LEN = 2048
 
-    # 1. Training Loader: 100 batches of B=16, S=2048 (0% padding)
     dataset_train = ContinuousPackedDataset(train_split, tokenizer, max_samples=NUM_STEPS, seq_len=SEQ_LEN)
     loader_train = DataLoader(dataset_train, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_packed_fn, drop_last=True)
 
-    # 2. Held-Out Common Validation Set
     dataset_val = ContinuousPackedDataset(val_split, tokenizer, max_samples=15, seq_len=SEQ_LEN)
     loader_val = DataLoader(dataset_val, batch_size=8, shuffle=False, collate_fn=collate_packed_fn, drop_last=True)
 
@@ -554,9 +581,14 @@ def run_exp_41_benchmark():
         scaler_base.scale(loss).backward()
         scaler_base.unscale_(opt_base)
         torch.nn.utils.clip_grad_norm_(model_base.get_all_parameters(), max_norm=3.0)
+        
+        scale_before = scaler_base.get_scale()
         scaler_base.step(opt_base)
         scaler_base.update()
-        sched_base.step()
+        scale_after = scaler_base.get_scale()
+        
+        if scale_before <= scale_after:
+            sched_base.step()
 
         loss_history_base.append(loss.item())
         if (idx + 1) % 25 == 0 or idx == NUM_STEPS - 1:
@@ -598,9 +630,14 @@ def run_exp_41_benchmark():
         scaler_prop.scale(loss).backward()
         scaler_prop.unscale_(opt_prop)
         torch.nn.utils.clip_grad_norm_(model_prop.get_all_parameters(), max_norm=3.0)
+        
+        scale_before = scaler_prop.get_scale()
         scaler_prop.step(opt_prop)
         scaler_prop.update()
-        sched_prop.step()
+        scale_after = scaler_prop.get_scale()
+        
+        if scale_before <= scale_after:
+            sched_prop.step()
 
         loss_history_prop.append(loss.item())
         if (idx + 1) % 25 == 0 or idx == NUM_STEPS - 1:
