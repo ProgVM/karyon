@@ -1,11 +1,10 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v15.2 (PRODUCTION MASTER SWIGLU HYBRID)
-Integrated Parallel State-Space Duality Engine (Time-Mixing, 160k+ tok/s),
-Native C++20 Parallel SwiGLU Block (Channel-Mixing Knowledge Synthesis),
-Causal N-gram Byte Receptive Field (K=4), Afferent-Efferent Lexical Tying,
-Encapsulated Unified-Dim Episodic Projection, and Event Boundary Reset.
+KARYON AGENT CORE v16.5 (MAXIMAL PARALLELISM & UNIVERSAL CROSS-PLATFORM)
+Vectorized Full-Sequence Pre-Projected SSD Scan, Native C++20 SwiGLU Hybrid,
+Universal CUDA/CPU Dynamic Execution, Causal N-gram Byte Receptive Field (K=4),
+Afferent-Efferent Lexical Tying, and Event Boundary Theta Phase Reset.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -61,14 +60,14 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v15.2 PRODUCTION MASTER SWIGLU HYBRID)
+# MASTER CORE AGENT (v16.5 PRODUCTION MASTER SWIGLU HYBRID)
 # =============================================================================
 
 class CoREAgent(nn.Module):
     def __init__(self, config, device='cpu'):
         super().__init__()
-        self.device_str = str(device)
-        self.device = torch.device(device)
+        self.device_str = 'cuda' if (str(device).find('cuda') != -1 and torch.cuda.is_available()) else 'cpu'
+        self.device = torch.device(self.device_str)
         self.config = config
         self.hidden_dim = config.net.hidden_dim
         self.unified_dim = config.net.unified_dim
@@ -102,7 +101,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 2. Native C++20 Time-Mixing SSD Core (160k+ tok/s)
+        # 2. Native C++20 Time-Mixing Multi-Timescale SSD Core
         self.ssd_core = CalibratedParallelSSDCore(
             text_dim=self.text_dim,
             unified_dim=self.unified_dim,
@@ -198,8 +197,9 @@ class CoREAgent(nn.Module):
             target_tensor[slices].copy_(source_tensor[slices])
 
     def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor], device: str = 'cpu'):
+        target_device = torch.device(device)
         for name, tensor in state_dict.items():
-            tensor = tensor.to(device)
+            tensor = tensor.to(target_device)
             if name == "text_embeddings.weight":
                 self._safe_copy_param(self.pos_embeddings.byte_embed.weight.data, tensor)
             elif name.startswith("pos_embeddings."):
@@ -313,40 +313,13 @@ class CoREAgent(nn.Module):
     def forward(self, *args, **kwargs):
         return self.forward_step(*args, **kwargs)
 
-    def forward_chunk_ssd(self, chunk_emb: torch.Tensor, chunk_targets: torch.Tensor, 
-                          m_prev: torch.Tensor, u_t: torch.Tensor, criterion: nn.Module):
-        # 1. Native C++ Parallel State-Space Duality Scan (Time-Mixing)
-        ssd_out = self.ssd_core.forward_chunk_parallel_ssd(chunk_emb, m_prev, u_t, 1.0)
-        h_chunk, m_next, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
-
-        # 2. Native C++ SwiGLU Knowledge Synthesis Block (Channel-Mixing)
-        h_reasoned = self.channel_mixer(h_chunk)
-
-        # 3. Parallel Batched Motor Readout
-        relax_out = self.attractor_head.relax_to_minima(h_reasoned)
-        h_relaxed = relax_out[0]
-        
-        h_proj = self.motor_text_proj(h_relaxed)
-        logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
-
-        # 4. Batched Target Loss
-        targets_flat = chunk_targets.contiguous().view(-1)
-        loss = criterion(logits_flat, targets_flat)
-        return loss, m_next, h_reasoned, eff_dt
-
-    def evaluate_dfet_gating(self, free_energy_val: float, moving_mean: float, moving_std: float, na_level: float) -> bool:
-        base_k = self.config.train.dfet_k_sigma_base
-        na_weight = self.config.train.dfet_k_sigma_na_weight
-        min_k = self.config.train.dfet_min_k_sigma
-        
-        k_sigma = max(min_k, base_k - na_weight * na_level)
-        dynamic_threshold = moving_mean + k_sigma * moving_std
-        return free_energy_val > dynamic_threshold
-
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, 
                          criterion_speech: nn.Module, episodic_memory=None, loss_free_energy_weight: float = 0.05, 
-                         chunk_size: int = 32, optimizer: torch.optim.Optimizer = None) -> Tuple[float, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                         chunk_size: int = 64, optimizer: torch.optim.Optimizer = None) -> Tuple[float, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size, seq_len = input_seq.size()
+        
+        # 1. Full-Sequence Vectorized Embedding GEMM (0 Python Overhead per Chunk)
+        full_emb = self.pos_embeddings(input_seq, start_pos=0, apply_rf=True)
         
         m_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
         curr_u_t = hu_batch.state.clone().detach()
@@ -357,23 +330,29 @@ class CoREAgent(nn.Module):
         total_speech_loss_accum = 0.0
         total_fe_loss_accum = 0.0
         last_eff_dt = torch.tensor([[1.0]], device=self.device)
-        
-        ema_surprise = 0.0
-        alpha_ema = 0.05
 
         for chunk_idx in range(num_chunks):
             c_start = chunk_idx * chunk_size
             c_end = min((chunk_idx + 1) * chunk_size, seq_len)
 
-            chunk_input_tokens = input_seq[:, c_start:c_end]
+            chunk_emb = full_emb[:, c_start:c_end, :]
             chunk_target_tokens = target_seq[:, c_start:c_end]
+            chunk_input_tokens = input_seq[:, c_start:c_end]
 
-            chunk_emb = self.pos_embeddings(chunk_input_tokens, start_pos=c_start, apply_rf=True)
+            # Parallel State-Space Duality Scan
+            ssd_out = self.ssd_core.forward_chunk_parallel_ssd(chunk_emb, m_curr, curr_u_t, 1.0)
+            h_chunk, m_curr, last_eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
+            
+            # SwiGLU Channel Mixer
+            h_reasoned = self.channel_mixer(h_chunk)
 
-            # Parallel State-Space Duality + SwiGLU Scan (>160k tok/s)
-            chunk_loss, m_curr, h_chunk, last_eff_dt = self.forward_chunk_ssd(
-                chunk_emb, chunk_target_tokens, m_curr, curr_u_t, criterion_speech
-            )
+            # Motor Readout
+            h_relaxed = self.attractor_head.relax_to_minima(h_reasoned)[0]
+            h_proj = self.motor_text_proj(h_relaxed)
+            logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
+
+            targets_flat = chunk_target_tokens.contiguous().view(-1)
+            chunk_loss = criterion_speech(logits_flat, targets_flat)
 
             total_speech_loss_accum += chunk_loss.item()
             total_fe_loss_accum += 0.01
@@ -383,23 +362,10 @@ class CoREAgent(nn.Module):
                 has_eos = (chunk_input_tokens == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
                 m_curr = m_curr * (1.0 - has_eos)
 
-            # Somatic Homeostasis Update
-            with torch.no_grad():
-                curr_loss_val = chunk_loss.detach().item()
-                if episodic_memory is not None and curr_loss_val > 1.2:
-                    w_rep = self.episodic_sensory_proj(chunk_emb[:, -1]).detach()
-                    episodic_memory.write(w_rep, w_rep, 3)
-
-                ema_surprise = (1.0 - alpha_ema) * ema_surprise + alpha_ema * (curr_loss_val / 4.0)
-                somatic_surprise = torch.clamp(torch.tensor([[ema_surprise]], device=self.device), 0.0, 0.40).repeat(batch_size, 1)
-                zero_entropy = torch.zeros((batch_size, 1), device=self.device)
-                curr_u_t = hu_batch.update(action_cost_tensor, somatic_surprise, zero_entropy, cog_action_tensor).detach()
-
             if optimizer is not None:
                 (chunk_loss / float(num_chunks)).backward()
 
             m_curr = m_curr.detach()
-            curr_u_t = curr_u_t.detach()
 
         avg_speech_loss = total_speech_loss_accum / float(num_chunks)
         avg_fe_loss = total_fe_loss_accum / float(num_chunks)
