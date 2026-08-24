@@ -119,10 +119,10 @@ public:
     torch::nn::LayerNorm channel_norm{nullptr};
     torch::nn::LayerNorm query_norm{nullptr};
 
-    SensoryGatewayImpl(int64_t unified_dim = 256, int64_t hidden_dim = 512, int64_t homeo_dim = 6,
+    SensoryGatewayImpl(int64_t unified_dim = 256, int64_t hidden_dim = 512, int64_dim_homeo = 6,
                        int64_t text_dim = 256, int64_t vision_dim = 256, int64_t action_dim = 3,
                        std::string device_str = "cpu")
-        : unified_dim(unified_dim), hidden_dim(hidden_dim), homeo_dim(homeo_dim) {
+        : unified_dim(unified_dim), hidden_dim(hidden_dim), homeo_dim(6) {
 
         text_proj = register_module("text_proj", torch::nn::Linear(text_dim, unified_dim));
         vision_proj = register_module("vision_proj", torch::nn::Linear(vision_dim, unified_dim));
@@ -263,7 +263,7 @@ public:
 };
 
 // ============================================================================
-// 6. CALIBRATED PARALLEL SSD CORE (UNSHACKLED 256D -> 512D MULTI-TIMESCALE)
+// 6. CALIBRATED PARALLEL SSD CORE (SOMATIC-MODULATED LANGEVIN DYNAMICS)
 // ============================================================================
 class CalibratedParallelSSDCoreImpl : public torch::nn::Module {
 public:
@@ -283,7 +283,7 @@ public:
     torch::nn::Linear out_proj{nullptr};
     torch::nn::LayerNorm norm{nullptr};
 
-    CalibratedParallelSSDCoreImpl(int64_t text_dim = 256, int64_t unified_dim = 256, int64_dim_hidden = 512,
+    CalibratedParallelSSDCoreImpl(int64_t text_dim = 256, int64_t unified_dim = 256, int64_t hidden_dim = 512,
                                  int64_t num_heads = 8, int64_t head_k = 32, int64_t head_v = 64,
                                  std::string device_str = "cpu")
         : text_dim(text_dim), unified_dim(unified_dim), hidden_dim(512),
@@ -299,7 +299,7 @@ public:
         auto opts = torch::TensorOptions().dtype(torch::kFloat32);
         if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) opts = opts.device(torch::kCUDA);
         
-        // Geometric Multi-Timescale Spectrum: alpha in [0.70, 0.9995] (T_1/2 from 1.9 to ~1385 bytes)
+        // Multi-Timescale Decay Spectrum: alpha in [0.70, 0.9995]
         auto betas = torch::exp(torch::linspace(std::log(0.30f), std::log(0.0005f), num_heads, opts));
         auto alphas = 1.0f - betas;
         auto logit_init = torch::log(alphas / (1.0f - alphas)).view({1, num_heads, 1, 1});
@@ -314,14 +314,15 @@ public:
     }
 
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_chunk_parallel_ssd(
-        torch::Tensor chunk_emb, torch::Tensor m_prev, torch::Tensor u_t, float dt = 1.0f, bool is_training = true) {
+        torch::Tensor chunk_emb, torch::Tensor m_prev, torch::Tensor u_t, float dt = 1.0f) {
 
         int64_t batch_size = chunk_emb.size(0);
         int64_t chunk_len = chunk_emb.size(1);
 
-        auto na = u_t.slice(1, 4, 5).view({batch_size, 1, 1, 1});
-        auto da = u_t.slice(1, 5, 6).view({batch_size, 1, 1, 1});
-        auto eff_dt = torch::clamp(dt * (1.0f - 0.4f * na + 0.4f * da), 0.30f, 2.00f);
+        auto curiosity = u_t.slice(1, 0, 1).view({batch_size, 1, 1, 1});
+        auto na        = u_t.slice(1, 4, 5).view({batch_size, 1, 1, 1});
+        auto da        = u_t.slice(1, 5, 6).view({batch_size, 1, 1, 1});
+        auto eff_dt    = torch::clamp(dt * (1.0f - 0.4f * na + 0.4f * da), 0.30f, 2.00f);
 
         auto w_chunk = sensory_proj->forward(chunk_emb);
 
@@ -352,22 +353,17 @@ public:
 
         auto alpha_chunk = torch::pow(alpha, static_cast<float>(chunk_len));
         
-        // Deterministic Memory Transition during Inference (dW = 0)
-        torch::Tensor m_next;
-        if (is_training && this->is_training()) {
-            constexpr float sigma = 1e-3f;
-            auto dW = torch::randn_like(m_prev) * torch::sqrt(eff_dt) * sigma;
-            m_next = alpha_chunk * m_prev + beta * kv_chunk_update + dW;
-        } else {
-            m_next = alpha_chunk * m_prev + beta * kv_chunk_update;
-        }
+        // Biological Somatic-Modulated Langevin Dynamics (Non-deterministic Exploratory Noise)
+        auto sigma_somatic = 1e-3f * (0.8f * curiosity + 0.4f * na + 0.1f);
+        auto dW = torch::randn_like(m_prev) * torch::sqrt(eff_dt) * sigma_somatic;
+        auto m_next = alpha_chunk * m_prev + beta * kv_chunk_update + dW;
 
         return std::make_tuple(h_chunk, m_next, eff_dt.view({batch_size, 1}));
     }
 };
 
 // ============================================================================
-// 7. PARALLEL SWIGLU CHANNEL-MIXING BLOCK (EXPANDED TO 2048 DIM)
+// 7. PARALLEL SWIGLU CHANNEL-MIXING BLOCK (2048 DIM)
 // ============================================================================
 class ParallelSwiGLUBlockImpl : public torch::nn::Module {
 public:
@@ -445,8 +441,8 @@ public:
     torch::nn::Linear posterior_net{nullptr};
     torch::nn::Sequential decoder_net{nullptr};
 
-    LatentPredictorImpl(int64_t hidden_dim = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
-        : hidden_dim(hidden_dim), unified_dim(unified_dim), latent_dim(latent_dim) {
+    LatentPredictorImpl(int64_dim_hidden = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
+        : hidden_dim(512), unified_dim(unified_dim), latent_dim(latent_dim) {
         
         prior_net = register_module("prior_net", torch::nn::Linear(hidden_dim, latent_dim * 2));
         posterior_net = register_module("posterior_net", torch::nn::Linear(hidden_dim + unified_dim, latent_dim * 2));
@@ -673,11 +669,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
              py::arg("text_dim") = 256, py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512,
              py::arg("num_heads") = 8, py::arg("head_k") = 32, py::arg("head_v") = 64, py::arg("device") = "cpu")
         .def("forward_chunk_parallel_ssd", &CalibratedParallelSSDCoreImpl::forward_chunk_parallel_ssd,
-             py::arg("chunk_emb"), py::arg("m_prev"), py::arg("u_t"), py::arg("dt") = 1.0f, py::arg("is_training") = true)
+             py::arg("chunk_emb"), py::arg("m_prev"), py::arg("u_t"), py::arg("dt") = 1.0f)
         .def("parameters", [](std::shared_ptr<CalibratedParallelSSDCoreImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<CalibratedParallelSSDCoreImpl> m) { return m->named_parameters(); })
         .def("__call__", &CalibratedParallelSSDCoreImpl::forward_chunk_parallel_ssd,
-             py::arg("chunk_emb"), py::arg("m_prev"), py::arg("u_t"), py::arg("dt") = 1.0f, py::arg("is_training") = true);
+             py::arg("chunk_emb"), py::arg("m_prev"), py::arg("u_t"), py::arg("dt") = 1.0f);
 
     py::class_<ParallelSwiGLUBlockImpl, torch::nn::Module, std::shared_ptr<ParallelSwiGLUBlockImpl>>(m, "ParallelSwiGLUBlock")
         .def(py::init<int64_t, int64_t, std::string>(),
