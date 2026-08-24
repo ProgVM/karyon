@@ -1,7 +1,7 @@
 # karyon_config.py
 """
 ===============================================================================
-KARYON MASTER CONFIGURATION REGISTRY v5.3
+KARYON MASTER CONFIGURATION REGISTRY v17.0
 Unified Settings for Active Inference, Predictive Coding, and Somatic Homeostasis.
 ===============================================================================
 """
@@ -38,19 +38,19 @@ class HomeostasisConfig:
 
 @dataclass
 class SDEConfig:
-    """2nd-Order Stochastic Heun Differential Equation Core Settings."""
+    """Multi-Timescale State-Space Duality Settings."""
     gamma_drift: float = 0.10
     wiener_noise_sigma: float = 1e-3
-    min_effective_dt: float = 0.20
-    max_effective_dt: float = 2.50
-    na_dt_compression_weight: float = 0.70
-    da_dt_expansion_weight: float = 0.80
+    min_effective_dt: float = 0.30
+    max_effective_dt: float = 2.00
+    na_dt_compression_weight: float = 0.40
+    da_dt_expansion_weight: float = 0.40
 
 
 @dataclass
 class NetworkConfig:
-    """Multi-Modal Dimensions and Network Topologies."""
-    text_dim: int = 128
+    """Unshackled Multi-Modal Dimensions and Network Topologies (KEP Principle 7)."""
+    text_dim: int = 256
     vision_dim: int = 256
     audio_dim: int = 256
     action_dim: int = 3
@@ -61,14 +61,20 @@ class NetworkConfig:
     unified_dim: int = 256
     hidden_dim: int = 512
     latent_dim: int = 128
+    expand_dim: int = 2048
+    num_heads: int = 8
+    head_k: int = 32
+    head_v: int = 64
+    num_attractors: int = 256
+    max_seq_len: int = 8192
 
 
 @dataclass
 class MemoryConfig:
-    """Vectorized Episodic Memory & Volitional Read Gating Settings (KEP #8)."""
+    """Vectorized Episodic Memory & Volitional Read Gating Settings."""
     max_capacity: int = 1000
     protected_slots: int = 3
-    default_read_threshold: float = 0.50
+    default_read_threshold: float = 0.70
     default_attention_temp: float = 0.05
     sigmoid_gating_beta: float = 15.00
     pruning_similarity_threshold: float = 0.93
@@ -80,13 +86,16 @@ class MemoryConfig:
 @dataclass
 class TrainConfig:
     """Predictive Coding, DFET v3 Plasticity Gating, and Training Settings."""
-    batch_size: int = 32
+    batch_size: int = 64
+    seq_len: int = 2048
+    chunk_size: int = 64
     learning_rate: float = 3e-3
-    predictive_coding_lr: float = 0.015
+    min_learning_rate: float = 1e-4
+    warmup_steps: int = 50
+    weight_decay: float = 0.01
     grad_clip_norm: float = 3.0
     loss_free_energy_weight: float = 0.05
     loss_speech_weight: float = 1.00
-    bptt_chunk_size: int = 256
     
     dfet_enabled: bool = True
     dfet_alpha_ma: float = 0.05

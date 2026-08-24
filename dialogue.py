@@ -1,9 +1,9 @@
 # dialogue.py
 """
 ===============================================================================
-KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v16.5 MASTER)
+KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v17.0 MASTER)
 Real-time Social Active Inference Session with Somatic Feedback,
-Multi-Timescale State-Space Duality, Universal CPU/CUDA Execution,
+Unshackled 256D State-Space Duality, Universal CPU/CUDA Execution,
 and Volitional Episodic Fact Recall.
 ===============================================================================
 """
@@ -91,6 +91,7 @@ if os.path.exists(kcore_path):
             if "unified_dim" in genome: config.net.unified_dim = genome["unified_dim"]
             if "hidden_dim" in genome: config.net.hidden_dim = genome["hidden_dim"]
             if "latent_dim" in genome: config.net.latent_dim = genome["latent_dim"]
+            if "expand_dim" in genome: config.net.expand_dim = genome["expand_dim"]
             if "max_capacity" in genome: max_capacity = genome["max_capacity"]
 
 tokenizer = ByteTokenizer(vocab_size=config.net.text_gen_dim)
@@ -101,8 +102,8 @@ episodic_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=config.net.unified
 
 h_fast, h_slow, epoch, story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 
-logger.info(f"Loaded Karyon Soul (.kcore) | Device: {device_str.upper()} | Genome DNA -> hidden_dim: {agent_brain.hidden_dim}, unified_dim: {agent_brain.unified_dim}")
-logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v16.5!")
+logger.info(f"Loaded Karyon Soul (.kcore) | Device: {device_str.upper()} | Genome DNA -> text_dim: {agent_brain.text_dim}, hidden_dim: {agent_brain.hidden_dim}, unified_dim: {agent_brain.unified_dim}")
+logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v17.0!")
 logger.info("Type 'exit' to save state and close.")
 
 prev_karyon_representation = None

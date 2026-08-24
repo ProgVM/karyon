@@ -61,7 +61,7 @@ struct HomeostaticUnit {
     HomeostaticUnit(int64_t batch_size = 1, std::string device_str = "cpu") 
         : device(device_str) {
         auto opts = torch::TensorOptions().dtype(torch::kFloat32);
-        if (device_str.find("cuda") != std::string::npos) {
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
             opts = opts.device(torch::kCUDA);
         } else {
             opts = opts.device(torch::kCPU);
@@ -120,7 +120,7 @@ public:
     torch::nn::LayerNorm query_norm{nullptr};
 
     SensoryGatewayImpl(int64_t unified_dim = 256, int64_t hidden_dim = 512, int64_t homeo_dim = 6,
-                       int64_t text_dim = 128, int64_t vision_dim = 256, int64_t action_dim = 3,
+                       int64_t text_dim = 256, int64_t vision_dim = 256, int64_t action_dim = 3,
                        std::string device_str = "cpu")
         : unified_dim(unified_dim), hidden_dim(hidden_dim), homeo_dim(homeo_dim) {
 
@@ -135,7 +135,7 @@ public:
         channel_norm = register_module("channel_norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({unified_dim})));
         query_norm = register_module("query_norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({unified_dim})));
 
-        if (device_str.find("cuda") != std::string::npos) {
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
             this->to(torch::kCUDA);
         }
     }
@@ -212,7 +212,7 @@ public:
         cognitive_gating = register_module("cognitive_gating", torch::nn::Linear(hidden_dim, cog_action_dim));
         text_generation = register_module("text_generation", torch::nn::Linear(hidden_dim, text_gen_dim));
 
-        if (device_str.find("cuda") != std::string::npos) {
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
             this->to(torch::kCUDA);
         }
     }
@@ -227,7 +227,7 @@ public:
 };
 
 // ============================================================================
-// 5. CAUSAL BYTE RECEPTIVE FIELD (NATIVE C++ K=4 DEPTHWISE CONV1D + SILU)
+// 5. CAUSAL BYTE RECEPTIVE FIELD (UNSHACKLED 256D DEPTHWISE CONV1D + SILU)
 // ============================================================================
 class CausalByteReceptiveFieldImpl : public torch::nn::Module {
 public:
@@ -236,7 +236,7 @@ public:
     torch::nn::Conv1d conv{nullptr};
     torch::nn::LayerNorm norm{nullptr};
 
-    CausalByteReceptiveFieldImpl(int64_t text_dim = 128, int64_t kernel_size = 4, std::string device_str = "cpu")
+    CausalByteReceptiveFieldImpl(int64_t text_dim = 256, int64_t kernel_size = 4, std::string device_str = "cpu")
         : text_dim(text_dim), kernel_size(kernel_size) {
         
         auto conv_opts = torch::nn::Conv1dOptions(text_dim, text_dim, kernel_size)
@@ -245,7 +245,7 @@ public:
         conv = register_module("conv", torch::nn::Conv1d(conv_opts));
         norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({text_dim})));
 
-        if (device_str.find("cuda") != std::string::npos) {
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
             this->to(torch::kCUDA);
         }
     }
@@ -263,7 +263,7 @@ public:
 };
 
 // ============================================================================
-// 6. CALIBRATED PARALLEL SSD CORE (LOG-SPACED MULTI-TIMESCALE SPECTRUM)
+// 6. CALIBRATED PARALLEL SSD CORE (UNSHACKLED 256D -> 512D MULTI-TIMESCALE)
 // ============================================================================
 class CalibratedParallelSSDCoreImpl : public torch::nn::Module {
 public:
@@ -283,7 +283,7 @@ public:
     torch::nn::Linear out_proj{nullptr};
     torch::nn::LayerNorm norm{nullptr};
 
-    CalibratedParallelSSDCoreImpl(int64_t text_dim = 128, int64_t unified_dim = 256, int64_t hidden_dim = 512,
+    CalibratedParallelSSDCoreImpl(int64_t text_dim = 256, int64_t unified_dim = 256, int64_t hidden_dim = 512,
                                  int64_t num_heads = 8, int64_t head_k = 32, int64_t head_v = 64,
                                  std::string device_str = "cpu")
         : text_dim(text_dim), unified_dim(unified_dim), hidden_dim(hidden_dim),
@@ -297,10 +297,10 @@ public:
         v_proj = register_module("v_proj", torch::nn::Linear(unified_dim, num_heads * head_v));
 
         auto opts = torch::TensorOptions().dtype(torch::kFloat32);
-        if (device_str.find("cuda") != std::string::npos) opts = opts.device(torch::kCUDA);
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) opts = opts.device(torch::kCUDA);
         
-        // Geometric Multi-Timescale Spectrum: alpha in [0.70, 0.999] (T_1/2 from 1.9 to ~700 bytes)
-        auto betas = torch::exp(torch::linspace(std::log(0.30f), std::log(0.001f), num_heads, opts));
+        // Geometric Multi-Timescale Spectrum: alpha in [0.70, 0.9995] (T_1/2 from 1.9 to ~1385 bytes)
+        auto betas = torch::exp(torch::linspace(std::log(0.30f), std::log(0.0005f), num_heads, opts));
         auto alphas = 1.0f - betas;
         auto logit_init = torch::log(alphas / (1.0f - alphas)).view({1, num_heads, 1, 1});
         decay_logits = register_parameter("decay_logits", logit_init);
@@ -308,7 +308,7 @@ public:
         out_proj = register_module("out_proj", torch::nn::Linear(hidden_dim, hidden_dim));
         norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
 
-        if (device_str.find("cuda") != std::string::npos) {
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
             this->to(torch::kCUDA);
         }
     }
@@ -361,7 +361,7 @@ public:
 };
 
 // ============================================================================
-// 7. PARALLEL SWIGLU CHANNEL-MIXING BLOCK (1536 DIM)
+// 7. PARALLEL SWIGLU CHANNEL-MIXING BLOCK (EXPANDED TO 2048 DIM)
 // ============================================================================
 class ParallelSwiGLUBlockImpl : public torch::nn::Module {
 public:
@@ -373,7 +373,7 @@ public:
     torch::nn::Linear w_down{nullptr};
     torch::nn::LayerNorm norm{nullptr};
 
-    ParallelSwiGLUBlockImpl(int64_t hidden_dim = 512, int64_t expand_dim = 1536, std::string device_str = "cpu")
+    ParallelSwiGLUBlockImpl(int64_t hidden_dim = 512, int64_t expand_dim = 2048, std::string device_str = "cpu")
         : hidden_dim(hidden_dim), expand_dim(expand_dim) {
 
         w_gate = register_module("w_gate", torch::nn::Linear(torch::nn::LinearOptions(hidden_dim, expand_dim).bias(false)));
@@ -381,7 +381,7 @@ public:
         w_down = register_module("w_down", torch::nn::Linear(torch::nn::LinearOptions(expand_dim, hidden_dim).bias(false)));
         norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
 
-        if (device_str.find("cuda") != std::string::npos) {
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
             this->to(torch::kCUDA);
         }
     }
@@ -395,7 +395,7 @@ public:
 };
 
 // ============================================================================
-// 8. DESATURATED HOPFIELD ATTRACTOR HEAD (NATIVE C++)
+// 8. DENSE MODERN HOPFIELD ATTRACTOR HEAD (256 BASINS IN 512D)
 // ============================================================================
 class DesaturatedHopfieldAttractorHeadImpl : public torch::nn::Module {
 public:
@@ -405,12 +405,12 @@ public:
     torch::Tensor attractor_basins;
 
     DesaturatedHopfieldAttractorHeadImpl(int64_t hidden_dim = 512, int64_t vocab_size = 258, 
-                                         int64_t num_attractors = 64, std::string device_str = "cpu")
+                                         int64_t num_attractors = 256, std::string device_str = "cpu")
         : hidden_dim(hidden_dim), num_attractors(num_attractors) {
         scale = 1.0f / std::sqrt(static_cast<float>(hidden_dim));
         
         auto opts = torch::TensorOptions().dtype(torch::kFloat32);
-        if (device_str.find("cuda") != std::string::npos) {
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
             opts = opts.device(torch::kCUDA);
         }
         attractor_basins = register_parameter("attractor_basins", torch::randn({num_attractors, hidden_dim}, opts) * 0.05f);
@@ -451,7 +451,7 @@ public:
             torch::nn::Linear(unified_dim * 2, unified_dim)
         ));
 
-        if (device_str.find("cuda") != std::string::npos) {
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
             this->to(torch::kCUDA);
         }
     }
@@ -510,7 +510,7 @@ public:
         : batch_size(batch_size), memory_dim(memory_dim), max_capacity(max_capacity) {
         
         auto opts = torch::TensorOptions().dtype(torch::kFloat32);
-        if (device_str.find("cuda") != std::string::npos) {
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
             opts = opts.device(torch::kCUDA);
         }
         keys = register_buffer("keys", torch::zeros({batch_size, max_capacity, memory_dim}, opts));
@@ -638,7 +638,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::class_<SensoryGatewayImpl, torch::nn::Module, std::shared_ptr<SensoryGatewayImpl>>(m, "SensoryGateway")
         .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
              py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512, py::arg("homeo_dim") = 6,
-             py::arg("text_dim") = 128, py::arg("vision_dim") = 256, py::arg("action_dim") = 3,
+             py::arg("text_dim") = 256, py::arg("vision_dim") = 256, py::arg("action_dim") = 3,
              py::arg("device") = "cpu")
         .def("forward", &SensoryGatewayImpl::forward)
         .def("parameters", [](std::shared_ptr<SensoryGatewayImpl> m) { return m->parameters(); })
@@ -656,7 +656,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<CausalByteReceptiveFieldImpl, torch::nn::Module, std::shared_ptr<CausalByteReceptiveFieldImpl>>(m, "CausalByteReceptiveField")
         .def(py::init<int64_t, int64_t, std::string>(),
-             py::arg("text_dim") = 128, py::arg("kernel_size") = 4, py::arg("device") = "cpu")
+             py::arg("text_dim") = 256, py::arg("kernel_size") = 4, py::arg("device") = "cpu")
         .def("forward", &CausalByteReceptiveFieldImpl::forward)
         .def("parameters", [](std::shared_ptr<CausalByteReceptiveFieldImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<CausalByteReceptiveFieldImpl> m) { return m->named_parameters(); })
@@ -664,7 +664,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<CalibratedParallelSSDCoreImpl, torch::nn::Module, std::shared_ptr<CalibratedParallelSSDCoreImpl>>(m, "CalibratedParallelSSDCore")
         .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
-             py::arg("text_dim") = 128, py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512,
+             py::arg("text_dim") = 256, py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512,
              py::arg("num_heads") = 8, py::arg("head_k") = 32, py::arg("head_v") = 64, py::arg("device") = "cpu")
         .def("forward_chunk_parallel_ssd", &CalibratedParallelSSDCoreImpl::forward_chunk_parallel_ssd,
              py::arg("chunk_emb"), py::arg("m_prev"), py::arg("u_t"), py::arg("dt") = 1.0f)
@@ -675,7 +675,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<ParallelSwiGLUBlockImpl, torch::nn::Module, std::shared_ptr<ParallelSwiGLUBlockImpl>>(m, "ParallelSwiGLUBlock")
         .def(py::init<int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 512, py::arg("expand_dim") = 1536, py::arg("device") = "cpu")
+             py::arg("hidden_dim") = 512, py::arg("expand_dim") = 2048, py::arg("device") = "cpu")
         .def("forward", &ParallelSwiGLUBlockImpl::forward)
         .def("parameters", [](std::shared_ptr<ParallelSwiGLUBlockImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<ParallelSwiGLUBlockImpl> m) { return m->named_parameters(); })
@@ -683,7 +683,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<DesaturatedHopfieldAttractorHeadImpl, torch::nn::Module, std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl>>(m, "DesaturatedHopfieldAttractorHead")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 512, py::arg("vocab_size") = 258, py::arg("num_attractors") = 64, py::arg("device") = "cpu")
+             py::arg("hidden_dim") = 512, py::arg("vocab_size") = 258, py::arg("num_attractors") = 256, py::arg("device") = "cpu")
         .def_readwrite("attractor_basins", &DesaturatedHopfieldAttractorHeadImpl::attractor_basins)
         .def("relax_to_minima", &DesaturatedHopfieldAttractorHeadImpl::relax_to_minima)
         .def("parameters", [](std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl> m) { return m->parameters(); })

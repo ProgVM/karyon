@@ -1,10 +1,10 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v16.5 (MAXIMAL PARALLELISM & UNIVERSAL CROSS-PLATFORM)
-Vectorized Full-Sequence Pre-Projected SSD Scan, Native C++20 SwiGLU Hybrid,
-Universal CUDA/CPU Dynamic Execution, Causal N-gram Byte Receptive Field (K=4),
-Afferent-Efferent Lexical Tying, DFET v3 Plasticity Gating, and Event Boundary Reset.
+KARYON AGENT CORE v17.0 (UNSHACKLED AXIOM OF FLOW MASTER)
+Native 256D Universal Byte Embedding, Unchoked 512D SSD + 2048D SwiGLU Reasoning,
+Dense Modern Hopfield Memory (N=256 Basins), Full Active Inference Integration,
+Tied Afferent-Efferent Readout (256D), and Single-Pass Autograd Pipeline.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -30,11 +30,11 @@ from karyon_core import (
 
 
 # =============================================================================
-# MODULE 1: POSITIONAL BYTE EMBEDDING WITH RECEPTIVE FIELD
+# MODULE 1: UNSHACKLED 256D POSITIONAL BYTE EMBEDDING
 # =============================================================================
 
 class OffsetPositionalByteEmbedding(nn.Module):
-    def __init__(self, vocab_size=258, text_dim=128, max_len=8192, device_str='cpu'):
+    def __init__(self, vocab_size=258, text_dim=256, max_len=8192, device_str='cpu'):
         super().__init__()
         self.vocab_size = vocab_size
         self.text_dim = text_dim
@@ -60,7 +60,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v16.5 PRODUCTION MASTER SWIGLU HYBRID)
+# MASTER CORE AGENT (v17.0 UNSHACKLED MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -75,9 +75,9 @@ class CoREAgent(nn.Module):
         self.action_dim = config.net.action_dim
         self.latent_dim = getattr(config.net, 'latent_dim', 128)
         self.text_gen_dim = getattr(config.net, 'text_gen_dim', 258)
-        self.num_heads = 8
-        self.head_k = 32
-        self.head_v = 64
+        self.num_heads = getattr(config.net, 'num_heads', 8)
+        self.head_k = getattr(config.net, 'head_k', 32)
+        self.head_v = getattr(config.net, 'head_v', 64)
         self.inv_sqrt_text_dim = 1.0 / math.sqrt(self.text_dim)
         
         self.tokenizer = ByteTokenizer(vocab_size=self.text_gen_dim)
@@ -112,10 +112,10 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 3. Native C++20 Channel-Mixing SwiGLU Knowledge Synthesis Block (1536 dim)
+        # 3. Native C++20 Channel-Mixing SwiGLU Knowledge Synthesis Block (2048 dim)
         self.channel_mixer = ParallelSwiGLUBlock(
             hidden_dim=self.hidden_dim,
-            expand_dim=1536,
+            expand_dim=getattr(config.net, 'expand_dim', 2048),
             device=self.device_str
         )
         
@@ -136,17 +136,18 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 6. Desaturated Hopfield Attractor Memory Landscape
+        # 6. Dense Modern Hopfield Attractor Memory Landscape (N=256 Basins)
         self.attractor_head = DesaturatedHopfieldAttractorHead(
             hidden_dim=self.hidden_dim, 
             vocab_size=self.text_gen_dim,
+            num_attractors=getattr(config.net, 'num_attractors', 256),
             device=self.device_str
         )
         
-        # 7. Dedicated Episodic Projection (text_dim 128 -> unified_dim 256)
+        # 7. Dedicated Episodic Projection (256 -> 256)
         self.episodic_sensory_proj = nn.Linear(self.text_dim, self.unified_dim).to(self.device)
 
-        # Afferent-Efferent Tied Motor Projection Head
+        # Afferent-Efferent Tied Motor Projection Head (512 -> 256)
         self.motor_text_proj = nn.Sequential(
             nn.Linear(self.hidden_dim, self.text_dim),
             nn.SiLU(),
@@ -297,7 +298,7 @@ class CoREAgent(nn.Module):
         ssd_out = self.ssd_core.forward_chunk_parallel_ssd(t_seq, m_dummy, u_t, dt)
         h_ssm, _, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
         
-        # 2. Channel-Mixing SwiGLU (1536 dim)
+        # 2. Channel-Mixing SwiGLU (2048 dim)
         h_reasoned = self.channel_mixer(h_ssm)
         h_next_fast = h_reasoned
         h_next_slow = h_next_fast
@@ -332,6 +333,7 @@ class CoREAgent(nn.Module):
         
         num_chunks = max(1, seq_len // chunk_size)
         chunk_losses = []
+        fe_losses = []
         last_eff_dt = torch.tensor([[1.0]], device=self.device)
 
         for chunk_idx in range(num_chunks):
@@ -347,17 +349,20 @@ class CoREAgent(nn.Module):
             ssd_out = self.ssd_core.forward_chunk_parallel_ssd(chunk_emb, m_curr, curr_u_t, 1.0)
             h_chunk, m_curr, last_eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
             
-            # SwiGLU Channel Mixer
+            # SwiGLU Channel Mixer (2048 dim)
             h_reasoned = self.channel_mixer(h_chunk)
 
-            # Motor Readout
-            h_relaxed = self.attractor_head.relax_to_minima(h_reasoned)[0]
+            # Dense Hopfield Attractor Memory Readout (N=256 Basins)
+            h_relaxed, energy_basin = self.attractor_head.relax_to_minima(h_reasoned)
+            
+            # Unshackled Tied Lexical Readout (512 -> 256 -> 258)
             h_proj = self.motor_text_proj(h_relaxed)
             logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
 
             targets_flat = chunk_tgt.contiguous().view(-1)
             chunk_loss = criterion_speech(logits_flat, targets_flat)
             chunk_losses.append(chunk_loss)
+            fe_losses.append(torch.clamp(energy_basin.mean() * 0.01, 0.0, 1.0))
 
             # Event Boundary Theta Phase Reset: Reset state on EOS (257)
             with torch.no_grad():
@@ -367,9 +372,12 @@ class CoREAgent(nn.Module):
             m_curr = m_curr.detach()
 
         avg_speech_loss_tensor = torch.stack(chunk_losses).mean()
+        avg_fe_loss_tensor = torch.stack(fe_losses).mean()
+        
         avg_speech_loss_val = avg_speech_loss_tensor.item()
-        avg_fe_loss_val = 0.01
-        total_loss_tensor = avg_speech_loss_tensor + loss_free_energy_weight * avg_fe_loss_val
+        avg_fe_loss_val = avg_fe_loss_tensor.item()
+        
+        total_loss_tensor = avg_speech_loss_tensor + loss_free_energy_weight * avg_fe_loss_tensor
 
         h_proxy = m_curr.view(batch_size, -1)[:, :self.hidden_dim]
         return total_loss_tensor, avg_speech_loss_val, avg_fe_loss_val, m_curr, h_proxy, curr_u_t, last_eff_dt

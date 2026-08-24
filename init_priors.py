@@ -1,7 +1,7 @@
 # init_priors.py
 """
 ===============================================================================
-KARYON IDENTITY PRIORS INITIALIZATION (v16.5 MASTER)
+KARYON IDENTITY PRIORS INITIALIZATION (v17.0 MASTER)
 Projects Existential Identity and Cognitive Priors into Continuous Multi-Timescale SDE-SSM Space.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
@@ -43,18 +43,18 @@ def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore
     logger.info(f"Initializing Karyon Identity Priors (recreate={recreate}) on device: {device.upper()}")
 
     core_config = CoREConfig()
-    core_config.net.text_dim = 128
+    core_config.net.text_dim = 256
     core_config.net.unified_dim = 256
     core_config.net.hidden_dim = 512
     core_config.net.latent_dim = 128
+    core_config.net.expand_dim = 2048
     core_config.net.text_gen_dim = 258
     core_config.train.batch_size = 1
 
-    agent_brain = CoREAgent(config=core_config, device=device).to(torch.device(device))
+    dev_obj = torch.device(device)
+    agent_brain = CoREAgent(config=core_config, device=device).to(dev_obj)
     hu = HomeostaticUnit(batch_size=1, device=device)
     episodic_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=core_config.net.unified_dim, max_capacity=1000, device=device)
-
-    dev_obj = torch.device(device)
 
     if not recreate and os.path.exists(filepath):
         logger.info(f"Container '{filepath}' exists. Loading state to embed priors without reinitialization...")

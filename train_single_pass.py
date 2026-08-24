@@ -2,8 +2,8 @@
 """
 ===============================================================================
 KARYON MASSIVE HIGH-VELOCITY STREAMING RUNTIME (52k DATASET, N=5)
-Maximal Parallelism Architecture: Single-Pass Forward+Backward Execution,
-Asynchronous Pinned DataLoader, AMP FP16, AdamW (WD=0.01), and Cosine LR.
+Unshackled Flow Architecture (v17.0 Master): 256D Input, 512D SSD, 2048D SwiGLU,
+Continuous Packed Streaming (S=2048, B=64), AMP FP16, AdamW (WD=0.01), Cosine LR.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -75,7 +75,26 @@ logger.info(f"Execution context: {device_str.upper()} (AMP FP16 Enabled: {use_am
 
 kcore_path = "karyon_soul.kcore"
 
-if not os.path.exists(kcore_path):
+# Recreate baseline priors container if text_dim is updated to 256
+if os.path.exists(kcore_path):
+    with open(kcore_path, 'rb') as f:
+        f.seek(8)
+        header_raw = f.read(24)
+        _, num_sections, _, _ = struct.unpack('<IIQQ', header_raw)
+        sections = []
+        for _ in range(num_sections):
+            sec_raw = f.read(64)
+            s_type, _, offset, size, _ = struct.unpack('<IIQQQ', sec_raw[:32])
+            sections.append({"type": s_type, "offset": offset, "size": size})
+        sec_manifest = next((s for s in sections if s["type"] == 1), None)
+        if sec_manifest:
+            f.seek(sec_manifest["offset"])
+            manifest = json.loads(f.read(sec_manifest["size"]).decode('utf-8'))
+            genome = manifest.get("genome", {})
+            if genome.get("text_dim", 128) != 256:
+                logger.warning(f"Detected legacy DNA (text_dim={genome.get('text_dim')}). Rebuilding container for Unshackled Flow 256D...")
+                initialize_priors(recreate=True, filepath=kcore_path, device=device_str)
+else:
     logger.warning(f"Container '{kcore_path}' not found! Automatically building base model via init_priors...")
     initialize_priors(recreate=True, filepath=kcore_path, device=device_str)
 
@@ -141,34 +160,15 @@ logger.info(f"High-Throughput Packed Dataset Ready. Total Blocks (S={SEQ_LEN}): 
 # 2. MODEL CONFIGURATION & INITIALIZATION
 # =============================================================================
 core_config = CoREConfig()
-core_config.net.text_dim = 128
+core_config.net.text_dim = 256
 core_config.net.unified_dim = 256
 core_config.net.hidden_dim = 512
+core_config.net.expand_dim = 2048
 core_config.net.latent_dim = 128
+core_config.net.num_attractors = 256
 core_config.net.text_gen_dim = 258
 core_config.train.batch_size = BATCH_SIZE
 core_config.train.chunk_size = CHUNK_SIZE
-
-if os.path.exists(kcore_path):
-    with open(kcore_path, 'rb') as f:
-        f.seek(8)
-        header_raw = f.read(24)
-        _, num_sections, _, _ = struct.unpack('<IIQQ', header_raw)
-        sections = []
-        for _ in range(num_sections):
-            sec_raw = f.read(64)
-            s_type, _, offset, size, _ = struct.unpack('<IIQQQ', sec_raw[:32])
-            sections.append({"type": s_type, "offset": offset, "size": size})
-        sec_manifest = next((s for s in sections if s["type"] == 1), None)
-        if sec_manifest:
-            f.seek(sec_manifest["offset"])
-            manifest = json.loads(f.read(sec_manifest["size"]).decode('utf-8'))
-            genome = manifest.get("genome", {})
-            if "text_dim" in genome: core_config.net.text_dim = genome["text_dim"]
-            if "text_gen_dim" in genome: core_config.net.text_gen_dim = genome["text_gen_dim"]
-            if "unified_dim" in genome: core_config.net.unified_dim = genome["unified_dim"]
-            if "hidden_dim" in genome: core_config.net.hidden_dim = genome["hidden_dim"]
-            if "latent_dim" in genome: core_config.net.latent_dim = genome["latent_dim"]
 
 agent_brain = CoREAgent(config=core_config, device=device_str).to(device)
 hu = HomeostaticUnit(batch_size=BATCH_SIZE, device=device_str)
@@ -290,7 +290,7 @@ for pass_idx in range(NUM_PASSES):
         t_opt_ms = 0.0
         if should_adapt:
             t_opt_start = time.perf_counter()
-            # Clean Single-Pass Backward Execution with GradScaler
+            # Scaled Single-Pass Backward Execution
             scaler.scale(total_loss_tensor).backward()
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=3.0)
