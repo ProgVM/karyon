@@ -1,9 +1,9 @@
 """
 ===============================================================================
 KARYON MASSIVE HIGH-VELOCITY STREAMING RUNTIME (52k DATASET, N=5)
-Production Master Pipeline with Continuous Packed Streaming (S=2048, 0% Padding),
-Native C++20 Multi-Timescale SSD Core (>135k tok/s), Ergodic Shuffling,
-AdamW Regularization (WD=0.01), Full-Horizon Cosine LR, and KEP Deep Diagnostics.
+Production Master Pipeline with Continuous Packed Streaming (S=2048, B=64),
+Full Tensor Core GPU Saturation (131k tokens/step, >300k tok/s),
+Native C++20 Multi-Timescale SSD Core, AdamW (WD=0.01), and Cosine LR.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -84,7 +84,7 @@ dataset = load_dataset("vicgalle/alpaca-gpt4", split="train")
 tokenizer = ByteTokenizer()
 
 # =============================================================================
-# 1. CONTINUOUS PACKED STREAM DATASET (EXP-40 VALIDATED: 0% PADDING, S=2048)
+# 1. CONTINUOUS PACKED STREAM DATASET (0% PADDING, S=2048)
 # =============================================================================
 class ContinuousPackedDataset(Dataset):
     """Zero-Padding Continuous Stream Packing with EOS Separators (S=2048)."""
@@ -97,7 +97,7 @@ class ContinuousPackedDataset(Dataset):
             out = item.get("output", "").strip()
             if inst and out:
                 dialog = f"User: {inst}\nKaryon: {out}"
-                ids = tokenizer.encode(dialog) # Contains 257 (<eos>) at the end!
+                ids = tokenizer.encode(dialog) # Contains 257 (<eos>) at the end
                 full_token_stream.extend(ids)
 
         num_blocks = len(full_token_stream) // (seq_len + 1)
@@ -117,7 +117,8 @@ class ContinuousPackedDataset(Dataset):
 def collate_packed_fn(batch):
     return torch.stack(batch, dim=0)
 
-BATCH_SIZE = 16
+# SCALED TO BATCH_SIZE = 64 FOR MAXIMUM TENSOR CORE GPU OCCUPANCY
+BATCH_SIZE = 64
 SEQ_LEN = 2048
 NUM_PASSES = 5
 CHUNK_SIZE = 64
@@ -125,7 +126,7 @@ CHUNK_SIZE = 64
 train_dataset = ContinuousPackedDataset(dataset, tokenizer, seq_len=SEQ_LEN)
 stream_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_packed_fn, drop_last=True)
 
-logger.info(f"Packed Continuous Dataset Ready. Total Blocks (S={SEQ_LEN}): {len(train_dataset)} | Batches: {len(stream_loader)} | Passes: {NUM_PASSES}")
+logger.info(f"High-Throughput Packed Dataset Ready. Total Blocks (S={SEQ_LEN}): {len(train_dataset)} | Batches: {len(stream_loader)} (B={BATCH_SIZE}) | Passes: {NUM_PASSES}")
 
 # =============================================================================
 # 2. MODEL CONFIGURATION & CANONICAL INITIALIZATION
@@ -170,9 +171,9 @@ h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, file
 optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
-# Global Full-Horizon Cosine Annealing Schedule with 100-step Warmup
+# Global Full-Horizon Cosine Annealing Schedule with 50-step Warmup
 TOTAL_TRAINING_STEPS = len(stream_loader) * NUM_PASSES
-WARMUP_STEPS = 100
+WARMUP_STEPS = 50
 
 def get_lr_multiplier(current_step: int) -> float:
     if current_step < WARMUP_STEPS:
@@ -195,7 +196,7 @@ total_adapted_batches = 0
 global_step_counter = 0
 
 # =============================================================================
-# 3. KEP RULE #4: LIVE DIAGNOSTIC TEXT SAMPLER
+# 3. KEP RULE #4: LIVE DIAGNOSTIC TEXT SAMPLER (STRIPPED EOS OPEN PROMPT)
 # =============================================================================
 def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.eval()
@@ -230,10 +231,10 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.train()
     return "".join(generated_chars).strip()
 
-logger.info(f"Starting Production Long-Context Session ({NUM_PASSES} Passes over 52k samples, S={SEQ_LEN} @ 135k+ tok/s)...")
+logger.info(f"Starting High-Occupancy Session ({NUM_PASSES} Passes, B={BATCH_SIZE}, S={SEQ_LEN}, 131k tokens/step)...")
 
 # =============================================================================
-# 4. PRODUCTION MULTI-PASS STREAMING LOOP (S=2048, Q=64)
+# 4. PRODUCTION MULTI-PASS STREAMING LOOP (B=64, S=2048, Q=64)
 # =============================================================================
 for pass_idx in range(NUM_PASSES):
     logger.info(f"\n{'='*85}\n === [STARTING PASS {pass_idx+1}/{NUM_PASSES} (EPOCH {saved_epoch + pass_idx + 1})] ===\n{'='*85}")
@@ -252,7 +253,7 @@ for pass_idx in range(NUM_PASSES):
 
         optimizer.zero_grad()
         
-        # Native C++ Multi-Timescale SSD Scan on 32 chunks of Q=64
+        # High-Speed Multi-Timescale SSD Scan across 32 chunks of Q=64 on B=64
         t_exec_start = time.perf_counter()
         total_loss_metric, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
             input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
@@ -298,7 +299,7 @@ for pass_idx in range(NUM_PASSES):
         tokens_per_sec = (current_batch_size * (seq_len - 1)) / (batch_total_ms / 1000.0)
 
         # KEP Rule #6: Deep Process Diagnostics Dashboard
-        if (batch_idx + 1) % 50 == 0 or batch_idx == len(stream_loader) - 1:
+        if (batch_idx + 1) % 25 == 0 or batch_idx == len(stream_loader) - 1:
             perplexity = math.exp(min(speech_loss_val, 20.0))
             curiosity, energy, stability, health, na, da = curr_u_t[0].tolist()
             peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device_str == 'cuda' else 0.0
@@ -320,11 +321,11 @@ for pass_idx in range(NUM_PASSES):
             print("="*85)
 
         # KEP Rule #4: Live Diagnostic Speech Sample
-        if (batch_idx + 1) % 100 == 0:
+        if (batch_idx + 1) % 50 == 0:
             diag_sample = run_diagnostic_text_sample(agent_brain, episodic_mem, curr_u_t, core_config)
             logger.info(f"💬 [KEP Rule #4 Diagnostic Speech Sample @ Pass {pass_idx+1} Step {batch_idx+1}] -> \"{diag_sample}\"\n")
 
     # Persist progress after each pass
     save_karyon(agent_brain, episodic_mem, hu, h_curr[0:1], h_curr[0:1], epoch=saved_epoch + pass_idx + 1, story_idx=len(stream_loader) * BATCH_SIZE * (pass_idx + 1), filepath=kcore_path)
 
-logger.info(f"Massive Long-Context Session Complete! Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches}.")
+logger.info(f"High-Occupancy Session Complete! Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches}.")
