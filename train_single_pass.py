@@ -1,9 +1,9 @@
 """
 ===============================================================================
 KARYON MASSIVE HIGH-VELOCITY STREAMING RUNTIME (52k DATASET, N=5)
-Production Master Pipeline with Native C++20 Multi-Timescale SSD Core (>160k tok/s),
-Ergodic Manifold Shuffling, AdamW Regularization (WD=0.01), Full-Horizon Cosine LR,
-Afferent-Efferent Lexical Tying, Top-p Diagnostic Sampling, and KEP Deep Diagnostics.
+Production Master Pipeline with Continuous Packed Streaming (S=2048, 0% Padding),
+Native C++20 Multi-Timescale SSD Core (>135k tok/s), Ergodic Shuffling,
+AdamW Regularization (WD=0.01), Full-Horizon Cosine LR, and KEP Deep Diagnostics.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -53,7 +53,6 @@ import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pad_sequence
 from datasets import load_dataset
 
 import karyon_config, karyon_core, karyon_agent, karyon_checkpoint, karyon_logger
@@ -85,21 +84,29 @@ dataset = load_dataset("vicgalle/alpaca-gpt4", split="train")
 tokenizer = ByteTokenizer()
 
 # =============================================================================
-# 1. STREAMING DATASET WITH CLEAN CHUNK ALIGNMENT
+# 1. CONTINUOUS PACKED STREAM DATASET (EXP-40 VALIDATED: 0% PADDING, S=2048)
 # =============================================================================
-class StreamingDataset(Dataset):
-    def __init__(self, hf_dataset, tokenizer, max_len=512):
+class ContinuousPackedDataset(Dataset):
+    """Zero-Padding Continuous Stream Packing with EOS Separators (S=2048)."""
+    def __init__(self, hf_data, tokenizer, seq_len=2048):
+        self.seq_len = seq_len
+        full_token_stream = []
+
+        for item in hf_data:
+            inst = item.get("instruction", "").strip()
+            out = item.get("output", "").strip()
+            if inst and out:
+                dialog = f"User: {inst}\nKaryon: {out}"
+                ids = tokenizer.encode(dialog) # Contains 257 (<eos>) at the end!
+                full_token_stream.extend(ids)
+
+        num_blocks = len(full_token_stream) // (seq_len + 1)
         self.samples = []
-        for item in hf_dataset:
-            instruction = item.get("instruction", "").strip()
-            output = item.get("output", "").strip()
-            if instruction and output:
-                formatted_dialog = f"User: {instruction}\nKaryon: {output}"
-                ids = tokenizer.encode(formatted_dialog)
-                if len(ids) > max_len:
-                    ids = ids[:max_len-1] + [257]
-                if len(ids) > 10:
-                    self.samples.append(torch.tensor(ids, dtype=torch.long))
+        for b_idx in range(num_blocks):
+            start = b_idx * (seq_len + 1)
+            end = start + (seq_len + 1)
+            chunk = full_token_stream[start:end]
+            self.samples.append(torch.tensor(chunk, dtype=torch.long))
 
     def __len__(self):
         return len(self.samples)
@@ -107,19 +114,18 @@ class StreamingDataset(Dataset):
     def __getitem__(self, idx):
         return self.samples[idx]
 
-def collate_fn(batch):
-    return pad_sequence(batch, batch_first=True, padding_value=256)
+def collate_packed_fn(batch):
+    return torch.stack(batch, dim=0)
 
-BATCH_SIZE = 32
-MAX_SEQ_LEN = 512
+BATCH_SIZE = 16
+SEQ_LEN = 2048
 NUM_PASSES = 5
 CHUNK_SIZE = 64
 
-train_dataset = StreamingDataset(dataset, tokenizer, max_len=MAX_SEQ_LEN)
-# KEP Rule #5: Ergodic shuffling enabled across passes to break cyclical forgetting
-stream_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn, drop_last=True)
+train_dataset = ContinuousPackedDataset(dataset, tokenizer, seq_len=SEQ_LEN)
+stream_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_packed_fn, drop_last=True)
 
-logger.info(f"Full Dataset Ready. Total Samples: {len(train_dataset)} | Batches: {len(stream_loader)} | Passes: {NUM_PASSES}")
+logger.info(f"Packed Continuous Dataset Ready. Total Blocks (S={SEQ_LEN}): {len(train_dataset)} | Batches: {len(stream_loader)} | Passes: {NUM_PASSES}")
 
 # =============================================================================
 # 2. MODEL CONFIGURATION & CANONICAL INITIALIZATION
@@ -160,7 +166,7 @@ episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_conf
 
 h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 
-# KEP Rule #5: AdamW with L2 weight decay (0.01) for smooth loss landscape
+# AdamW with L2 weight decay (0.01)
 optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
@@ -172,7 +178,6 @@ def get_lr_multiplier(current_step: int) -> float:
     if current_step < WARMUP_STEPS:
         return float(current_step + 1) / float(WARMUP_STEPS)
     progress = float(current_step - WARMUP_STEPS) / float(max(1, TOTAL_TRAINING_STEPS - WARMUP_STEPS))
-    # Smooth decay from 1.0 (3e-3) down to 0.0333 (~1e-4)
     cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
     return max(0.0333, cosine_decay)
 
@@ -214,7 +219,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
             hu=diag_hu,
             episodic_memory=diag_mem,
             config=config,
-            max_generated_tokens=70,
+            max_generated_tokens=75,
             temperature=0.7,
             top_p=0.90
         )
@@ -225,10 +230,10 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.train()
     return "".join(generated_chars).strip()
 
-logger.info(f"Starting Production Session ({NUM_PASSES} Passes over 52k samples @ 160k+ tok/s)...")
+logger.info(f"Starting Production Long-Context Session ({NUM_PASSES} Passes over 52k samples, S={SEQ_LEN} @ 135k+ tok/s)...")
 
 # =============================================================================
-# 4. PRODUCTION MULTI-PASS STREAMING LOOP
+# 4. PRODUCTION MULTI-PASS STREAMING LOOP (S=2048, Q=64)
 # =============================================================================
 for pass_idx in range(NUM_PASSES):
     logger.info(f"\n{'='*85}\n === [STARTING PASS {pass_idx+1}/{NUM_PASSES} (EPOCH {saved_epoch + pass_idx + 1})] ===\n{'='*85}")
@@ -240,9 +245,6 @@ for pass_idx in range(NUM_PASSES):
         current_batch_size = batch_tokens.size(0)
         seq_len = batch_tokens.size(1)
 
-        if seq_len <= 1:
-            continue
-
         hu_batch = HomeostaticUnit(batch_size=current_batch_size, device=device_str)
 
         input_seq = batch_tokens[:, :-1]
@@ -250,7 +252,7 @@ for pass_idx in range(NUM_PASSES):
 
         optimizer.zero_grad()
         
-        # 1. Native C++ SSD Time-Mixing + SwiGLU Channel-Mixing Scan (Q=64)
+        # Native C++ Multi-Timescale SSD Scan on 32 chunks of Q=64
         t_exec_start = time.perf_counter()
         total_loss_metric, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
             input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
@@ -260,7 +262,7 @@ for pass_idx in range(NUM_PASSES):
 
         na_val = curr_u_t.select(1, 4).mean().item()
 
-        # 2. Plasticity and Adaptation Step
+        # Plasticity and Adaptation Step
         moving_mean_fe = (1.0 - alpha_ma) * moving_mean_fe + alpha_ma * fe_val
         moving_var_fe = (1.0 - alpha_ma) * moving_var_fe + alpha_ma * ((fe_val - moving_mean_fe)**2)
         moving_std_fe = math.sqrt(max(1e-6, moving_var_fe))
@@ -293,7 +295,7 @@ for pass_idx in range(NUM_PASSES):
 
         global_step_counter += 1
         batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
-        tokens_per_sec = (current_batch_size * seq_len) / (batch_total_ms / 1000.0)
+        tokens_per_sec = (current_batch_size * (seq_len - 1)) / (batch_total_ms / 1000.0)
 
         # KEP Rule #6: Deep Process Diagnostics Dashboard
         if (batch_idx + 1) % 50 == 0 or batch_idx == len(stream_loader) - 1:
@@ -325,4 +327,4 @@ for pass_idx in range(NUM_PASSES):
     # Persist progress after each pass
     save_karyon(agent_brain, episodic_mem, hu, h_curr[0:1], h_curr[0:1], epoch=saved_epoch + pass_idx + 1, story_idx=len(stream_loader) * BATCH_SIZE * (pass_idx + 1), filepath=kcore_path)
 
-logger.info(f"Massive Session Complete! Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches}.")
+logger.info(f"Massive Long-Context Session Complete! Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches}.")
