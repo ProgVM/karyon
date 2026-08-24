@@ -332,10 +332,8 @@ class CausalIntraPatchMegaByteAgent(nn.Module):
             nn.LayerNorm(self.text_dim)
         ).to(self.device)
 
-        # 4. Causal Intra-Patch Articulatory Decoder (Causal Conv + MLP Fusion)
-        self.local_causal_conv = nn.Sequential(
-            CausalByteReceptiveField(text_dim=self.text_dim, kernel_size=4, device=device_str)
-        ).to(self.device)
+        # 4. Causal Intra-Patch Articulatory Decoder (Direct C++ Causal Conv + MLP Fusion)
+        self.local_causal_conv = CausalByteReceptiveField(text_dim=self.text_dim, kernel_size=4, device=device_str)
 
         self.local_fusion_mlp = nn.Sequential(
             nn.Linear(self.text_dim + self.text_dim, self.hidden_dim),
@@ -354,12 +352,11 @@ class CausalIntraPatchMegaByteAgent(nn.Module):
             list(self.pos_embeddings.parameters()) + 
             list(self.patch_encoder.parameters()) + 
             list(self.macro_to_byte_proj.parameters()) + 
-            list(self.local_causal_conv.parameters()) +
             list(self.local_fusion_mlp.parameters()) + 
             list(self.attractor_head.parameters()) + 
             [self.sos_macro]
         )
-        for sub in [self.global_ssd, self.global_swiglu]:
+        for sub in [self.global_ssd, self.global_swiglu, self.local_causal_conv]:
             if hasattr(sub, 'parameters'):
                 params.extend(list(sub.parameters()))
         return params
@@ -658,7 +655,7 @@ def run_exp_42_benchmark():
     # PART C: HELD-OUT COMMON VALIDATION EVALUATION
     # -------------------------------------------------------------------------
     print("\n" + "="*85)
-    print(" === HELD-OUT VALIDATION SET EVALUATION (30 BATCHES) ===")
+    print(" === HELD-OUT VALIDATION SET EVALUATION (25 BATCHES) ===")
     print("="*85)
     model_base.eval()
     model_prop.eval()
