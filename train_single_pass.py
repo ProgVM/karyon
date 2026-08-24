@@ -180,6 +180,9 @@ h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, file
 optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
+# AMP GradScaler for fast Tensor Core execution
+scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
+
 # Global Full-Horizon Cosine Annealing Schedule with 50-step Warmup
 TOTAL_TRAINING_STEPS = len(stream_loader) * NUM_PASSES
 WARMUP_STEPS = 50
@@ -262,17 +265,18 @@ for pass_idx in range(NUM_PASSES):
 
         optimizer.zero_grad()
         
-        # Single-Pass Forward+Backward Execution with Native C++ Multi-Timescale SSD Core
+        # 1. Single Forward Pass with Native AMP FP16
         t_exec_start = time.perf_counter()
-        total_loss_metric, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
-            input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
-            loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE, optimizer=optimizer
-        )
+        with torch.amp.autocast(device_type=device_str, dtype=torch.float16, enabled=use_amp):
+            total_loss_tensor, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
+                input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
+                loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE
+            )
         t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
         na_val = curr_u_t.select(1, 4).mean().item()
 
-        # Plasticity and Adaptation Step
+        # 2. Plasticity and Adaptation Step
         moving_mean_fe = (1.0 - alpha_ma) * moving_mean_fe + alpha_ma * fe_val
         moving_var_fe = (1.0 - alpha_ma) * moving_var_fe + alpha_ma * ((fe_val - moving_mean_fe)**2)
         moving_std_fe = math.sqrt(max(1e-6, moving_var_fe))
@@ -286,8 +290,12 @@ for pass_idx in range(NUM_PASSES):
         t_opt_ms = 0.0
         if should_adapt:
             t_opt_start = time.perf_counter()
+            # Clean Single-Pass Backward Execution with GradScaler
+            scaler.scale(total_loss_tensor).backward()
+            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=3.0)
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
             lr_scheduler.step()
             t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
             
@@ -322,7 +330,7 @@ for pass_idx in range(NUM_PASSES):
             print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | PASS {pass_idx+1}/{NUM_PASSES} | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
             print("="*85)
             print(f"Plasticity Gating Status  : {status_str}")
-            print(f"Submodule Timing (ms)     : Forward+Scan: {t_exec_ms:.1f}ms | Optimizer Step: {t_opt_ms:.1f}ms")
+            print(f"Submodule Timing (ms)     : Forward+Scan: {t_exec_ms:.1f}ms | Backward+Step: {t_opt_ms:.1f}ms")
             print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
             print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
             print(f"Gradient Flow Inspection  : Embeddings Grad Norm = {grad_embed:.6f} | Attractor Head Grad Norm = {grad_head:.6f}")

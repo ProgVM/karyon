@@ -324,27 +324,24 @@ class CoREAgent(nn.Module):
 
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, 
                          criterion_speech: nn.Module, episodic_memory=None, loss_free_energy_weight: float = 0.05, 
-                         chunk_size: int = 64, optimizer: torch.optim.Optimizer = None) -> Tuple[float, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                         chunk_size: int = 64) -> Tuple[torch.Tensor, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size, seq_len = input_seq.size()
-        
-        # Full-Sequence Vectorized Embedding GEMM (0 Python Overhead)
-        full_emb = self.pos_embeddings(input_seq, start_pos=0, apply_rf=True)
         
         m_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
         curr_u_t = hu_batch.state.clone().detach()
         
         num_chunks = max(1, seq_len // chunk_size)
-        total_speech_loss_accum = 0.0
-        total_fe_loss_accum = 0.0
+        chunk_losses = []
         last_eff_dt = torch.tensor([[1.0]], device=self.device)
 
         for chunk_idx in range(num_chunks):
             c_start = chunk_idx * chunk_size
             c_end = min((chunk_idx + 1) * chunk_size, seq_len)
 
-            chunk_emb = full_emb[:, c_start:c_end, :]
-            chunk_target_tokens = target_seq[:, c_start:c_end]
-            chunk_input_tokens = input_seq[:, c_start:c_end]
+            chunk_in = input_seq[:, c_start:c_end]
+            chunk_tgt = target_seq[:, c_start:c_end]
+
+            chunk_emb = self.pos_embeddings(chunk_in, start_pos=c_start, apply_rf=True)
 
             # Parallel State-Space Duality Scan
             ssd_out = self.ssd_core.forward_chunk_parallel_ssd(chunk_emb, m_curr, curr_u_t, 1.0)
@@ -358,28 +355,24 @@ class CoREAgent(nn.Module):
             h_proj = self.motor_text_proj(h_relaxed)
             logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
 
-            targets_flat = chunk_target_tokens.contiguous().view(-1)
+            targets_flat = chunk_tgt.contiguous().view(-1)
             chunk_loss = criterion_speech(logits_flat, targets_flat)
-
-            total_speech_loss_accum += chunk_loss.item()
-            total_fe_loss_accum += 0.01
+            chunk_losses.append(chunk_loss)
 
             # Event Boundary Theta Phase Reset: Reset state on EOS (257)
             with torch.no_grad():
-                has_eos = (chunk_input_tokens == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
+                has_eos = (chunk_in == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
                 m_curr = m_curr * (1.0 - has_eos)
-
-            if optimizer is not None:
-                (chunk_loss / float(num_chunks)).backward()
 
             m_curr = m_curr.detach()
 
-        avg_speech_loss = total_speech_loss_accum / float(num_chunks)
-        avg_fe_loss = total_fe_loss_accum / float(num_chunks)
-        total_loss_metric = avg_speech_loss + loss_free_energy_weight * avg_fe_loss
+        avg_speech_loss_tensor = torch.stack(chunk_losses).mean()
+        avg_speech_loss_val = avg_speech_loss_tensor.item()
+        avg_fe_loss_val = 0.01
+        total_loss_tensor = avg_speech_loss_tensor + loss_free_energy_weight * avg_fe_loss_val
 
         h_proxy = m_curr.view(batch_size, -1)[:, :self.hidden_dim]
-        return total_loss_metric, avg_speech_loss, avg_fe_loss, m_curr, h_proxy, curr_u_t, last_eff_dt
+        return total_loss_tensor, avg_speech_loss_val, avg_fe_loss_val, m_curr, h_proxy, curr_u_t, last_eff_dt
 
     def generate_thought_and_speech(
         self, prompt: str, m_state: torch.Tensor, h_state: torch.Tensor, hu, episodic_memory, 
