@@ -1,9 +1,10 @@
-# train_single_pass.py
 """
 ===============================================================================
 KARYON MASSIVE HIGH-VELOCITY STREAMING RUNTIME (52k DATASET, N=5)
-Integrated with Native C++20 SwiGLU Hybrid Master (>160,000 tok/s), Full-Sequence
-LM Training, Full-Text Speech Sampling, and KEP Rule #6 Deep Diagnostics.
+Production Master Pipeline with Native C++20 Multi-Timescale SSD Core (>160k tok/s),
+Ergodic Manifold Shuffling, AdamW Regularization (WD=0.01), Full-Horizon Cosine LR,
+Afferent-Efferent Lexical Tying, Top-p Diagnostic Sampling, and KEP Deep Diagnostics.
+Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
 
@@ -11,10 +12,15 @@ import sys
 import types
 import time
 import math
+import os
+import struct
+import json
 import importlib
 import torch
 
-# Unconditional Dynamo Hotfix for Python 3.12 environments
+# =============================================================================
+# 0. UNCONDITIONAL DYNAMO HOTFIX FOR PYTHON 3.12 / KAGGLE GPU
+# =============================================================================
 class DummyDynamoModule(types.ModuleType):
     def __getattr__(self, name):
         if name == "decorators":
@@ -49,9 +55,6 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from datasets import load_dataset
-import os
-import struct
-import json
 
 import karyon_config, karyon_core, karyon_agent, karyon_checkpoint, karyon_logger
 importlib.reload(karyon_agent)
@@ -64,23 +67,26 @@ from karyon_logger import get_logger
 from init_priors import initialize_priors
 
 logger = get_logger()
-
 torch.set_grad_enabled(True)
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-logger.info(f"Execution context: {device.upper()}")
+device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = torch.device(device_str)
+logger.info(f"Execution context: {device_str.upper()}")
 
 kcore_path = "karyon_soul.kcore"
 
 if not os.path.exists(kcore_path):
     logger.warning(f"Container '{kcore_path}' not found! Automatically building base model via init_priors...")
-    initialize_priors(recreate=True, filepath=kcore_path, device=device)
+    initialize_priors(recreate=True, filepath=kcore_path, device=device_str)
 
 logger.info("Loading COMPLETE Conversational Dataset (52,002 samples from vicgalle/alpaca-gpt4)...")
 dataset = load_dataset("vicgalle/alpaca-gpt4", split="train")
 
 tokenizer = ByteTokenizer()
 
+# =============================================================================
+# 1. STREAMING DATASET WITH CLEAN CHUNK ALIGNMENT
+# =============================================================================
 class StreamingDataset(Dataset):
     def __init__(self, hf_dataset, tokenizer, max_len=512):
         self.samples = []
@@ -107,12 +113,17 @@ def collate_fn(batch):
 BATCH_SIZE = 32
 MAX_SEQ_LEN = 512
 NUM_PASSES = 5
+CHUNK_SIZE = 64
 
 train_dataset = StreamingDataset(dataset, tokenizer, max_len=MAX_SEQ_LEN)
-stream_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn, drop_last=True)
+# KEP Rule #5: Ergodic shuffling enabled across passes to break cyclical forgetting
+stream_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn, drop_last=True)
 
 logger.info(f"Full Dataset Ready. Total Samples: {len(train_dataset)} | Batches: {len(stream_loader)} | Passes: {NUM_PASSES}")
 
+# =============================================================================
+# 2. MODEL CONFIGURATION & CANONICAL INITIALIZATION
+# =============================================================================
 core_config = CoREConfig()
 core_config.net.text_dim = 128
 core_config.net.unified_dim = 256
@@ -120,6 +131,7 @@ core_config.net.hidden_dim = 512
 core_config.net.latent_dim = 128
 core_config.net.text_gen_dim = 258
 core_config.train.batch_size = BATCH_SIZE
+core_config.train.chunk_size = CHUNK_SIZE
 
 if os.path.exists(kcore_path):
     with open(kcore_path, 'rb') as f:
@@ -142,14 +154,29 @@ if os.path.exists(kcore_path):
             if "hidden_dim" in genome: core_config.net.hidden_dim = genome["hidden_dim"]
             if "latent_dim" in genome: core_config.net.latent_dim = genome["latent_dim"]
 
-agent_brain = CoREAgent(config=core_config, device=device).to(device)
-hu = HomeostaticUnit(batch_size=BATCH_SIZE, device=device)
-episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_config.net.unified_dim, max_capacity=1000, device=device)
+agent_brain = CoREAgent(config=core_config, device=device_str).to(device)
+hu = HomeostaticUnit(batch_size=BATCH_SIZE, device=device_str)
+episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_config.net.unified_dim, max_capacity=1000, device=device_str)
 
-h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device)
+h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 
-optimizer = optim.Adam(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.0)
+# KEP Rule #5: AdamW with L2 weight decay (0.01) for smooth loss landscape
+optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
+
+# Global Full-Horizon Cosine Annealing Schedule with 100-step Warmup
+TOTAL_TRAINING_STEPS = len(stream_loader) * NUM_PASSES
+WARMUP_STEPS = 100
+
+def get_lr_multiplier(current_step: int) -> float:
+    if current_step < WARMUP_STEPS:
+        return float(current_step + 1) / float(WARMUP_STEPS)
+    progress = float(current_step - WARMUP_STEPS) / float(max(1, TOTAL_TRAINING_STEPS - WARMUP_STEPS))
+    # Smooth decay from 1.0 (3e-3) down to 0.0333 (~1e-4)
+    cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
+    return max(0.0333, cosine_decay)
+
+lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier)
 
 moving_mean_fe = 0.15
 moving_var_fe = 0.01
@@ -160,9 +187,12 @@ SPEECH_MASTERY_SETPOINT = getattr(core_config.train, 'speech_mastery_setpoint', 
 
 total_skipped_batches = 0
 total_adapted_batches = 0
+global_step_counter = 0
 
+# =============================================================================
+# 3. KEP RULE #4: LIVE DIAGNOSTIC TEXT SAMPLER
+# =============================================================================
 def run_diagnostic_text_sample(agent, memory, hu_state, config):
-    """KEP Rule #4: Live Diagnostic Text Sample with SwiGLU Full-Text Generation."""
     agent.eval()
     diag_prompt = "User: What is the primary source of energy for Earth?\nKaryon:"
     diag_hu = HomeostaticUnit(batch_size=1, device=agent.device_str)
@@ -195,8 +225,11 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.train()
     return "".join(generated_chars).strip()
 
-logger.info(f"Starting Massive Session ({NUM_PASSES} Passes over 52k samples @ 160k+ tok/s)...")
+logger.info(f"Starting Production Session ({NUM_PASSES} Passes over 52k samples @ 160k+ tok/s)...")
 
+# =============================================================================
+# 4. PRODUCTION MULTI-PASS STREAMING LOOP
+# =============================================================================
 for pass_idx in range(NUM_PASSES):
     logger.info(f"\n{'='*85}\n === [STARTING PASS {pass_idx+1}/{NUM_PASSES} (EPOCH {saved_epoch + pass_idx + 1})] ===\n{'='*85}")
     
@@ -210,18 +243,18 @@ for pass_idx in range(NUM_PASSES):
         if seq_len <= 1:
             continue
 
-        hu_batch = HomeostaticUnit(batch_size=current_batch_size, device=device)
+        hu_batch = HomeostaticUnit(batch_size=current_batch_size, device=device_str)
 
         input_seq = batch_tokens[:, :-1]
         target_seq = batch_tokens[:, 1:]
 
         optimizer.zero_grad()
         
-        # 1. Native C++ SSD Time-Mixing + SwiGLU Channel-Mixing Scan
+        # 1. Native C++ SSD Time-Mixing + SwiGLU Channel-Mixing Scan (Q=64)
         t_exec_start = time.perf_counter()
         total_loss_metric, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
             input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
-            loss_free_energy_weight=0.05, chunk_size=32, optimizer=optimizer
+            loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE, optimizer=optimizer
         )
         t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
@@ -240,18 +273,15 @@ for pass_idx in range(NUM_PASSES):
 
         t_opt_ms = 0.0
         if should_adapt:
-            pass_scale = 1.0 / (1.0 + 0.25 * pass_idx)
-            effective_lr = (3e-3 * pass_scale) * (1.0 + 1.0 * na_val)
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = effective_lr
-
             t_opt_start = time.perf_counter()
             torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=3.0)
             optimizer.step()
+            lr_scheduler.step()
             t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
             
+            cur_lr = optimizer.param_groups[0]['lr']
             total_adapted_batches += 1
-            status_str = f"ADAPTED (lr={effective_lr:.5f})"
+            status_str = f"ADAPTED (lr={cur_lr:.6f})"
         else:
             optimizer.zero_grad()
             rest_recovery_rate = getattr(core_config.homeo, 'energy_recovery_rate', 0.0012)
@@ -261,6 +291,7 @@ for pass_idx in range(NUM_PASSES):
             total_skipped_batches += 1
             status_str = f"RESTING / SKIPPED (0 Backprop FLOPs)"
 
+        global_step_counter += 1
         batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
         tokens_per_sec = (current_batch_size * seq_len) / (batch_total_ms / 1000.0)
 
@@ -268,7 +299,7 @@ for pass_idx in range(NUM_PASSES):
         if (batch_idx + 1) % 50 == 0 or batch_idx == len(stream_loader) - 1:
             perplexity = math.exp(min(speech_loss_val, 20.0))
             curiosity, energy, stability, health, na, da = curr_u_t[0].tolist()
-            peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device == 'cuda' else 0.0
+            peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device_str == 'cuda' else 0.0
 
             grad_embed = agent_brain.pos_embeddings.byte_embed.weight.grad.norm().item() if agent_brain.pos_embeddings.byte_embed.weight.grad is not None else 0.0
             grad_head = 0.0
