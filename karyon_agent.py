@@ -1,10 +1,10 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v17.0 (UNSHACKLED AXIOM OF FLOW MASTER)
-Native 256D Universal Byte Embedding, Unchoked 512D SSD + 2048D SwiGLU Reasoning,
-Dense Modern Hopfield Memory (N=256 Basins), Full Active Inference Integration,
-Tied Afferent-Efferent Readout (256D), and Single-Pass Autograd Pipeline.
+KARYON AGENT CORE v18.0 (BIOPHYSICAL ACTIVE INFERENCE MASTER)
+Grounded in Principle 2: Continuous Multi-Timescale State-Space Duality,
+Ashby Somatic Ultrastability, Hierarchical Predictive Coding, Dopamine-Modulated
+Modern Hopfield Landscape (N=256 Basins), and Afferent-Efferent Weight Tying.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -60,7 +60,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v17.0 UNSHACKLED MASTER)
+# MASTER CORE AGENT (v18.0 BIOPHYSICAL MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -119,7 +119,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 4. Active Inference Latent World Model
+        # 4. Active Inference Latent World Model (Predictive Coding)
         self.world_model = LatentPredictor(
             hidden_dim=self.hidden_dim,
             unified_dim=self.unified_dim,
@@ -309,7 +309,7 @@ class CoREAgent(nn.Module):
         rec_loss = 1.0 - cosine_sim
         free_energy = kl_div + rec_loss
 
-        relax_out = self.attractor_head.relax_to_minima(h_reasoned)
+        relax_out = self.attractor_head.relax_to_minima(h_reasoned, u_t)
         h_relaxed = relax_out[0]
         
         outputs = self.output_gateway(h_relaxed)
@@ -330,6 +330,7 @@ class CoREAgent(nn.Module):
         
         m_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
         curr_u_t = hu_batch.state.clone().detach()
+        h_prev_fast = torch.zeros(batch_size, self.hidden_dim, device=self.device)
         
         num_chunks = max(1, seq_len // chunk_size)
         chunk_losses = []
@@ -339,6 +340,7 @@ class CoREAgent(nn.Module):
         for chunk_idx in range(num_chunks):
             c_start = chunk_idx * chunk_size
             c_end = min((chunk_idx + 1) * chunk_size, seq_len)
+            c_len = c_end - c_start
 
             chunk_in = input_seq[:, c_start:c_end]
             chunk_tgt = target_seq[:, c_start:c_end]
@@ -352,8 +354,8 @@ class CoREAgent(nn.Module):
             # SwiGLU Channel Mixer (2048 dim)
             h_reasoned = self.channel_mixer(h_chunk)
 
-            # Dense Hopfield Attractor Memory Readout (N=256 Basins)
-            h_relaxed, energy_basin = self.attractor_head.relax_to_minima(h_reasoned)
+            # Modern Hopfield Attractor Landscape (N=256 Basins with DA-modulation)
+            h_relaxed, energy_basin = self.attractor_head.relax_to_minima(h_reasoned, curr_u_t)
             
             # Unshackled Tied Lexical Readout (512 -> 256 -> 258)
             h_proj = self.motor_text_proj(h_relaxed)
@@ -362,7 +364,16 @@ class CoREAgent(nn.Module):
             targets_flat = chunk_tgt.contiguous().view(-1)
             chunk_loss = criterion_speech(logits_flat, targets_flat)
             chunk_losses.append(chunk_loss)
-            fe_losses.append(torch.clamp(energy_basin.mean() * 0.01, 0.0, 1.0))
+
+            # Continuous Active Inference: World Model Predictor
+            w_current_slice = self.episodic_sensory_proj(chunk_emb[:, -1, :])
+            h_curr_fast = h_reasoned.view(batch_size, c_len, self.hidden_dim)[:, -1, :]
+            w_pred, kl_div, _, _ = self.world_model(h_prev_fast, h_curr_fast, w_current_slice)
+            h_prev_fast = h_curr_fast.detach()
+
+            rec_loss = (1.0 - F.cosine_similarity(w_current_slice, w_pred, dim=-1, eps=1e-8)).mean()
+            chunk_fe = (kl_div.mean() + rec_loss)
+            fe_losses.append(chunk_fe)
 
             # Event Boundary Theta Phase Reset: Reset state on EOS (257)
             with torch.no_grad():
@@ -403,7 +414,8 @@ class CoREAgent(nn.Module):
         h_chunk = self.channel_mixer(h_ssm)
         
         rolling_token_ids = prompt_tokens[0].tolist()
-        energy_action_cost = torch.tensor([[0.002]], device=self.device)
+        # Somatic speech cost per motor burst (not depleted on every byte)
+        energy_action_cost = torch.tensor([[getattr(config.homeo, 'motor_speech_cost_per_patch', 0.0015)]], device=self.device)
         zero_pred_err = torch.tensor([[0.0]], device=self.device)
         cog_action = torch.tensor([[0]], dtype=torch.int64, device=self.device)
 
@@ -422,7 +434,7 @@ class CoREAgent(nn.Module):
             h_step_ssm, m_curr = ssd_out[0], ssd_out[1]
             h_out = self.channel_mixer(h_step_ssm)
             
-            h_relaxed = self.attractor_head.relax_to_minima(h_out)[0]
+            h_relaxed, _ = self.attractor_head.relax_to_minima(h_out, hu.state)
             h_proj = self.motor_text_proj(h_relaxed)
             logits = (F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim) / max(temperature, 1e-4)
             logits[:, 256:] = -1e9
@@ -447,7 +459,8 @@ class CoREAgent(nn.Module):
             next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
             next_token_id = next_token.item()
 
-            hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)
+            if step % 4 == 0:
+                hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)
             rolling_token_ids.append(next_token_id)
             
             if next_token_id == 257:

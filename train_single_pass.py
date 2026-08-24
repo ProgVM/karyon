@@ -2,8 +2,8 @@
 """
 ===============================================================================
 KARYON MASSIVE HIGH-VELOCITY STREAMING RUNTIME (52k DATASET, N=5)
-Unshackled Flow Architecture (v17.0 Master): 256D Input, 512D SSD, 2048D SwiGLU,
-Continuous Packed Streaming (S=2048, B=64), Persistent Homeostasis, AMP FP16.
+Biophysical Active Inference Architecture (v18.0 Master): Real-time Free Energy
+Minimization, Persistent Ashby Ultrastability, Continuous Packed Stream (S=2048, B=64).
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -180,10 +180,8 @@ h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, file
 optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
-# AMP GradScaler for fast Tensor Core execution
 scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
 
-# Global Full-Horizon Cosine Annealing Schedule with 50-step Warmup
 TOTAL_TRAINING_STEPS = len(stream_loader) * NUM_PASSES
 WARMUP_STEPS = 50
 
@@ -208,7 +206,7 @@ total_adapted_batches = 0
 global_step_counter = 0
 
 # =============================================================================
-# 3. KEP RULE #4: LIVE DIAGNOSTIC TEXT SAMPLER (STRIPPED EOS OPEN PROMPT)
+# 3. KEP RULE #4: LIVE DIAGNOSTIC TEXT SAMPLER
 # =============================================================================
 def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.eval()
@@ -295,7 +293,6 @@ for pass_idx in range(NUM_PASSES):
         t_opt_ms = 0.0
         if should_adapt:
             t_opt_start = time.perf_counter()
-            # Scaled Single-Pass Backward Execution
             scaler.scale(total_loss_tensor).backward()
             scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=3.0)
@@ -305,7 +302,6 @@ for pass_idx in range(NUM_PASSES):
             scaler.update()
             scale_after = scaler.get_scale()
             
-            # Step scheduler only when optimizer successfully updated weights
             if scale_before <= scale_after:
                 lr_scheduler.step()
                 

@@ -1,8 +1,8 @@
 # karyon_config.py
 """
 ===============================================================================
-KARYON MASTER CONFIGURATION REGISTRY v17.0
-Unified Settings for Active Inference, Predictive Coding, and Somatic Homeostasis.
+KARYON MASTER CONFIGURATION REGISTRY v18.0
+Unified Biophysical Settings for Active Inference, Ashby Homeostasis, and SSD.
 ===============================================================================
 """
 
@@ -15,10 +15,12 @@ from typing import Dict, Any
 @dataclass
 class HomeostasisConfig:
     """Homeostatic Somatic Physiology and Neurotransmitter Dynamics."""
-    energy_recovery_rate: float = 0.0012
+    energy_recovery_rate: float = 0.0025
+    perceptive_rest_recovery: float = 0.0040
     backprop_energy_cost: float = 0.0050
+    motor_speech_cost_per_patch: float = 0.0015
     idle_somatic_decay: float = 0.0005
-    sleep_energy_recovery: float = 0.0050
+    sleep_energy_recovery: float = 0.0080
     
     curiosity_setpoint: float = 0.80
     energy_setpoint: float = 1.00
@@ -30,15 +32,15 @@ class HomeostasisConfig:
     stability_pain_weight: float = 1.20
     health_pain_weight: float = 1.50
     
-    noradrenaline_surprise_weight: float = 0.80
-    noradrenaline_arousal_persistence: float = 0.40
+    noradrenaline_surprise_weight: float = 0.85
+    noradrenaline_arousal_persistence: float = 0.35
     dopamine_reward_scale: float = 2.00
     volitional_recall_gain: float = 2.00
 
 
 @dataclass
 class SDEConfig:
-    """Multi-Timescale State-Space Duality Settings."""
+    """Multi-Timescale State-Space Duality and Langevin Fluctuations."""
     gamma_drift: float = 0.10
     wiener_noise_sigma: float = 1e-3
     min_effective_dt: float = 0.30
@@ -49,7 +51,7 @@ class SDEConfig:
 
 @dataclass
 class NetworkConfig:
-    """Unshackled Multi-Modal Dimensions and Network Topologies (KEP Principle 7)."""
+    """Canonical Cortical Microcircuit Dimensions (KEP Principle 2 & 7)."""
     text_dim: int = 256
     vision_dim: int = 256
     audio_dim: int = 256
@@ -85,7 +87,7 @@ class MemoryConfig:
 
 @dataclass
 class TrainConfig:
-    """Predictive Coding, DFET v3 Plasticity Gating, and Training Settings."""
+    """Active Inference, DFET v3 Plasticity Gating, and Training Settings."""
     batch_size: int = 64
     seq_len: int = 2048
     chunk_size: int = 64

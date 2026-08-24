@@ -79,7 +79,7 @@ struct HomeostaticUnit {
         auto stability = state.select(1, 2).unsqueeze(1);
         auto health    = state.select(1, 3).unsqueeze(1);
 
-        energy = torch::clamp(energy - action_cost + 0.0012f, 0.0f, 1.0f);
+        energy = torch::clamp(energy - action_cost + 0.0015f, 0.0f, 1.0f);
         curiosity = torch::clamp(curiosity + 0.2f * prediction_error - 0.02f, 0.0f, 1.0f);
 
         auto inactive_mask = (cog_action == 1) | (cog_action == 2);
@@ -92,7 +92,7 @@ struct HomeostaticUnit {
         auto pain_jump = torch::clamp(current_pain - prev_pain, 0.0f, 1.0f);
         prev_pain = current_pain;
 
-        auto noradrenaline = torch::clamp(0.6f * (1.0f - stability) + 0.8f * prediction_error + 0.4f * pain_jump, 0.0f, 1.0f);
+        auto noradrenaline = torch::clamp(0.6f * (1.0f - stability) + 0.85f * prediction_error + 0.35f * pain_jump, 0.0f, 1.0f);
         stability = torch::clamp(stability - (0.05f * prediction_error + 0.005f * epistemic_entropy) + 0.02f, 0.0f, 1.0f);
 
         state = torch::cat({curiosity, energy, stability, health, noradrenaline, dopamine}, 1);
@@ -263,7 +263,7 @@ public:
 };
 
 // ============================================================================
-// 6. CALIBRATED PARALLEL SSD CORE (SOMATIC-MODULATED LANGEVIN DYNAMICS)
+// 6. CALIBRATED PARALLEL SSD CORE (SOMATIC-MODULATED LANGEVIN SDE SCAN)
 // ============================================================================
 class CalibratedParallelSSDCoreImpl : public torch::nn::Module {
 public:
@@ -401,7 +401,7 @@ public:
 };
 
 // ============================================================================
-// 8. DENSE MODERN HOPFIELD ATTRACTOR HEAD (256 BASINS IN 512D)
+// 8. DENSE MODERN HOPFIELD ATTRACTOR HEAD (DOPAMINE-MODULATED BASINS)
 // ============================================================================
 class DesaturatedHopfieldAttractorHeadImpl : public torch::nn::Module {
 public:
@@ -409,6 +409,7 @@ public:
     int64_t num_attractors;
     float scale;
     torch::Tensor attractor_basins;
+    torch::nn::LayerNorm norm{nullptr};
 
     DesaturatedHopfieldAttractorHeadImpl(int64_t hidden_dim = 512, int64_t vocab_size = 258, 
                                          int64_t num_attractors = 256, std::string device_str = "cpu")
@@ -420,14 +421,26 @@ public:
             opts = opts.device(torch::kCUDA);
         }
         attractor_basins = register_parameter("attractor_basins", torch::randn({num_attractors, hidden_dim}, opts) * 0.05f);
+        norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
+
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
+            this->to(torch::kCUDA);
+        }
     }
 
-    std::tuple<torch::Tensor, torch::Tensor> relax_to_minima(torch::Tensor h_state) {
-        auto norm_dist_sq = torch::cdist(h_state, attractor_basins, 2).pow(2) * scale;
-        auto attn_weights = torch::softmax(-norm_dist_sq, -1);
+    std::tuple<torch::Tensor, torch::Tensor> relax_to_minima(torch::Tensor h_state, torch::Tensor u_t) {
+        float da_val = 0.0f;
+        if (u_t.defined() && u_t.numel() >= 6) {
+            da_val = u_t[0][5].item<float>();
+        }
+        // Dopamine D1-receptor agonism: Sharpen attractor signal-to-noise ratio
+        float beta = 1.0f + 1.5f * da_val;
+
+        auto sim = torch::matmul(h_state, attractor_basins.transpose(0, 1)) * (scale * beta);
+        auto attn_weights = torch::softmax(sim, -1);
         auto attractor_shift = torch::matmul(attn_weights, attractor_basins);
-        auto h_relaxed = h_state + 0.25f * attractor_shift;
-        auto energy = -torch::logsumexp(-norm_dist_sq, -1, true);
+        auto h_relaxed = norm->forward(h_state + 0.25f * attractor_shift);
+        auto energy = -torch::logsumexp(sim, -1, true);
         return std::make_tuple(h_relaxed, energy);
     }
 };
@@ -693,10 +706,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
              py::arg("hidden_dim") = 512, py::arg("vocab_size") = 258, py::arg("num_attractors") = 256, py::arg("device") = "cpu")
         .def_readwrite("attractor_basins", &DesaturatedHopfieldAttractorHeadImpl::attractor_basins)
-        .def("relax_to_minima", &DesaturatedHopfieldAttractorHeadImpl::relax_to_minima)
+        .def("relax_to_minima", &DesaturatedHopfieldAttractorHeadImpl::relax_to_minima,
+             py::arg("h_state"), py::arg("u_t") = torch::Tensor())
         .def("parameters", [](std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl> m) { return m->named_parameters(); })
-        .def("__call__", &DesaturatedHopfieldAttractorHeadImpl::relax_to_minima);
+        .def("__call__", &DesaturatedHopfieldAttractorHeadImpl::relax_to_minima,
+             py::arg("h_state"), py::arg("u_t") = torch::Tensor());
 
     py::class_<LatentPredictorImpl, torch::nn::Module, std::shared_ptr<LatentPredictorImpl>>(m, "LatentPredictor")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),

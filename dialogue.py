@@ -1,10 +1,10 @@
 # dialogue.py
 """
 ===============================================================================
-KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v17.0 MASTER)
-Real-time Social Active Inference Session with Somatic Feedback,
-Multi-Turn Rolling Context Horizon (up to 2048 bytes), Universal CPU/CUDA Execution,
-Calibrated Sampling (T=0.45, p=0.90), and Volitional Episodic Fact Recall.
+KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v18.0 MASTER)
+Real-time Social Active Inference with Human Feedback, Perceptive Rest
+Energy Recovery (Magistretti 2015), 2048-Byte Rolling Memory Horizon,
+and Dopamine-Modulated Modern Hopfield Attractors.
 ===============================================================================
 """
 
@@ -105,10 +105,10 @@ episodic_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=config.net.unified
 h_fast, h_slow, epoch, story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 
 logger.info(f"Loaded Karyon Soul (.kcore) | Device: {device_str.upper()} | Genome DNA -> text_dim: {agent_brain.text_dim}, hidden_dim: {agent_brain.hidden_dim}, unified_dim: {agent_brain.unified_dim}")
-logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v17.0!")
+logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v18.0!")
 logger.info("Type 'exit' to save state and close.")
 
-# Multi-Turn Rolling Dialogue History (up to 2048 bytes)
+# Multi-Turn Rolling Dialogue History
 dialogue_history = ""
 prev_karyon_representation = None
 
@@ -126,7 +126,12 @@ while True:
     if not user_input.strip():
         continue
 
-    # Append turn to rolling context
+    # 1. Perceptive Phase: Listening to human actively restores somatic energy (Magistretti 2015)
+    with torch.no_grad():
+        rest_boost = getattr(config.homeo, 'perceptive_rest_recovery', 0.0040) * float(len(user_input))
+        hu.state[0, 1] = torch.clamp(hu.state[0, 1] + rest_boost, 0.0, 1.0)
+
+    # 2. Append turn to rolling context
     turn_str = f"User: {user_input.strip()}\nKaryon:"
     if len(dialogue_history) + len(turn_str) > 1800:
         dialogue_history = dialogue_history[-1000:]
