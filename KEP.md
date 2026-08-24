@@ -1,8 +1,9 @@
 # `KEP.md` — Karyon Engineering Protocol (KEP) Master Specification
+# (some of these rules describe the work for AI assistents)
 
 > **Official Cybernetic Protocol for Karyon-CoRE Architecture Development**  
 > **Author & Repository Owner:** Bazilevs (ProgVM)  
-> **Standard:** KEP v5.0 (Mandatory for all human developers and AI collaborators).
+> **Standard:** KEP v5.1 (Mandatory for all human developers and AI collaborators).
 
 ---
 
@@ -12,7 +13,7 @@
 2. **Principle 2 (Living AGI & Biological Realism):** Every feature must be grounded in biophysics (Active Inference, Ashby Somatic Homeostasis, Cortical Laminar Hierarchy, Neural Oscillations).
 3. **Principle 3 (Research & Cybernetics First):** Search neuroscience and machine learning literature (Friston, Buzsáki, Mamba, MegaByte, Hopfield) before formulating hypotheses.
 4. **Principle 4 (Zero Tolerance for Dead Code):** All modules must be synchronized. Obsolete, unreferenced, or failing legacy files must be immediately updated or deleted.
-5. **Principle 5 (Commit Messages at the Very End):** Every AI response that creates or modifies code must conclude with a standardized Conventional Git Commit Message (`type(scope): message`) preceded by a self-refactoring audit table.
+5. **Principle 5 (Conventional Commit & Ready Git Commands at the Very End):** Every AI response that creates or modifies code must conclude strictly at the very end with a Self-Refactoring Audit Table followed by the Conventional Git Commit Message (`type(scope): message`), and immediately inside a ```bash``` code block provide the three ready-made commands (`git add [./...]`, `git commit -m "..."`, `git push`).
 6. **Principle 6 (Direct Module Imports in Experiments):** Benchmark scripts must import production modules directly or construct strict self-contained experimental prototypes.
 7. **Principle 7 (Axiom of Unshackled Flow):** Prohibits artificial bottlenecking (such as legacy $512 \to 128$ down-projections or low-rank $N=64$ basin constraints) unless mathematically mandated by proven cybernetic loss.
 
@@ -46,15 +47,3 @@ No hypothesis aimed at generalization or plateau-breaking may be evaluated on tr
 
 ### KEP Rule #8 (Mandatory Experiment Archival Protocol)
 Upon completion and verdict assignment, all experimental benchmark scripts (`exp_*.py`) are moved to `experiments/archive/` to keep the root repository clean and maintain an immutable historical scientific ledger.
-
----
-
-## 3. Git Workflow & Conventional Commit Standards
-
-* **Repository:** `ProgVM/karyon`
-* **Workflow:** Mobile (Termux / Working Copy) $\longleftrightarrow$ GitHub $\longleftrightarrow$ Kaggle GPU.
-* **Commit Format:** `type(scope): message`
-  * `feat(...)`: New validated features or benchmarks.
-  * `fix(...)`: Bug fixes and numerical stabilization.
-  * `refactor(...)`: Code cleanup and synchronization.
-  * `revert(...)`: Rollback to verified baseline.
