@@ -263,7 +263,7 @@ public:
 };
 
 // ============================================================================
-// 6. CALIBRATED PARALLEL STATE-SPACE DUALITY CORE (TIME-MIXING @ 176k tok/s)
+// 6. CALIBRATED PARALLEL SSD CORE (LOG-SPACED MULTI-TIMESCALE SPECTRUM)
 // ============================================================================
 class CalibratedParallelSSDCoreImpl : public torch::nn::Module {
 public:
@@ -298,7 +298,12 @@ public:
 
         auto opts = torch::TensorOptions().dtype(torch::kFloat32);
         if (device_str.find("cuda") != std::string::npos) opts = opts.device(torch::kCUDA);
-        decay_logits = register_parameter("decay_logits", torch::randn({1, num_heads, 1, 1}, opts) * 0.1f + 2.0f);
+        
+        // Geometric Multi-Timescale Spectrum: alpha in [0.70, 0.999] (T_1/2 from 1.9 to ~700 bytes)
+        auto betas = torch::exp(torch::linspace(std::log(0.30f), std::log(0.001f), num_heads, opts));
+        auto alphas = 1.0f - betas;
+        auto logit_init = torch::log(alphas / (1.0f - alphas)).view({1, num_heads, 1, 1});
+        decay_logits = register_parameter("decay_logits", logit_init);
 
         out_proj = register_module("out_proj", torch::nn::Linear(hidden_dim, hidden_dim));
         norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
