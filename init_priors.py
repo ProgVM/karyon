@@ -1,8 +1,8 @@
 # init_priors.py
 """
 ===============================================================================
-KARYON IDENTITY PRIORS INITIALIZATION (v15.2 MASTER)
-Projects Existential Identity and Cognitive Priors into Continuous SDE-SSM Space.
+KARYON IDENTITY PRIORS INITIALIZATION (v16.5 MASTER)
+Projects Existential Identity and Cognitive Priors into Continuous Multi-Timescale SDE-SSM Space.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -50,22 +50,24 @@ def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore
     core_config.net.text_gen_dim = 258
     core_config.train.batch_size = 1
 
-    agent_brain = CoREAgent(config=core_config, device=device).to(device)
+    agent_brain = CoREAgent(config=core_config, device=device).to(torch.device(device))
     hu = HomeostaticUnit(batch_size=1, device=device)
     episodic_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=core_config.net.unified_dim, max_capacity=1000, device=device)
+
+    dev_obj = torch.device(device)
 
     if not recreate and os.path.exists(filepath):
         logger.info(f"Container '{filepath}' exists. Loading state to embed priors without reinitialization...")
         h_fast, h_slow, epoch, story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=filepath, device=device)
     else:
         logger.info("Creating baseline model state vectors...")
-        h_fast = torch.zeros(1, core_config.net.hidden_dim, device=device)
-        h_slow = torch.zeros(1, core_config.net.hidden_dim, device=device)
+        h_fast = torch.zeros(1, core_config.net.hidden_dim, device=dev_obj)
+        h_slow = torch.zeros(1, core_config.net.hidden_dim, device=dev_obj)
         epoch, story_idx = 0, 0
 
-    action_cost = torch.tensor([[0.001]], device=device)
-    zero_err = torch.tensor([[0.0]], device=device)
-    cog_act = torch.tensor([[1]], dtype=torch.int64, device=device)
+    action_cost = torch.tensor([[0.001]], device=dev_obj)
+    zero_err = torch.tensor([[0.0]], device=dev_obj)
+    cog_act = torch.tensor([[1]], dtype=torch.int64, device=dev_obj)
 
     logger.info("Projecting existential identity priors into continuous latent memory space...")
     with torch.no_grad():
@@ -78,8 +80,8 @@ def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore
                 q_emb = agent_brain.pos_embeddings(q_id.unsqueeze(0).unsqueeze(0), start_pos=idx, apply_rf=False)
                 sensor_inputs = {
                     'text': q_emb.squeeze(1), 
-                    'vision': torch.zeros(1, core_config.net.vision_dim, device=device), 
-                    'motor_efference': torch.zeros(1, core_config.net.action_dim, device=device)
+                    'vision': torch.zeros(1, core_config.net.vision_dim, device=dev_obj), 
+                    'motor_efference': torch.zeros(1, core_config.net.action_dim, device=dev_obj)
                 }
                 h_f, h_s, _, _, _, _, _, w_q, _, _, epistemic_entropy, _ = agent_brain(sensor_inputs, h_f, h_s, hu.state)
                 hu.update(action_cost, zero_err, epistemic_entropy, cog_act)
@@ -91,15 +93,15 @@ def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore
                 a_emb = agent_brain.pos_embeddings(a_id.unsqueeze(0).unsqueeze(0), start_pos=idx, apply_rf=False)
                 sensor_inputs = {
                     'text': a_emb.squeeze(1), 
-                    'vision': torch.zeros(1, core_config.net.vision_dim, device=device), 
-                    'motor_efference': torch.zeros(1, core_config.net.action_dim, device=device)
+                    'vision': torch.zeros(1, core_config.net.vision_dim, device=dev_obj), 
+                    'motor_efference': torch.zeros(1, core_config.net.action_dim, device=dev_obj)
                 }
                 h_f_a, h_s_a, _, _, _, _, _, w_a, _, _, epistemic_entropy, _ = agent_brain(sensor_inputs, h_f_a, h_s_a, hu.state)
                 hu.update(action_cost, zero_err, epistemic_entropy, cog_act)
                 
             episodic_mem.write(w_q.detach(), w_a.detach(), 3)
 
-    hu.state = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], dtype=torch.float32, device=device)
+    hu.state = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], dtype=torch.float32, device=dev_obj)
 
     logger.info(f"Identity priors successfully embedded. Preserving progress (Epoch {epoch}). Saving to '{filepath}'")
     save_karyon(agent_brain, episodic_mem, hu, h_fast, h_slow, epoch=epoch, story_idx=story_idx, filepath=filepath)

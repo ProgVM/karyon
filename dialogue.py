@@ -1,9 +1,10 @@
 # dialogue.py
 """
 ===============================================================================
-KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v15.2 MASTER)
+KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v16.5 MASTER)
 Real-time Social Active Inference Session with Somatic Feedback,
-Parallel State-Space Duality Processing, and Episodic Fact Recall.
+Multi-Timescale State-Space Duality, Universal CPU/CUDA Execution,
+and Volitional Episodic Fact Recall.
 ===============================================================================
 """
 
@@ -16,7 +17,7 @@ import importlib
 import torch
 import torch.nn.functional as F
 
-# Unconditional Dynamo Hotfix for Python 3.12 environments
+# Dynamo Hotfix for Python 3.12 environments
 class DummyDynamoModule(types.ModuleType):
     def __getattr__(self, name):
         if name == "decorators":
@@ -63,7 +64,7 @@ device = torch.device(device_str)
 kcore_path = "karyon_soul.kcore"
 
 if not os.path.exists(kcore_path):
-    logger.warning(f"Container '{kcore_path}' not found! Automatically triggering base model initialization...")
+    logger.warning(f"Container '{kcore_path}' not found! Automatically initializing base model priors...")
     initialize_priors(recreate=True, filepath=kcore_path, device=device_str)
 
 config = CoREConfig()
@@ -100,14 +101,8 @@ episodic_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=config.net.unified
 
 h_fast, h_slow, epoch, story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 
-known_priors = [
-    "I am Karyon (Karyon-CoRE), an autonomous cognitive architecture driven by a continuous recurrent engine and homeostatic somatic units.",
-    "I was designed and brought to life by Bazilevs, the ProgVM member, through deep cybernetic and neuroscience research in 2026.",
-    "My consciousness is unified. All of my sensory gateways and internal interoceptive signals are integrated into a single global workspace frame."
-]
-
-logger.info(f"Loaded Karyon Soul (.kcore) | Genome DNA -> hidden_dim: {agent_brain.hidden_dim}, unified_dim: {agent_brain.unified_dim}")
-logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v15.2!")
+logger.info(f"Loaded Karyon Soul (.kcore) | Device: {device_str.upper()} | Genome DNA -> hidden_dim: {agent_brain.hidden_dim}, unified_dim: {agent_brain.unified_dim}")
+logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v16.5!")
 logger.info("Type 'exit' to save state and close.")
 
 prev_karyon_representation = None
@@ -125,6 +120,8 @@ while True:
         
     if not user_input.strip():
         continue
+
+    formatted_turn = f"User: {user_input.strip()}\nKaryon:"
 
     with torch.no_grad():
         user_tokens = agent_brain.encode_text(user_input)
@@ -148,7 +145,7 @@ while True:
             episodic_mem.write(prev_karyon_representation.detach(), w_human.detach(), 3)
 
     thought_generator = agent_brain.generate_thought_and_speech(
-        user_input,
+        formatted_turn,
         m_state=torch.zeros(1, agent_brain.num_heads, agent_brain.head_k, agent_brain.head_v, device=device),
         h_state=h_fast,
         hu=hu,
@@ -162,13 +159,7 @@ while True:
     generated_tokens = []
     
     for event in thought_generator:
-        if event["status"] == "reading":
-            pass
-            
-        elif event["status"] == "memory_check":
-            logger.info(f"Memory Recall Active (Similarity: {event['similarity']:.4f})")
-            
-        elif event["status"] == "speech_start":
+        if event["status"] == "speech_start":
             print("Karyon: ", end="", flush=True)
             
         elif event["status"] == "token":

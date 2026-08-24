@@ -2,9 +2,8 @@
 """
 ===============================================================================
 KARYON MASSIVE HIGH-VELOCITY STREAMING RUNTIME (52k DATASET, N=5)
-Maximal Parallelism Architecture: Mixed Precision (AMP FP16), Asynchronous
-Pinned Memory Streaming (num_workers=2), Full-Sequence Pre-Projected GEMMs,
-Native C++20 Multi-Timescale SSD Core (>250k tok/s), and Universal CUDA/CPU.
+Maximal Parallelism Architecture: Single-Pass Forward+Backward Execution,
+Asynchronous Pinned DataLoader, AMP FP16, AdamW (WD=0.01), and Cosine LR.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -69,7 +68,6 @@ from init_priors import initialize_priors
 logger = get_logger()
 torch.set_grad_enabled(True)
 
-# Universal Device Selection: CUDA prioritized, CPU fallback
 device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
 device = torch.device(device_str)
 use_amp = (device_str == 'cuda')
@@ -100,7 +98,7 @@ class ContinuousPackedDataset(Dataset):
             out = item.get("output", "").strip()
             if inst and out:
                 dialog = f"User: {inst}\nKaryon: {out}"
-                ids = tokenizer.encode(dialog) # Contains 257 (<eos>) at the end
+                ids = tokenizer.encode(dialog)
                 full_token_stream.extend(ids)
 
         num_blocks = len(full_token_stream) // (seq_len + 1)
@@ -120,14 +118,12 @@ class ContinuousPackedDataset(Dataset):
 def collate_packed_fn(batch):
     return torch.stack(batch, dim=0)
 
-# SCALED TO BATCH_SIZE = 64 FOR MAXIMUM TENSOR CORE GPU OCCUPANCY
 BATCH_SIZE = 64
 SEQ_LEN = 2048
 NUM_PASSES = 5
 CHUNK_SIZE = 64
 
 train_dataset = ContinuousPackedDataset(dataset, tokenizer, seq_len=SEQ_LEN)
-# Asynchronous Pinned Multi-Worker DataLoader
 stream_loader = DataLoader(
     train_dataset, 
     batch_size=BATCH_SIZE, 
@@ -142,7 +138,7 @@ stream_loader = DataLoader(
 logger.info(f"High-Throughput Packed Dataset Ready. Total Blocks (S={SEQ_LEN}): {len(train_dataset)} | Batches: {len(stream_loader)} (B={BATCH_SIZE}) | Passes: {NUM_PASSES}")
 
 # =============================================================================
-# 2. MODEL CONFIGURATION & CANONICAL INITIALIZATION
+# 2. MODEL CONFIGURATION & INITIALIZATION
 # =============================================================================
 core_config = CoREConfig()
 core_config.net.text_dim = 128
@@ -183,9 +179,6 @@ h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, file
 # AdamW with L2 weight decay (0.01)
 optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
-
-# Hardware Accelerated Mixed Precision Gradient Scaler
-scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
 
 # Global Full-Horizon Cosine Annealing Schedule with 50-step Warmup
 TOTAL_TRAINING_STEPS = len(stream_loader) * NUM_PASSES
@@ -258,7 +251,6 @@ for pass_idx in range(NUM_PASSES):
     for batch_idx, batch_tokens in enumerate(stream_loader):
         t_batch_start = time.perf_counter()
         
-        # Asynchronous non-blocking transfer
         batch_tokens = batch_tokens.to(device, non_blocking=(device_str == 'cuda'))
         current_batch_size = batch_tokens.size(0)
         seq_len = batch_tokens.size(1)
@@ -270,16 +262,12 @@ for pass_idx in range(NUM_PASSES):
 
         optimizer.zero_grad()
         
-        # Hardware Accelerated Tensor Core Execution with AMP FP16
+        # Single-Pass Forward+Backward Execution with Native C++ Multi-Timescale SSD Core
         t_exec_start = time.perf_counter()
-        with torch.amp.autocast(device_type=device_str, dtype=torch.float16, enabled=use_amp):
-            total_loss_metric, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
-                input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
-                loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE, optimizer=None
-            )
-            # Scaled loss for backward pass
-            loss_tensor = torch.tensor(total_loss_metric, device=device, requires_grad=True)
-
+        total_loss_metric, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
+            input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=episodic_mem,
+            loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE, optimizer=optimizer
+        )
         t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
         na_val = curr_u_t.select(1, 4).mean().item()
@@ -298,15 +286,8 @@ for pass_idx in range(NUM_PASSES):
         t_opt_ms = 0.0
         if should_adapt:
             t_opt_start = time.perf_counter()
-            # Fused backward pass through forward_sequence with chunk gradient scaling
-            agent_brain.forward_sequence(
-                input_seq, target_seq, hu_batch, criterion_speech, episodic_memory=None,
-                loss_free_energy_weight=0.0, chunk_size=CHUNK_SIZE, optimizer=optimizer
-            )
-            scaler.unscale_(optimizer)
             torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=3.0)
-            scaler.step(optimizer)
-            scaler.update()
+            optimizer.step()
             lr_scheduler.step()
             t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
             
@@ -341,7 +322,7 @@ for pass_idx in range(NUM_PASSES):
             print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | PASS {pass_idx+1}/{NUM_PASSES} | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
             print("="*85)
             print(f"Plasticity Gating Status  : {status_str}")
-            print(f"Submodule Timing (ms)     : Forward+Scan: {t_exec_ms:.1f}ms | Backward+Step: {t_opt_ms:.1f}ms")
+            print(f"Submodule Timing (ms)     : Forward+Scan: {t_exec_ms:.1f}ms | Optimizer Step: {t_opt_ms:.1f}ms")
             print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
             print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
             print(f"Gradient Flow Inspection  : Embeddings Grad Norm = {grad_embed:.6f} | Attractor Head Grad Norm = {grad_head:.6f}")

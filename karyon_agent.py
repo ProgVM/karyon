@@ -4,7 +4,7 @@
 KARYON AGENT CORE v16.5 (MAXIMAL PARALLELISM & UNIVERSAL CROSS-PLATFORM)
 Vectorized Full-Sequence Pre-Projected SSD Scan, Native C++20 SwiGLU Hybrid,
 Universal CUDA/CPU Dynamic Execution, Causal N-gram Byte Receptive Field (K=4),
-Afferent-Efferent Lexical Tying, and Event Boundary Theta Phase Reset.
+Afferent-Efferent Lexical Tying, DFET v3 Plasticity Gating, and Event Boundary Reset.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -245,6 +245,15 @@ class CoREAgent(nn.Module):
             return raw_b.decode('utf-8', errors='replace')
         return self.tokenizer.decode(ids)
 
+    def evaluate_dfet_gating(self, free_energy_val: float, moving_mean: float, moving_std: float, na_level: float) -> bool:
+        base_k = getattr(self.config.train, 'dfet_k_sigma_base', 0.45)
+        na_weight = getattr(self.config.train, 'dfet_k_sigma_na_weight', 0.25)
+        min_k = getattr(self.config.train, 'dfet_min_k_sigma', 0.15)
+        
+        k_sigma = max(min_k, base_k - na_weight * na_level)
+        dynamic_threshold = moving_mean + k_sigma * moving_std
+        return free_energy_val > dynamic_threshold
+
     def forward_step(self, sensor_inputs: Dict[str, torch.Tensor], h_prev_fast: torch.Tensor, 
                      h_prev_slow: torch.Tensor, u_t: torch.Tensor, episodic_memory=None, 
                      dt: float = 1.0, attention_temp: float = 0.05):
@@ -318,13 +327,11 @@ class CoREAgent(nn.Module):
                          chunk_size: int = 64, optimizer: torch.optim.Optimizer = None) -> Tuple[float, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size, seq_len = input_seq.size()
         
-        # 1. Full-Sequence Vectorized Embedding GEMM (0 Python Overhead per Chunk)
+        # Full-Sequence Vectorized Embedding GEMM (0 Python Overhead)
         full_emb = self.pos_embeddings(input_seq, start_pos=0, apply_rf=True)
         
         m_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
         curr_u_t = hu_batch.state.clone().detach()
-        action_cost_tensor = torch.full((batch_size, 1), 0.001, device=self.device)
-        cog_action_tensor = torch.zeros((batch_size, 1), dtype=torch.int64, device=self.device)
         
         num_chunks = max(1, seq_len // chunk_size)
         total_speech_loss_accum = 0.0
