@@ -1,8 +1,8 @@
 """
 ===============================================================================
-KARYON EXPERIMENTAL BENCHMARK: EXP-42 (LONG-HORIZON MEGABYTE SSM PARITY)
-300-Step Deep Horizon Evaluation of Causal Intra-Patch MegaByte SSM (P=4, N=512)
-vs Baseline Flat 1-Byte SSD on Real Dataset (vicgalle/alpaca-gpt4).
+KARYON EXPERIMENTAL BENCHMARK: EXP-42 (DEEP CONVERGENCE MEGABYTE PARITY)
+1200-Step Massive Horizon Evaluation of Causal Intra-Patch MegaByte SSM (P=4, N=512)
+vs Baseline Flat 1-Byte SSD on Real Dataset (vicgalle/alpaca-gpt4, 40M Tokens).
 Protocol: KEP v5.1 (Rules #1, #2, #3, #4, #6, #7).
 Biophysical Grounding: Multi-Scale Cortical Temporal Processing & Causal Local Loops.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
@@ -80,7 +80,7 @@ device = torch.device(device_str)
 use_amp = (device_str == 'cuda')
 torch.set_grad_enabled(True)
 
-print(f"\n[EXP-42] Initializing Long-Horizon MegaByte SSD Benchmark on: {device_str.upper()}")
+print(f"\n[EXP-42] Initializing 1200-Step Deep Horizon MegaByte Benchmark on: {device_str.upper()}")
 
 
 # =============================================================================
@@ -486,7 +486,7 @@ class CausalIntraPatchMegaByteAgent(nn.Module):
 # 7. DATASET: CONTINUOUS PACKED STREAMING (S=2048, 0% PADDING)
 # =============================================================================
 class ContinuousPackedDataset(Dataset):
-    def __init__(self, hf_data, tokenizer, max_samples=300, seq_len=2048):
+    def __init__(self, hf_data, tokenizer, max_samples=1200, seq_len=2048):
         self.seq_len = seq_len
         full_token_stream = []
 
@@ -519,11 +519,11 @@ def collate_packed_fn(batch):
 
 
 # =============================================================================
-# 8. EXP-42 MASTER EXECUTION & AUTOMATED DECISION ENGINE (300 STEPS)
+# 8. EXP-42 MASTER EXECUTION & AUTOMATED DECISION ENGINE (1200 STEPS)
 # =============================================================================
 def run_exp_42_benchmark():
     print("\n" + "="*85)
-    print(" === EXP-42: LONG-HORIZON CAUSAL MEGABYTE SSM BENCHMARK (300 STEPS) ===")
+    print(" === EXP-42: DEEP CONVERGENCE MEGABYTE SSM BENCHMARK (1200 STEPS) ===")
     print("="*85)
 
     tokenizer = ByteTokenizer()
@@ -533,31 +533,31 @@ def run_exp_42_benchmark():
     train_split = raw_dataset.select(range(0, 50000))
     val_split = raw_dataset.select(range(50000, len(raw_dataset)))
 
-    NUM_STEPS = 300
+    NUM_STEPS = 1200
     BATCH_SIZE = 16
     SEQ_LEN = 2048
 
     dataset_train = ContinuousPackedDataset(train_split, tokenizer, max_samples=NUM_STEPS, seq_len=SEQ_LEN)
     loader_train = DataLoader(dataset_train, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_packed_fn, drop_last=True)
 
-    dataset_val = ContinuousPackedDataset(val_split, tokenizer, max_samples=25, seq_len=SEQ_LEN)
+    dataset_val = ContinuousPackedDataset(val_split, tokenizer, max_samples=30, seq_len=SEQ_LEN)
     loader_val = DataLoader(dataset_val, batch_size=8, shuffle=False, collate_fn=collate_packed_fn, drop_last=True)
 
-    logger.info(f"Parity Setup Ready. Train Steps: {NUM_STEPS} | S={SEQ_LEN} | Val Batches: {len(loader_val)}")
+    logger.info(f"Deep Parity Setup Ready. Train Steps: {NUM_STEPS} (~40M tokens) | S={SEQ_LEN} | Val Batches: {len(loader_val)}")
 
     criterion = nn.CrossEntropyLoss(ignore_index=256)
 
     def get_lr_multiplier(step):
-        if step < 10:
-            return float(step + 1) / 10.0
-        progress = float(step - 10) / float(max(1, NUM_STEPS - 10))
+        if step < 50:
+            return float(step + 1) / 50.0
+        progress = float(step - 50) / float(max(1, NUM_STEPS - 50))
         return 0.5 * (1.0 + math.cos(math.pi * progress * 0.7))
 
     # -------------------------------------------------------------------------
-    # PART A: RUN BASELINE FLAT 1-BYTE UNSHACKLED SSD (300 STEPS)
+    # PART A: RUN BASELINE FLAT 1-BYTE UNSHACKLED SSD (1200 STEPS)
     # -------------------------------------------------------------------------
     print("\n" + "-"*85)
-    print(" [1/2] RUNNING BASELINE: FLAT 1-BYTE UNSHACKLED SSD (300 STEPS, S=2048)")
+    print(" [1/2] RUNNING BASELINE: FLAT 1-BYTE UNSHACKLED SSD (1200 STEPS, S=2048)")
     print("-" * 85)
 
     model_base = BaselineFlatAgent(device_str=device_str).to(device)
@@ -594,19 +594,19 @@ def run_exp_42_benchmark():
             sched_base.step()
 
         loss_history_base.append(loss.item())
-        if (idx + 1) % 50 == 0 or idx == NUM_STEPS - 1:
-            print(f"  Baseline Step [{idx+1:03d}/{NUM_STEPS}] | Train Loss: {loss.item():.4f} (PPL: {math.exp(min(loss.item(), 20.0)):.2f})")
+        if (idx + 1) % 200 == 0 or idx == NUM_STEPS - 1:
+            print(f"  Baseline Step [{idx+1:04d}/{NUM_STEPS}] | Train Loss: {loss.item():.4f} (PPL: {math.exp(min(loss.item(), 20.0)):.2f})")
 
     t_total_base = time.perf_counter() - t_start_base
     vram_base = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device.type == 'cuda' else 0.0
     tok_per_sec_base = (len(loss_history_base) * BATCH_SIZE * SEQ_LEN) / t_total_base
-    final_train_loss_base = sum(loss_history_base[-20:]) / 20.0
+    final_train_loss_base = sum(loss_history_base[-50:]) / 50.0
 
     # -------------------------------------------------------------------------
-    # PART B: RUN PROPOSED EXP-42 CAUSAL MEGABYTE SSD (300 STEPS)
+    # PART B: RUN PROPOSED EXP-42 CAUSAL MEGABYTE SSD (1200 STEPS)
     # -------------------------------------------------------------------------
     print("\n" + "-"*85)
-    print(" [2/2] RUNNING PROPOSED: EXP-42 CAUSAL MEGABYTE SSD (300 STEPS, P=4, N=512)")
+    print(" [2/2] RUNNING PROPOSED: EXP-42 CAUSAL MEGABYTE SSD (1200 STEPS, P=4, N=512)")
     print("-" * 85)
 
     model_prop = CausalIntraPatchMegaByteAgent(patch_size=4, device_str=device_str).to(device)
@@ -643,19 +643,19 @@ def run_exp_42_benchmark():
             sched_prop.step()
 
         loss_history_prop.append(loss.item())
-        if (idx + 1) % 50 == 0 or idx == NUM_STEPS - 1:
-            print(f"  Proposed Step [{idx+1:03d}/{NUM_STEPS}] | Train Loss: {loss.item():.4f} (PPL: {math.exp(min(loss.item(), 20.0)):.2f})")
+        if (idx + 1) % 200 == 0 or idx == NUM_STEPS - 1:
+            print(f"  Proposed Step [{idx+1:04d}/{NUM_STEPS}] | Train Loss: {loss.item():.4f} (PPL: {math.exp(min(loss.item(), 20.0)):.2f})")
 
     t_total_prop = time.perf_counter() - t_start_prop
     vram_prop = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device.type == 'cuda' else 0.0
     tok_per_sec_prop = (len(loss_history_prop) * BATCH_SIZE * SEQ_LEN) / t_total_prop
-    final_train_loss_prop = sum(loss_history_prop[-20:]) / 20.0
+    final_train_loss_prop = sum(loss_history_prop[-50:]) / 50.0
 
     # -------------------------------------------------------------------------
     # PART C: HELD-OUT COMMON VALIDATION EVALUATION
     # -------------------------------------------------------------------------
     print("\n" + "="*85)
-    print(" === HELD-OUT VALIDATION SET EVALUATION (25 BATCHES) ===")
+    print(" === HELD-OUT VALIDATION SET EVALUATION (30 BATCHES) ===")
     print("="*85)
     model_base.eval()
     model_prop.eval()
@@ -716,11 +716,11 @@ def run_exp_42_benchmark():
     speed_ratio = (tok_per_sec_prop / tok_per_sec_base) * 100.0
 
     print("\n" + "="*85)
-    print(" === EXP-42 FINAL TELEMETRY AUDIT TABLE (300 STEPS) ===")
+    print(" === EXP-42 FINAL TELEMETRY AUDIT TABLE (1200 STEPS) ===")
     print("="*85)
     print(f"{'Metric':<34} | {'Baseline (Flat 1-Byte SSD)':<28} | {'Proposed (EXP-42 Causal MegaByte)':<32}")
     print("-" * 102)
-    print(f"{'Optimization Steps':<34} | {'300 Gradient Steps':<28} | {'300 Gradient Steps':<32}")
+    print(f"{'Optimization Steps':<34} | {'1200 Gradient Steps':<28} | {'1200 Gradient Steps':<32}")
     print(f"{'Parameter Count':<34} | {param_count_base:<28,} | {param_count_prop:<32,}")
     print(f"{'Intra-Patch Architecture':<34} | {'Flat Unigram Scan':<28} | {'Causal Conv + Top-Down Macro':<32}")
     print(f"{'Final Train Loss':<34} | {final_train_loss_base:<28.4f} | {final_train_loss_prop:<32.4f}")
