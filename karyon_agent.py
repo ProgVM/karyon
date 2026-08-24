@@ -412,7 +412,9 @@ class CoREAgent(nn.Module):
         self, prompt: str, m_state: torch.Tensor, h_state: torch.Tensor, hu, episodic_memory, 
         config, max_generated_tokens: int = 120, temperature: float = 0.7, top_p: float = 0.90
     ) -> Generator[Dict[str, Any], None, None]:
-        prompt_tokens = self.encode_text(prompt).unsqueeze(0)
+        # Strip trailing EOS so prompt remains open for continuation
+        prompt_ids = [t for t in self.tokenizer.encode(prompt) if t != 257]
+        prompt_tokens = torch.tensor([prompt_ids], dtype=torch.long, device=self.device)
         prompt_embs = self.pos_embeddings(prompt_tokens, start_pos=0, apply_rf=True)
         
         m_curr = m_state.clone() if m_state is not None else torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
