@@ -3,7 +3,7 @@
 ===============================================================================
 KARYON EXPERIMENTAL BENCHMARK: EXP-59 (FULL COGNITIVE CORTICAL LOOP)
 100% Natural Biophysical Dynamics (Zero Logit Masking / Zero Crutches) +
-Complete 10-System Active Inference Loop + 2-Stage Cortical Hierarchy +
+Complete 10-System Active Inference Loop + Float32 Episodic Memory Safety +
 Ultra-Detailed Real-Time Process Diagnostics Dashboard (Every 15 Steps).
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
@@ -69,10 +69,6 @@ use_amp = (device_str == 'cuda')
 # 1. BIOPHYSICAL MULTI-MODAL SENSORY GATEWAY (GLOBAL WORKSPACE THEORY)
 # =============================================================================
 class NaturalGlobalWorkspaceGateway(nn.Module):
-    """
-    Global Workspace Gateway: Natural competitive attention uniting Text,
-    Vision, Motor Efference, Somatic Body, and Top-down Mental Volition.
-    """
     def __init__(self, unified_dim: int = 256, hidden_dim: int = 512, homeo_dim: int = 6,
                  text_dim: int = 256, vision_dim: int = 256, action_dim: int = 3, device_str: str = 'cpu'):
         super().__init__()
@@ -98,13 +94,13 @@ class NaturalGlobalWorkspaceGateway(nn.Module):
         body_ch = self.homeo_proj(u_t)
         mind_ch = self.mind_proj(h_prev)
 
-        stacked = torch.stack([text_ch, vis_ch, mot_ch, body_ch, mind_ch], dim=1) # [B, 5, D]
+        stacked = torch.stack([text_ch, vis_ch, mot_ch, body_ch, mind_ch], dim=1)
         norm_stacked = self.channel_norm(stacked)
 
         query = self.query_norm(self.attention_query_layer(h_prev)).unsqueeze(1)
-        sim = torch.sum(query * norm_stacked, dim=-1) * self.inv_sqrt_dim # [B, 5]
+        sim = torch.sum(query * norm_stacked, dim=-1) * self.inv_sqrt_dim
 
-        # Natural arousal-mediated sensory salience (Noradrenaline tone)
+        # Natural Noradrenaline (Arousal) Gain
         na_gain = u_t[:, 4:5] * 0.5
         sim[:, 0:1] = sim[:, 0:1] + na_gain
 
@@ -310,13 +306,11 @@ class FullCognitiveCoREAgent(nn.Module):
         self.head_v = 128
         self.text_gen_dim = 258
 
-        # 1. Byte Embedding + Receptive Field
         self.pos_embeddings = OffsetPositionalByteEmbedding(
             vocab_size=self.text_gen_dim, text_dim=self.text_dim, max_len=8192, device_str=device_str
         ).to(self.device)
         nn.init.normal_(self.pos_embeddings.byte_embed.weight, mean=0.0, std=0.08)
 
-        # 2. Multi-Modal Sensory Gateway (Global Workspace)
         self.gateway = NaturalGlobalWorkspaceGateway(
             unified_dim=self.text_dim, hidden_dim=self.hidden_dim, homeo_dim=6,
             text_dim=self.text_dim, vision_dim=256, action_dim=3, device_str=device_str
@@ -324,30 +318,25 @@ class FullCognitiveCoREAgent(nn.Module):
 
         self.in_proj = nn.Linear(self.text_dim, self.hidden_dim).to(self.device)
 
-        # 3. Stage 1: Fast Morpho-Syntactic Cortical Sheet
         self.stage1 = CorticalStage(
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
             head_k=self.head_k, head_v=self.head_v, min_beta=0.005, max_beta=0.15, device_str=device_str
         ).to(self.device)
 
-        # 4. Stage 2: Slow Semantic-Discourse Cortical Sheet
         self.stage2 = CorticalStage(
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
             head_k=self.head_k, head_v=self.head_v, min_beta=0.0001, max_beta=0.05, device_str=device_str
         ).to(self.device)
 
-        # 5. Active Inference World Model
         self.world_model = StableLatentPredictor(
             hidden_dim=self.hidden_dim, unified_dim=self.text_dim, latent_dim=self.latent_dim
         ).to(self.device)
 
-        # 6. Continuous Hopfield Attractor Head
         self.attractor_head = CrispContinuousHopfieldHead(
             hidden_dim=self.hidden_dim, vocab_size=self.text_gen_dim,
             num_attractors=256, device_str=device_str
         ).to(self.device)
 
-        # 7. Motor Efferent Readout
         self.motor_text_proj = nn.Sequential(
             nn.Linear(self.hidden_dim, self.text_dim),
             nn.SiLU(),
@@ -381,32 +370,28 @@ class FullCognitiveCoREAgent(nn.Module):
 
             chunk_emb = self.pos_embeddings(chunk_in, start_pos=c_start, apply_rf=True)
 
-            # Global Workspace Sensory Integration on last token
             w_slice = chunk_emb[:, -1, :]
             dummy_vis = torch.zeros(batch_size, 256, device=self.device)
             dummy_mot = torch.zeros(batch_size, 3, device=self.device)
             w_current, _, epistemic_ent = self.gateway(w_slice, dummy_vis, dummy_mot, h_prev, curr_u_t)
 
-            # Volitional Memory Recall Gating
+            # Volitional Memory Recall (Dtype Safety: cast float to prevent c10::Half overflow)
             na_val = curr_u_t[:, 4:5].mean().item()
             if episodic_memory is not None and na_val > 0.12 and getattr(episodic_memory, 'max_active_cpu', 0) > 0:
                 with torch.no_grad():
-                    ret_mem, max_sim = episodic_memory.read(w_current.detach(), temperature=0.05, threshold=0.70, sigmoid_beta=15.0)
+                    ret_mem, max_sim = episodic_memory.read(w_current.detach().float(), temperature=0.05, threshold=0.70, sigmoid_beta=15.0)
                     if (max_sim > 0.70).any():
-                        w_current = w_current + ret_mem * 0.20
+                        w_current = w_current + ret_mem.to(w_current.dtype) * 0.20
 
             h_in = self.in_proj(chunk_emb)
 
-            # 2-Stage Cortical Processing
             h_s1, m_s1, dt1 = self.stage1(h_in, m_s1, curr_u_t, dt=1.0)
             h_s2, m_s2, dt2 = self.stage2(h_s1, m_s2, curr_u_t, dt=1.0)
             eff_dts.append((dt1 + dt2) / 2.0)
 
-            # Attractor Relaxation
             h_flat = h_s2.contiguous().view(-1, self.hidden_dim)
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, curr_u_t)
 
-            # Motor Readout
             h_proj = self.motor_text_proj(h_relaxed).view(batch_size, c_len, self.text_dim)
             h_proj_gain = (h_proj * motor_gain).contiguous().view(-1, self.text_dim)
 
@@ -417,7 +402,6 @@ class FullCognitiveCoREAgent(nn.Module):
             chunk_losses.append(loss)
             commit_losses.append(commit_loss)
 
-            # Active Inference World Model Loss
             h_last = h_s2[:, -1, :]
             w_pred, kl_div, fe, rec_l = self.world_model(h_prev, h_last, w_current)
             h_prev = h_last.detach()
@@ -426,7 +410,7 @@ class FullCognitiveCoREAgent(nn.Module):
             kl_losses.append(kl_div.mean())
             rec_losses.append(rec_l.mean())
 
-            # Episodic Storage on High Surprise (Active Inference)
+            # Episodic Storage on High Surprise (Float32 buffer safety)
             with torch.no_grad():
                 if fe.mean().item() > 0.20 and episodic_memory is not None:
                     episodic_memory.write(w_current.detach().float(), w_pred.detach().float(), protected_slots=3)
@@ -661,7 +645,6 @@ def run_exp_59_benchmark():
             curiosity, energy, stability, health, na, da = hu.state[0].tolist()
             peak_vram = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device.type == 'cuda' else 0.0
 
-            # Inspect Gradient Norms across all cognitive submodules
             g_emb = agent.pos_embeddings.byte_embed.weight.grad.norm().item() if agent.pos_embeddings.byte_embed.weight.grad is not None else 0.0
             g_gwt = agent.gateway.text_proj.weight.grad.norm().item() if agent.gateway.text_proj.weight.grad is not None else 0.0
             g_s1 = agent.stage1.ssd.q_proj.weight.grad.norm().item() if agent.stage1.ssd.q_proj.weight.grad is not None else 0.0
