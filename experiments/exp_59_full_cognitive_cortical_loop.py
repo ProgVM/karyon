@@ -3,7 +3,7 @@
 ===============================================================================
 KARYON EXPERIMENTAL BENCHMARK: EXP-59 (FULL COGNITIVE CORTICAL LOOP)
 100% Natural Biophysical Dynamics (Zero Logit Masking / Zero Crutches) +
-Complete 10-System Active Inference Loop + Float32 Episodic Memory Safety +
+Complete 10-System Active Inference Loop + Autocast-Safe Episodic Memory +
 Ultra-Detailed Real-Time Process Diagnostics Dashboard (Every 15 Steps).
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
@@ -375,10 +375,10 @@ class FullCognitiveCoREAgent(nn.Module):
             dummy_mot = torch.zeros(batch_size, 3, device=self.device)
             w_current, _, epistemic_ent = self.gateway(w_slice, dummy_vis, dummy_mot, h_prev, curr_u_t)
 
-            # Volitional Memory Recall (Dtype Safety: cast float to prevent c10::Half overflow)
+            # Volitional Memory Recall (Autocast-safe: disabled for FP32 C++ Memory Buffer)
             na_val = curr_u_t[:, 4:5].mean().item()
             if episodic_memory is not None and na_val > 0.12 and getattr(episodic_memory, 'max_active_cpu', 0) > 0:
-                with torch.no_grad():
+                with torch.no_grad(), torch.amp.autocast(device_type=self.device_str, enabled=False):
                     ret_mem, max_sim = episodic_memory.read(w_current.detach().float(), temperature=0.05, threshold=0.70, sigmoid_beta=15.0)
                     if (max_sim > 0.70).any():
                         w_current = w_current + ret_mem.to(w_current.dtype) * 0.20
@@ -410,8 +410,8 @@ class FullCognitiveCoREAgent(nn.Module):
             kl_losses.append(kl_div.mean())
             rec_losses.append(rec_l.mean())
 
-            # Episodic Storage on High Surprise (Float32 buffer safety)
-            with torch.no_grad():
+            # Episodic Storage on High Surprise (Autocast-safe float32 write)
+            with torch.no_grad(), torch.amp.autocast(device_type=self.device_str, enabled=False):
                 if fe.mean().item() > 0.20 and episodic_memory is not None:
                     episodic_memory.write(w_current.detach().float(), w_pred.detach().float(), protected_slots=3)
 
@@ -664,7 +664,6 @@ def run_exp_59_benchmark():
             print(f"Hardware Resources        : Peak VRAM: {peak_vram:.1f} MB | Episodic Active Slots: {episodic_mem.max_active_cpu}")
             print("="*95)
 
-        # KEP Rule #4 Speech Auditing every 75 steps
         if (step + 1) % 75 == 0:
             sample_text = agent.generate_natural_speech(diag_prompt, episodic_mem, hu.state, max_tokens=65)
             logger.info(f"💬 [Live Diagnostic Speech Sample @ Step {step+1}] -> \"{sample_text}\"")
