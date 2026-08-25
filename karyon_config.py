@@ -1,8 +1,8 @@
 # karyon_config.py
 """
 ===============================================================================
-KARYON MASTER CONFIGURATION REGISTRY v18.0
-Unified Biophysical Settings for Active Inference, Ashby Homeostasis, and SSD.
+KARYON MASTER CONFIGURATION REGISTRY v18.5
+Unified Biophysical Settings for Dynamic Allostasis, SWR Replay, and Active Inference.
 ===============================================================================
 """
 
@@ -14,7 +14,7 @@ from typing import Dict, Any
 
 @dataclass
 class HomeostasisConfig:
-    """Homeostatic Somatic Physiology and Neurotransmitter Dynamics."""
+    """Dynamic Allostatic Somatic Physiology and Neurotransmitter Kinetics."""
     energy_recovery_rate: float = 0.0025
     perceptive_rest_recovery: float = 0.0040
     backprop_energy_cost: float = 0.0050
@@ -36,6 +36,10 @@ class HomeostasisConfig:
     noradrenaline_arousal_persistence: float = 0.35
     dopamine_reward_scale: float = 2.00
     volitional_recall_gain: float = 2.00
+    
+    allostatic_fatigue_threshold: float = 0.25
+    allostatic_sleep_trigger: float = 0.20
+    wake_replay_frequency_steps: int = 50
 
 
 @dataclass
@@ -51,7 +55,7 @@ class SDEConfig:
 
 @dataclass
 class NetworkConfig:
-    """Canonical Cortical Microcircuit Dimensions (KEP Principle 2 & 7)."""
+    """Unshackled Cortical Microcircuit Dimensions (KEP Principle 2 & 7)."""
     text_dim: int = 256
     vision_dim: int = 256
     audio_dim: int = 256
@@ -82,7 +86,7 @@ class MemoryConfig:
     pruning_similarity_threshold: float = 0.93
     
     volitional_na_trigger: float = 0.12
-    volitional_fe_trigger: float = 0.25
+    volitional_fe_trigger: float = 0.20
 
 
 @dataclass

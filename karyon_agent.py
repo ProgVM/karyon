@@ -1,10 +1,10 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v18.0 (BIOPHYSICAL ACTIVE INFERENCE MASTER)
+KARYON AGENT CORE v18.5 (ALLOSTATIC ACTIVE INFERENCE MASTER)
 Grounded in Principle 2: Continuous Multi-Timescale State-Space Duality,
-Ashby Somatic Ultrastability, Hierarchical Predictive Coding, Dopamine-Modulated
-Modern Hopfield Landscape (N=256 Basins), and Afferent-Efferent Weight Tying.
+Dynamic Allostatic Regimes (Wakeful SWR Micro-Replay & Deep Sleep Consolidation),
+Dopamine-Modulated Modern Hopfield Attractors (N=256 Basins), and Tied Lexical Readout.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -60,7 +60,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v18.0 BIOPHYSICAL MASTER)
+# MASTER CORE AGENT (v18.5 ALLOSTATIC MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -255,6 +255,52 @@ class CoREAgent(nn.Module):
         dynamic_threshold = moving_mean + k_sigma * moving_std
         return free_energy_val > dynamic_threshold
 
+    def execute_wake_swr_micro_replay(self, episodic_memory: BatchedEpisodicMemory, num_samples: int = 4):
+        """Executes ultra-fast (O(1)) awake Sharp-Wave Ripple micro-replay in background."""
+        if episodic_memory is None or episodic_memory.max_active_cpu < 3:
+            return
+        with torch.no_grad():
+            max_act = min(episodic_memory.max_active_cpu, episodic_memory.max_capacity)
+            rand_idx = torch.randint(0, max_act, (min(num_samples, max_act),), device=self.device)
+            k_samples = episodic_memory.keys[0, rand_idx, :]
+            h_dummy = torch.zeros(k_samples.size(0), self.hidden_dim, device=self.device)
+            self.world_model(h_dummy, h_dummy, k_samples)
+
+    def execute_deep_allostatic_sleep(self, episodic_memory: BatchedEpisodicMemory, hu: HomeostaticUnit,
+                                      num_replay_cycles: int = 5, downscaling_factor: float = 0.03):
+        """Executes deep nocturnal sleep consolidation: Full Replay + SHY Downscaling + Somatic Reset."""
+        self.train()
+        active_memory_slots = min(episodic_memory.max_active_cpu, episodic_memory.max_capacity)
+        
+        if active_memory_slots > 3:
+            opt_replay = torch.optim.AdamW(self.get_all_parameters(), lr=5e-4, weight_decay=0.01)
+            for _ in range(num_replay_cycles):
+                opt_replay.zero_grad()
+                rand_indices = torch.randint(0, active_memory_slots, (min(16, active_memory_slots),), device=self.device)
+                replayed_keys = episodic_memory.keys[0, rand_indices, :].float()
+                replayed_vals = episodic_memory.values[0, rand_indices, :].float()
+
+                h_dummy = torch.zeros(replayed_keys.size(0), self.hidden_dim, device=self.device)
+                w_pred, kl_div, _, _ = self.world_model(h_dummy, h_dummy, replayed_keys)
+                replay_loss = (1.0 - F.cosine_similarity(w_pred, replayed_vals, dim=-1)).mean() + kl_div.mean() * 0.05
+                
+                replay_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.get_all_parameters(), max_norm=2.0)
+                opt_replay.step()
+
+        # Synaptic Downscaling by Tononi (SHY)
+        with torch.no_grad():
+            for param in self.get_all_parameters():
+                if param.dim() > 1:
+                    param.mul_(1.0 - downscaling_factor)
+
+        # Full Somatic Recovery
+        with torch.no_grad():
+            hu.state[:, 1] = 1.00 # Energy restored
+            hu.state[:, 2] = 1.00 # Stability restored
+            hu.state[:, 3] = 1.00 # Health restored
+            hu.state[:, 4] = 0.05 # Arousal reset to baseline
+
     def forward_step(self, sensor_inputs: Dict[str, torch.Tensor], h_prev_fast: torch.Tensor, 
                      h_prev_slow: torch.Tensor, u_t: torch.Tensor, episodic_memory=None, 
                      dt: float = 1.0, attention_temp: float = 0.05):
@@ -277,7 +323,7 @@ class CoREAgent(nn.Module):
         
         volitional_recall_gate = torch.sigmoid(2.0 * noradrenaline + 1.5 * curiosity - 0.5 * (1.0 - energy))
         na_trigger = getattr(self.config.memory, 'volitional_na_trigger', 0.12)
-        should_search_memory = (episodic_memory is not None) and (noradrenaline.mean().item() > na_trigger) and (episodic_memory.size.max().item() > 0)
+        should_search_memory = (episodic_memory is not None) and (noradrenaline.mean().item() > na_trigger) and (episodic_memory.max_active_cpu > 0)
 
         if should_search_memory:
             with torch.no_grad():
@@ -375,8 +421,11 @@ class CoREAgent(nn.Module):
             chunk_fe = (kl_div.mean() + rec_loss)
             fe_losses.append(chunk_fe)
 
-            # Event Boundary Theta Phase Reset: Reset state on EOS (257)
+            # High-Surprise Episodic Encoding
             with torch.no_grad():
+                if chunk_fe.item() > 0.20 and episodic_memory is not None:
+                    episodic_memory.write(w_current_slice.detach().float(), w_pred.detach().float(), protected_slots=3)
+
                 has_eos = (chunk_in == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
                 m_curr = m_curr * (1.0 - has_eos)
 
@@ -397,7 +446,6 @@ class CoREAgent(nn.Module):
         self, prompt: str, m_state: torch.Tensor, h_state: torch.Tensor, hu, episodic_memory, 
         config, max_generated_tokens: int = 120, temperature: float = 0.45, top_p: float = 0.90
     ) -> Generator[Dict[str, Any], None, None]:
-        # Strip trailing EOS so prompt remains open for continuation
         prompt_ids = [t for t in self.tokenizer.encode(prompt) if t != 257]
         prompt_tokens = torch.tensor([prompt_ids], dtype=torch.long, device=self.device)
         prompt_embs = self.pos_embeddings(prompt_tokens, start_pos=0, apply_rf=True)
@@ -414,7 +462,6 @@ class CoREAgent(nn.Module):
         h_chunk = self.channel_mixer(h_ssm)
         
         rolling_token_ids = prompt_tokens[0].tolist()
-        # Somatic speech cost per motor burst (not depleted on every byte)
         energy_action_cost = torch.tensor([[getattr(config.homeo, 'motor_speech_cost_per_patch', 0.0015)]], device=self.device)
         zero_pred_err = torch.tensor([[0.0]], device=self.device)
         cog_action = torch.tensor([[0]], dtype=torch.int64, device=self.device)
@@ -433,7 +480,15 @@ class CoREAgent(nn.Module):
             ssd_out = self.ssd_core.forward_chunk_parallel_ssd(t_emb, m_curr, hu.state, 1.0)
             h_step_ssm, m_curr = ssd_out[0], ssd_out[1]
             h_out = self.channel_mixer(h_step_ssm)
-            
+
+            # Volitional Memory Recall (Active Inference Precision Gating)
+            if episodic_memory is not None and hu.state[0, 4].item() > 0.12 and episodic_memory.max_active_cpu > 0:
+                q_k = self.episodic_sensory_proj(t_emb.squeeze(1)).float()
+                ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.75, sigmoid_beta=15.0)
+                if (max_sim > 0.75).any():
+                    ret_mem_cast = ret_mem.to(h_out.dtype)
+                    h_out = h_out + ret_mem_cast.repeat(1, h_out.size(1) // ret_mem_cast.size(1) if h_out.size(1) > ret_mem_cast.size(1) else 1)[:, :h_out.size(1)] * 0.20
+
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_out, hu.state)
             h_proj = self.motor_text_proj(h_relaxed)
             logits = (F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim) / max(temperature, 1e-4)

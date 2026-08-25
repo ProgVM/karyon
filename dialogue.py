@@ -1,10 +1,10 @@
 # dialogue.py
 """
 ===============================================================================
-KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v18.0 MASTER)
-Real-time Social Active Inference with Human Feedback, Perceptive Rest
-Energy Recovery (Magistretti 2015), 2048-Byte Rolling Memory Horizon,
-and Dopamine-Modulated Modern Hopfield Attractors.
+KARYON CLOSED-LOOP INTERACTIVE DIALOGUE RUNTIME (v18.5 MASTER)
+Real-time Social Active Inference with Human Feedback, Perceptive Rest Energy
+Recovery (Magistretti 2015), Awake SWR Micro-Replay (Buzsaki 2015),
+and Somatic-Modulated Modern Hopfield Attractors.
 ===============================================================================
 """
 
@@ -105,10 +105,9 @@ episodic_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=config.net.unified
 h_fast, h_slow, epoch, story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 
 logger.info(f"Loaded Karyon Soul (.kcore) | Device: {device_str.upper()} | Genome DNA -> text_dim: {agent_brain.text_dim}, hidden_dim: {agent_brain.hidden_dim}, unified_dim: {agent_brain.unified_dim}")
-logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v18.0!")
+logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-CoRE v18.5!")
 logger.info("Type 'exit' to save state and close.")
 
-# Multi-Turn Rolling Dialogue History
 dialogue_history = ""
 prev_karyon_representation = None
 
@@ -157,7 +156,7 @@ while True:
         avg_human_surprise = sum(reaction_fe_list) / max(len(reaction_fe_list), 1)
         
         if prev_karyon_representation is not None:
-            episodic_mem.write(prev_karyon_representation.detach(), w_human.detach(), 3)
+            episodic_mem.write(prev_karyon_representation.detach().float(), w_human.detach().float(), 3)
 
     thought_generator = agent_brain.generate_thought_and_speech(
         full_prompt,
@@ -203,5 +202,7 @@ while True:
             s_in_last = {'text': last_emb.squeeze(1), 'vision': torch.zeros(1, config.net.vision_dim, device=device), 'motor_efference': torch.zeros(1, config.net.action_dim, device=device)}
             _, _, _, _, _, _, _, prev_karyon_representation, _, _, _, _ = agent_brain(s_in_last, h_fast, h_slow, hu.state)
 
+    # 3. Awake SWR Micro-Replay during inter-turn pause
+    agent_brain.execute_wake_swr_micro_replay(episodic_mem, num_samples=4)
     episodic_mem.consolidate_and_prune(config.memory.pruning_similarity_threshold, 3)
     print("-" * 80 + "\n")

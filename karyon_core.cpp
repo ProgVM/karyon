@@ -50,7 +50,7 @@ public:
 };
 
 // ============================================================================
-// 2. HOMEOSTATIC SOMATIC CONTROLLER (ASHBY ULTRASTABILITY)
+// 2. HOMEOSTATIC SOMATIC CONTROLLER & DYNAMIC ALLOSTASIS (ASHBY ULTRASTABILITY)
 // ============================================================================
 struct HomeostaticUnit {
     torch::Tensor state;
@@ -97,6 +97,19 @@ struct HomeostaticUnit {
 
         state = torch::cat({curiosity, energy, stability, health, noradrenaline, dopamine}, 1);
         return state;
+    }
+
+    int64_t compute_allostatic_regime(float prediction_error = 0.0f) {
+        float energy_val = state[0][1].item<float>();
+        float na_val     = state[0][4].item<float>();
+
+        if (energy_val < 0.20f) {
+            return 2; // Regime 2: Deep Allostatic Sleep Consolidation
+        } else if (prediction_error > 0.20f || na_val > 0.15f) {
+            return 0; // Regime 0: Active High-Gain Perception
+        } else {
+            return 1; // Regime 1: Quiet Wakefulness & SWR Micro-Replay
+        }
     }
 };
 
@@ -512,7 +525,7 @@ public:
 };
 
 // ============================================================================
-// 10. HIGH-VELOCITY BATCHED EPISODIC MEMORY (OPTIMIZED ZERO-SYNC READ)
+// 10. HIGH-VELOCITY BATCHED EPISODIC MEMORY (ZERO-SYNC HOST TRACKING)
 // ============================================================================
 class BatchedEpisodicMemoryImpl : public torch::nn::Module {
 public:
@@ -540,11 +553,9 @@ public:
     }
 
     void write(torch::Tensor key, torch::Tensor value, int64_t protected_slots = 3) {
-        if (keys.device() != key.device()) {
-            keys = keys.to(key.device());
-            values = values.to(value.device());
-            pointer = pointer.to(key.device());
-            size = size.to(key.device());
+        if (keys.device() != key.device() || keys.dtype() != key.dtype()) {
+            key = key.to(keys.device(), keys.dtype());
+            value = value.to(values.device(), values.dtype());
         }
 
         int64_t curr_batch = key.size(0);
@@ -562,11 +573,8 @@ public:
     }
 
     std::tuple<torch::Tensor, torch::Tensor> read(torch::Tensor query, float temperature = 0.05f, float threshold = 0.5f, float sigmoid_beta = 15.0f) {
-        if (keys.device() != query.device()) {
-            keys = keys.to(query.device());
-            values = values.to(query.device());
-            pointer = pointer.to(query.device());
-            size = size.to(query.device());
+        if (keys.device() != query.device() || keys.dtype() != query.dtype()) {
+            query = query.to(keys.device(), keys.dtype());
         }
 
         int64_t q_b = query.size(0);
@@ -654,7 +662,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def_readwrite("prev_pain", &HomeostaticUnit::prev_pain)
         .def_readwrite("consecutive_inactivity", &HomeostaticUnit::consecutive_inactivity)
         .def_readwrite("device", &HomeostaticUnit::device)
-        .def("update", &HomeostaticUnit::update);
+        .def("update", &HomeostaticUnit::update)
+        .def("compute_allostatic_regime", &HomeostaticUnit::compute_allostatic_regime, py::arg("prediction_error") = 0.0f);
 
     py::class_<SensoryGatewayImpl, torch::nn::Module, std::shared_ptr<SensoryGatewayImpl>>(m, "SensoryGateway")
         .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),

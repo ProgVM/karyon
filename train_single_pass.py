@@ -2,8 +2,8 @@
 """
 ===============================================================================
 KARYON MASSIVE HIGH-VELOCITY STREAMING RUNTIME (52k DATASET, N=5)
-Biophysical Active Inference Architecture (v18.0 Master): Real-time Free Energy
-Minimization, Persistent Ashby Ultrastability, Continuous Packed Stream (S=2048, B=64).
+Allostatic Active Inference Architecture (v18.5 Master): Dynamic SWR Replay,
+Nocturnal Sleep Consolidation (Tononi SHY), and Full 2048-Byte Packed Streaming.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -244,7 +244,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
 logger.info(f"Starting High-Occupancy Session ({NUM_PASSES} Passes, B={BATCH_SIZE}, S={SEQ_LEN}, 131k tokens/step)...")
 
 # =============================================================================
-# 4. PRODUCTION MULTI-PASS STREAMING LOOP (PERSISTENT HOMEOSTASIS)
+# 4. PRODUCTION MULTI-PASS STREAMING LOOP WITH NOCTURNAL SLEEP CONSOLIDATION
 # =============================================================================
 for pass_idx in range(NUM_PASSES):
     logger.info(f"\n{'='*85}\n === [STARTING PASS {pass_idx+1}/{NUM_PASSES} (EPOCH {saved_epoch + pass_idx + 1})] ===\n{'='*85}")
@@ -336,7 +336,6 @@ for pass_idx in range(NUM_PASSES):
 
             print(f"\n" + "="*85)
             print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | PASS {pass_idx+1}/{NUM_PASSES} | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
-            print("="*85)
             print(f"Plasticity Gating Status  : {status_str}")
             print(f"Submodule Timing (ms)     : Forward+Scan: {t_exec_ms:.1f}ms | Backward+Step: {t_opt_ms:.1f}ms")
             print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
@@ -350,7 +349,14 @@ for pass_idx in range(NUM_PASSES):
             diag_sample = run_diagnostic_text_sample(agent_brain, episodic_mem, hu.state, core_config)
             logger.info(f"💬 [KEP Rule #4 Diagnostic Speech Sample @ Pass {pass_idx+1} Step {batch_idx+1}] -> \"{diag_sample}\"\n")
 
-    # Persist progress after each pass
+    # =========================================================================
+    # NOCTURNAL SLEEP CONSOLIDATION & SYNAPTIC DOWNSCALING (END OF PASS)
+    # =========================================================================
+    logger.info(f"🌙 [Pass {pass_idx+1} Complete] Karyon is entering Sleep Phase for Hippocampal Replay & SHY Synaptic Scaling...")
+    agent_brain.execute_deep_allostatic_sleep(episodic_mem, hu, num_replay_cycles=5, downscaling_factor=0.03)
+    logger.info(f"☀️ [Awakened] Synaptic Downscaling Applied. Somatic Energy Restored: {hu.state[0, 1].item():.2f}. Ready for Pass {pass_idx+2 if pass_idx+1 < NUM_PASSES else 'Complete'}!\n")
+
+    # Persist progress after each pass and sleep consolidation
     save_karyon(agent_brain, episodic_mem, hu, h_curr[0:1], h_curr[0:1], epoch=saved_epoch + pass_idx + 1, story_idx=len(stream_loader) * BATCH_SIZE * (pass_idx + 1), filepath=kcore_path)
 
-logger.info(f"High-Occupancy Session Complete! Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches}.")
+logger.info(f"High-Occupancy Allostatic Session Complete! Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches}.")
