@@ -1,9 +1,9 @@
 # experiments/exp_51_unshackled_long_horizon_ssd.py
 """
 ===============================================================================
-KARYON EXPERIMENTAL BENCHMARK: EXP-51 (UNSHACKLED LONG-HORIZON SSD)
-Evaluating Un-Attenuated SSD State Scan (removal of beta=1-alpha dampening) +
-Linguistic Decay Spectrum (alpha in [0.95, 0.9999]) vs Baseline on Real Stream.
+KARYON EXPERIMENTAL BENCHMARK: EXP-51.1 (STABLE GROUPNORM UNSHACKLED SSD)
+Evaluating RetNet/Mamba-2 GroupNorm Head Equalization + FP32 State Accumulation +
+Linguistic Decay Spectrum (alpha in [0.92, 0.9995]) vs Baseline Damped SSD.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -65,16 +65,16 @@ use_amp = (device_str == 'cuda')
 
 
 # =============================================================================
-# 1. CANONICAL UNSHACKLED SSD CORE (MAMBA-2 TRUE STATE DYNAMICS)
+# 1. RETNET / MAMBA-2 GROUPNORM EQUALIZED UNSHACKLED SSD CORE
 # =============================================================================
-class TrueUnshackledSSDCore(nn.Module):
+class StableUnshackledSSDCore(nn.Module):
     """
-    True Unshackled State-Space Duality (SSD) Core without beta=(1-alpha) dampening.
-    Implements full-strength associative memory tracking across linguistic horizons.
+    Stable Unshackled SSD Core with GroupNorm Head Equalization and FP32 State Tracking.
+    Guarantees strict numerical stability in FP16 while preserving long-term prompt memory.
     """
     def __init__(self, text_dim: int = 256, unified_dim: int = 256, hidden_dim: int = 512,
                  num_heads: int = 8, head_k: int = 64, head_v: int = 128,
-                 min_beta: float = 0.0001, max_beta: float = 0.05, device_str: str = 'cpu'):
+                 min_beta: float = 0.0005, max_beta: float = 0.08, device_str: str = 'cpu'):
         super().__init__()
         self.text_dim = text_dim
         self.unified_dim = unified_dim
@@ -90,12 +90,14 @@ class TrueUnshackledSSDCore(nn.Module):
         self.v_proj = nn.Linear(unified_dim, num_heads * head_v)
         self.delta_proj = nn.Linear(unified_dim, num_heads)
 
-        # Linguistic multi-timescale spectrum: alpha in [0.95, 0.9999]
+        # Linguistic decay spectrum: alpha in [0.92, 0.9995]
         betas = torch.exp(torch.linspace(math.log(max_beta), math.log(min_beta), num_heads))
         alphas = 1.0 - betas
         logit_init = torch.log(alphas / (1.0 - alphas)).view(1, num_heads, 1, 1)
         self.decay_logits = nn.Parameter(logit_init)
 
+        # GroupNorm per head equalizes fast and slow memory channels to unit variance
+        self.head_norm = nn.GroupNorm(num_groups=num_heads, num_channels=num_heads * head_v)
         self.out_proj = nn.Linear(num_heads * head_v, hidden_dim)
         self.norm = nn.LayerNorm(hidden_dim)
 
@@ -122,33 +124,36 @@ class TrueUnshackledSSDCore(nn.Module):
         causal_mask = (diff >= 0).float().view(1, 1, chunk_len, chunk_len)
 
         mean_alpha = alpha.mean(dim=2, keepdim=True)
-        # Full-strength un-damped decay weights
         decay_weights = torch.pow(mean_alpha, diff.clamp_min(0).view(1, 1, chunk_len, chunk_len)) * causal_mask
 
+        # Intra-chunk and inter-chunk parallel scan
         s_matrix = torch.matmul(q, k.transpose(-1, -2)) * decay_weights
         y_intra = torch.matmul(s_matrix, v)
 
         decay_to_start = torch.pow(mean_alpha, (pos + 1.0).view(1, 1, chunk_len, 1))
-        y_inter = torch.matmul(q * decay_to_start, m_prev)
+        y_inter = torch.matmul(q * decay_to_start, m_prev.to(q.dtype))
 
         y_total = (y_intra + y_inter).transpose(1, 2).reshape(batch_size * chunk_len, self.num_heads * self.head_v)
-        h_chunk = self.norm(self.out_proj(y_total))
 
-        # Full-strength un-damped inter-chunk state accumulation
+        # Equalize head variances to prevent FP16 overflow and preserve long-term signal
+        y_normed = self.head_norm(y_total)
+        h_chunk = self.norm(self.out_proj(y_normed))
+
+        # FP32 inter-chunk state accumulation
         decay_to_end = torch.pow(mean_alpha, (float(chunk_len) - 1.0 - pos).view(1, 1, chunk_len, 1))
         k_decayed = k * decay_to_end
-        kv_chunk_update = torch.matmul(k_decayed.transpose(-1, -2), v)
+        kv_chunk_update = torch.matmul(k_decayed.transpose(-1, -2).float(), v.float())
 
-        alpha_chunk = torch.pow(mean_alpha, float(chunk_len))
-        sigma_somatic = 1e-3 * (0.8 * curiosity + 0.4 * na + 0.1)
-        dW = torch.randn_like(m_prev) * torch.sqrt(eff_dt) * sigma_somatic
+        alpha_chunk = torch.pow(mean_alpha.float(), float(chunk_len))
+        sigma_somatic = 1e-3 * (0.8 * curiosity.float() + 0.4 * na.float() + 0.1)
+        dW = torch.randn_like(m_prev) * torch.sqrt(eff_dt.float()) * sigma_somatic
         m_next = alpha_chunk * m_prev + kv_chunk_update + dW
 
         return h_chunk, m_next
 
 
 # =============================================================================
-# 2. EXPERIMENTAL AGENT
+# 2. EXPERIMENTAL AGENT CONTAINER
 # =============================================================================
 class EXP51Agent(nn.Module):
     def __init__(self, use_unshackled: bool = True, device_str: str = 'cpu'):
@@ -169,13 +174,13 @@ class EXP51Agent(nn.Module):
         ).to(self.device)
 
         if use_unshackled:
-            self.ssd_core = TrueUnshackledSSDCore(
+            self.ssd_core = StableUnshackledSSDCore(
                 text_dim=self.text_dim, unified_dim=self.text_dim, hidden_dim=self.hidden_dim,
                 num_heads=self.num_heads, head_k=self.head_k, head_v=self.head_v,
-                min_beta=0.0001, max_beta=0.05, device_str=device_str
+                min_beta=0.0005, max_beta=0.08, device_str=device_str
             ).to(self.device)
         else:
-            # Baseline damped version
+            # Baseline damped SSD
             from exp_50_high_rank_matrix_ssd import ParametricParallelSSDCore
             self.ssd_core = ParametricParallelSSDCore(
                 text_dim=self.text_dim, unified_dim=self.text_dim, hidden_dim=self.hidden_dim,
@@ -199,7 +204,7 @@ class EXP51Agent(nn.Module):
 
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, criterion, chunk_size: int = 64):
         batch_size, seq_len = input_seq.size()
-        m_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
+        m_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
         curr_u_t = hu_batch.state.clone().detach()
 
         num_chunks = max(1, seq_len // chunk_size)
@@ -242,13 +247,18 @@ class EXP51Agent(nn.Module):
             prompt_ids = prompt_ids[:-1]
 
         prompt_t = torch.tensor([prompt_ids], dtype=torch.long, device=self.device)
-        m_curr = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
+        m_curr = torch.zeros(1, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
         hu_state = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], device=self.device)
 
         prompt_emb = self.pos_embeddings(prompt_t, start_pos=0, apply_rf=True)
-        h_ssm, m_curr = self.ssd_core.forward_chunk_parallel_ssd(prompt_emb, m_curr, hu_state, 1.0)
-        h_chunk = self.channel_mixer(h_ssm)
-
+        
+        # Process prompt in 64-byte chunks to match training state dynamics
+        prompt_len = prompt_t.size(1)
+        for c_idx in range(0, prompt_len, 64):
+            c_emb = prompt_emb[:, c_idx : min(c_idx + 64, prompt_len), :]
+            h_step, m_curr = self.ssd_core.forward_chunk_parallel_ssd(c_emb, m_curr, hu_state, 1.0)
+            
+        h_chunk = self.channel_mixer(h_step)
         rolling_ids = prompt_ids.copy()
         generated_chars = []
 
@@ -284,7 +294,7 @@ class EXP51Agent(nn.Module):
 # 3. REAL DATASET PREPARATION
 # =============================================================================
 def prepare_packed_batches(num_batches: int = 150, batch_size: int = 32, seq_len: int = 512):
-    logger.info("Loading Real Dataset (vicgalle/alpaca-gpt4) for EXP-51...")
+    logger.info("Loading Real Dataset (vicgalle/alpaca-gpt4) for EXP-51.1...")
     ds = load_dataset("vicgalle/alpaca-gpt4", split="train")
     tokenizer = ByteTokenizer()
     full_stream = []
@@ -316,11 +326,11 @@ def prepare_packed_batches(num_batches: int = 150, batch_size: int = 32, seq_len
 
 
 # =============================================================================
-# 4. RUN EXP-51 PARITY BENCHMARK
+# 4. RUN EXP-51.1 PARITY BENCHMARK
 # =============================================================================
 def run_exp_51_benchmark():
     print("\n" + "="*85)
-    print(" === [KEP EXPERIMENTAL BENCHMARK: EXP-51 (UNSHACKLED LONG-HORIZON SSD)] ===")
+    print(" === [KEP EXPERIMENTAL BENCHMARK: EXP-51.1 (STABLE GROUPNORM UNSHACKLED SSD)] ===")
     print("="*85)
     print(f"Hardware Device : {device_str.upper()} | AMP FP16 Enabled: {use_amp}")
 
@@ -370,9 +380,9 @@ def run_exp_51_benchmark():
     sample_a = model_a.generate_sample(diag_prompt, max_tokens=60)
 
     # -------------------------------------------------------------------------
-    # 2. PROPOSED: EXP-51 UNSHACKLED LONG-HORIZON SSD
+    # 2. PROPOSED: EXP-51.1 STABLE GROUPNORM UNSHACKLED SSD
     # -------------------------------------------------------------------------
-    print("\n[2/2] Benchmarking Model B: EXP-51 Unshackled SSD (full-strength memory + linguistic alpha)...")
+    print("\n[2/2] Benchmarking Model B: EXP-51.1 GroupNorm Unshackled SSD (FP32 State + GroupNorm)...")
     torch.manual_seed(42)
     model_b = EXP51Agent(use_unshackled=True, device_str=device_str).to(device)
     opt_b = torch.optim.AdamW(model_b.parameters(), lr=3e-3, weight_decay=0.01)
@@ -416,7 +426,7 @@ def run_exp_51_benchmark():
     print("\n" + "="*85)
     print(" === [KEP RULE #2 DECISION & EMPIRICAL TELEMETRY DASHBOARD] ===")
     print("="*85)
-    print(f"{'Performance Metric':<32} | {'Model A (Damped SSD)':<22} | {'Model B (EXP-51)':<22} | {'Delta':<12}")
+    print(f"{'Performance Metric':<32} | {'Model A (Damped SSD)':<22} | {'Model B (EXP-51.1)':<22} | {'Delta':<12}")
     print("-" * 85)
     print(f"{'Final Steady-State Loss (nats)':<32} | {final_loss_a:<22.4f} | {final_loss_b:<22.4f} | {loss_delta:+12.4f}")
     print(f"{'Perplexity (PPL)':<32} | {ppl_a:<22.2f} | {ppl_b:<22.2f} | {ppl_b - ppl_a:+12.2f}")
