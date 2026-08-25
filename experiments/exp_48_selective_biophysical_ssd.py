@@ -1,9 +1,9 @@
 """
 ===============================================================================
 KARYON EXPERIMENTAL BENCHMARK: EXP-48 (SELECTIVE BIOPHYSICAL SSD & ACTIVE ATTRACTORS)
-Evaluation of Data-Dependent Lateral Inhibition (Selective Delta) and Active
-Hopfield Energy Minimization to eliminate Semantic Bleed & Syntax Zombie syndrome.
-Protocol: KEP v6.1 (Rules #1, #2, #3, #4, #6, #7).
+Evaluation of Data-Dependent Lateral Inhibition (Selective Delta) and Hopfield
+Commitment Loss to eliminate Semantic Bleed & Word Hybridization.
+Protocol: KEP v6.2 (Rules #1, #1.1, #2, #3, #4, #6, #7).
 Biophysical Grounding: Lateral Inhibition (Bastos 2012), Dentate Gyrus Pattern
 Separation (Rolls 2016), and Modern Continuous Hopfield Networks (Ramsauer 2020).
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
@@ -83,26 +83,24 @@ device = torch.device(device_str)
 use_amp = (device_str == 'cuda')
 torch.set_grad_enabled(True)
 
-print(f"\n[EXP-48] Initializing Selective Biophysical SSD Benchmark on: {device_str.upper()}")
+print(f"\n[EXP-48] Initializing Stabilized Selective Biophysical SSD Benchmark on: {device_str.upper()}")
 
 
 # =============================================================================
-# 3. ACTIVE SEMANTIC HOPFIELD ATTRACTOR HEAD (TRAINABLE ENERGY BASINS)
+# 3. ACTIVE SEMANTIC HOPFIELD ATTRACTOR HEAD (COMMITMENT LOSS STABILIZED)
 # =============================================================================
 class ActiveSemanticHopfieldHead(nn.Module):
-    """Modern Continuous Hopfield Network with Active Energy Minimization & Pattern Separation."""
+    """Modern Continuous Hopfield Network with Commitment Loss & Pattern Separation."""
     def __init__(self, hidden_dim=512, num_attractors=256, device_str='cpu'):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.num_attractors = num_attractors
         self.scale = 1.0 / math.sqrt(hidden_dim)
         
-        # Trainable Semantic Basins
         self.attractor_basins = nn.Parameter(torch.randn(num_attractors, hidden_dim) * 0.05)
         self.norm = nn.LayerNorm(hidden_dim)
 
     def relax_to_minima(self, h_state: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Dopamine modulation of basin sharpness
         da_val = u_t[0, 5].item() if (u_t is not None and u_t.numel() >= 6) else 0.0
         beta = 1.0 + 1.5 * da_val
 
@@ -112,12 +110,12 @@ class ActiveSemanticHopfieldHead(nn.Module):
         
         h_relaxed = self.norm(h_state + 0.25 * attractor_shift)
         
-        # Continuous Free Energy of the Hopfield Landscape
-        energy_landscape = -torch.logsumexp(sim, dim=-1, keepdim=True)
-        return h_relaxed, energy_landscape
+        # Bounded Hopfield Commitment Loss: Attracts state to nearest basin without energy explosion
+        commit_loss = F.mse_loss(h_state, h_relaxed.detach()) + 0.25 * F.mse_loss(h_state.detach(), h_relaxed)
+        return h_relaxed, commit_loss
 
     def compute_pattern_separation_loss(self) -> torch.Tensor:
-        """Dentate Gyrus Pattern Separation: Minimizes cross-correlation between attractor basins."""
+        """Dentate Gyrus Pattern Separation: Orthogonalizes semantic attractor basins."""
         norm_basins = F.normalize(self.attractor_basins, p=2, dim=-1)
         cosine_matrix = torch.matmul(norm_basins, norm_basins.transpose(0, 1))
         eye = torch.eye(self.num_attractors, device=self.attractor_basins.device)
@@ -172,7 +170,7 @@ class SelectiveParallelSSDCore(nn.Module):
         da = u_t[:, 5:6].view(batch_size, 1, 1, 1)
         eff_dt = torch.clamp(dt * (1.0 - 0.4 * na + 0.4 * da), 0.30, 2.00)
 
-        w_chunk = self.sensory_proj(chunk_emb) # [B, chunk_len, unified_dim]
+        w_chunk = self.sensory_proj(chunk_emb)
 
         q = (self.q_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)) * self.inv_sqrt_k
         k = self.k_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)
@@ -181,17 +179,17 @@ class SelectiveParallelSSDCore(nn.Module):
         # Data-Dependent Selective Delta Modulation [B, H, chunk_len, 1]
         selective_delta = self.delta_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, 1).transpose(1, 2)
         
-        # Exact Broadcastable Base Alpha [1, H, 1, 1]
+        # Broadcastable Base Alpha [1, H, 1, 1]
         base_alpha = torch.sigmoid(self.decay_logits)
-        alpha = torch.pow(base_alpha, (selective_delta * eff_dt).clamp(0.1, 10.0)) # [B, H, chunk_len, 1]
+        alpha = torch.pow(base_alpha, (selective_delta * eff_dt).clamp(0.1, 10.0))
         beta = 1.0 - alpha
 
-        # Parallel intra-chunk attention with dynamic decay
+        # Parallel intra-chunk attention
         pos = torch.arange(chunk_len, dtype=torch.float32, device=chunk_emb.device)
         diff = pos.unsqueeze(1) - pos.unsqueeze(0)
         causal_mask = (diff >= 0).float().view(1, 1, chunk_len, chunk_len)
 
-        mean_alpha = alpha.mean(dim=2, keepdim=True) # [B, H, 1, 1]
+        mean_alpha = alpha.mean(dim=2, keepdim=True)
         decay_weights = torch.pow(mean_alpha, diff.clamp_min(0).view(1, 1, chunk_len, chunk_len)) * causal_mask * beta.mean(dim=2, keepdim=True)
         
         s_matrix = torch.matmul(q, k.transpose(-1, -2)) * decay_weights
@@ -416,7 +414,7 @@ class SelectiveBiophysicalAgent(nn.Module):
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, device=device_str
         )
 
-        # 2. Active Semantic Hopfield Head with Trainable Energy Minimization
+        # 2. Active Semantic Hopfield Head with Bounded Commitment Loss
         self.attractor_head = ActiveSemanticHopfieldHead(
             hidden_dim=self.hidden_dim, num_attractors=256, device_str=device_str
         ).to(self.device)
@@ -446,7 +444,7 @@ class SelectiveBiophysicalAgent(nn.Module):
 
         num_chunks = max(1, seq_len // chunk_size)
         chunk_losses = []
-        energy_losses = []
+        commit_losses = []
 
         for chunk_idx in range(num_chunks):
             c_start = chunk_idx * chunk_size
@@ -461,16 +459,14 @@ class SelectiveBiophysicalAgent(nn.Module):
             h_chunk, m_curr, _ = self.ssd_core.forward_chunk_selective_ssd(chunk_emb, m_curr, curr_u_t, 1.0)
             h_reasoned = self.channel_mixer(h_chunk)
 
-            # Active Hopfield Energy Basin Relaxation
-            h_relaxed, energy_landscape = self.attractor_head.relax_to_minima(h_reasoned, curr_u_t)
+            # Active Hopfield Attractor Stabilization with Bounded Commitment Loss
+            h_relaxed, chunk_commit = self.attractor_head.relax_to_minima(h_reasoned, curr_u_t)
             h_proj = self.motor_text_proj(h_relaxed)
             logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
 
             chunk_loss = criterion(logits_flat, chunk_tgt.contiguous().view(-1))
             chunk_losses.append(chunk_loss)
-
-            # Active Attractor Energy Loss (Minimizes Landscape Surprise)
-            energy_losses.append(energy_landscape.mean())
+            commit_losses.append(chunk_commit)
 
             # Event Boundary Theta Phase Reset
             with torch.no_grad():
@@ -480,13 +476,13 @@ class SelectiveBiophysicalAgent(nn.Module):
             m_curr = m_curr.detach()
 
         avg_speech_loss = torch.stack(chunk_losses).mean()
-        avg_energy_loss = torch.stack(energy_losses).mean()
+        avg_commit_loss = torch.stack(commit_losses).mean()
         ortho_loss = self.attractor_head.compute_pattern_separation_loss()
 
-        # Total Unified Active Loss: Speech Accuracy + Semantic Attractor Basin Structuring
-        total_loss = avg_speech_loss + 0.02 * avg_energy_loss + 0.01 * ortho_loss
+        # Bounded Active Multi-Task Loss (Zero Energy Explosion Risk)
+        total_loss = avg_speech_loss + 0.05 * avg_commit_loss + 0.01 * ortho_loss
 
-        return total_loss, avg_speech_loss.item(), avg_energy_loss.item()
+        return total_loss, avg_speech_loss.item(), avg_commit_loss.item()
 
     def generate_thought_and_speech(self, prompt: str, hu, max_generated_tokens: int = 75,
                                    temperature: float = 0.45, top_p: float = 0.90) -> str:
@@ -666,7 +662,7 @@ def run_exp_48_benchmark():
     # PART B: RUN PROPOSED EXP-48 (SELECTIVE DELTA SSD + ACTIVE ATTRACTORS)
     # -------------------------------------------------------------------------
     print("\n" + "-"*85)
-    print(" [2/2] RUNNING PROPOSED: EXP-48 (SELECTIVE DELTA SSD + ACTIVE SEMANTIC ATTRACTORS)")
+    print(" [2/2] RUNNING PROPOSED: EXP-48 (SELECTIVE DELTA SSD + COMMITMENT ATTRACTORS)")
     print("-" * 85)
 
     model_prop = SelectiveBiophysicalAgent(device_str=device_str).to(device)
@@ -688,7 +684,7 @@ def run_exp_48_benchmark():
 
         opt_prop.zero_grad()
         with torch.amp.autocast(device_type=device_str, dtype=torch.float16, enabled=use_amp):
-            total_loss, speech_l, energy_l = model_prop.forward_sequence(in_seq, tgt_seq, hu_prop, criterion, chunk_size=64)
+            total_loss, speech_l, commit_l = model_prop.forward_sequence(in_seq, tgt_seq, hu_prop, criterion, chunk_size=64)
 
         scaler_prop.scale(total_loss).backward()
         scaler_prop.unscale_(opt_prop)
@@ -705,7 +701,7 @@ def run_exp_48_benchmark():
         loss_history_prop.append(speech_l)
         if (idx + 1) % 100 == 0 or idx == NUM_STEPS - 1:
             attr_grad = model_prop.attractor_head.attractor_basins.grad.norm().item() if model_prop.attractor_head.attractor_basins.grad is not None else 0.0
-            print(f"  Proposed Step [{idx+1:04d}/{NUM_STEPS}] | Speech Loss: {speech_l:.4f} (PPL: {math.exp(min(speech_l, 20.0)):.2f}) | Energy: {energy_l:.4f} | Attr Grad: {attr_grad:.6f}")
+            print(f"  Proposed Step [{idx+1:04d}/{NUM_STEPS}] | Speech Loss: {speech_l:.4f} (PPL: {math.exp(min(speech_l, 20.0)):.2f}) | Commit: {commit_l:.4f} | Attr Grad: {attr_grad:.6f}")
 
     t_total_prop = time.perf_counter() - t_start_prop
     vram_prop = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device.type == 'cuda' else 0.0
@@ -713,7 +709,7 @@ def run_exp_48_benchmark():
     final_train_loss_prop = sum(loss_history_prop[-25:]) / 25.0
 
     # -------------------------------------------------------------------------
-    # PART C: HELD-OUT COMMON VALIDATION EVALUATION (ACCURATE PARITY)
+    # PART C: HELD-OUT COMMON VALIDATION EVALUATION
     # -------------------------------------------------------------------------
     print("\n" + "="*85)
     print(" === HELD-OUT VALIDATION SET EVALUATION (25 BATCHES) ===")
@@ -747,7 +743,7 @@ def run_exp_48_benchmark():
     print("="*85)
 
     # -------------------------------------------------------------------------
-    # PART D: LIVE CONVERSATIONAL SPEECH AUDIT (ANTI-SEMANTIC-BLEED CHECK)
+    # PART D: LIVE CONVERSATIONAL SPEECH AUDIT (SEMANTIC ACCURACY)
     # -------------------------------------------------------------------------
     print("\n" + "="*85)
     print(" === KEP RULE #4: LIVE CONVERSATIONAL AUDIT (SEMANTIC ACCURACY) ===")
@@ -782,7 +778,7 @@ def run_exp_48_benchmark():
     print(f"{'Metric':<34} | {'Baseline (Static Decay)':<28} | {'Proposed (EXP-48 Selective Delta)':<32}")
     print("-" * 102)
     print(f"{'Lateral Inhibition Gate':<34} | {'Static Alpha':<28} | {'Dynamic Softplus Delta(x_t)':<32}")
-    print(f"{'Hopfield Training Mode':<34} | {'Passive (Zero Grad)':<28} | {'Active Energy + Pattern Sep':<32}")
+    print(f"{'Hopfield Training Mode':<34} | {'Passive (Zero Grad)':<28} | {'Active Commitment Loss':<32}")
     print(f"{'Attractor Basin Grad Norm':<34} | {'~0.000032':<28} | {f'{model_prop.attractor_head.attractor_basins.grad.norm().item():.6f}':<32}")
     print(f"{'Final Train Loss':<34} | {final_train_loss_base:<28.4f} | {final_train_loss_prop:<32.4f}")
     print(f"{'Held-Out Validation Loss':<34} | {final_val_loss_base:<28.4f} | {final_val_loss_prop:<32.4f}")
