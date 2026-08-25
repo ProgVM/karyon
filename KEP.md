@@ -1,9 +1,8 @@
 # `KEP.md` — Karyon Engineering Protocol (KEP) Master Specification
-# (some of these rules describe the work only for AI assistents)
 
 > **Official Cybernetic & Biophysical Protocol for Karyon-CoRE Architecture Development**  
-> **Author & Repository Owner:** Bazilevs (ProgVM member)  
-> **Standard:** KEP v6.0 Master (Mandatory for all human architects and AI collaborators).
+> **Author & Repository Owner:** Bazilevs (ProgVM)  
+> **Standard:** KEP v6.1 Master (Mandatory for all human architects and AI collaborators).
 
 ---
 
@@ -15,17 +14,17 @@ Development within this repository is governed strictly by empirical data, bioph
 
 ---
 
-## 2. The 8 Core Operating Principles
+## 2. The 9 Core Operating Principles
 
 1. **Principle 1 (Python as Client, C++20 as Engine):**
    Heavy mathematical operations, State-Space Duality (SSD) scans, Modern Hopfield energy relaxation, and episodic memory slicing run directly on GPU Tensor Cores via compiled C++20 LibTorch (`-O3 -std=c++20`). Python acts strictly as a thin orchestration client. Python-side per-token loops are prohibited.
-2. **Principle 2 (Living AGI & Biological Realism):**
+2. **Principle 2 (Living AGI & Biological Realism — NON-NEGOTIABLE):**
    Every structural feature must be grounded in neuroscience and biophysics:
-   * *Active Inference & Free Energy Minimization:* Continuous minimization of Variational Free Energy ($F_t = D_{\text{KL}} + \mathcal{L}_{\text{rec}}$).
+   * *Active Inference & Free Energy Minimization:* Continuous minimization of true Variational Free Energy ($F_t = D_{\text{KL}} + \mathcal{L}_{\text{rec}}$).
    * *Ashby Somatic Homeostasis:* Real-time tracking of 6 interoceptive variables (`Curiosity`, `Energy`, `Stability`, `Health`, `Noradrenaline`, `Dopamine`).
    * *Canonical Cortical Microcircuit:* 3-Tier Laminar Hierarchy (Layer IV Granular $\to$ Layers II/III Supragranular $\to$ Layer V/VI Infragranular Motor Readout).
    * *Continuous Multi-Timescale Dynamics:* Log-spaced oscillatory spectra spanning $\gamma \to \theta \to \alpha \to \delta$ rhythms.
-   * *Rejection of Discrete Hacks:* Artificial transformer artifacts (such as discrete Mixture-of-Experts routing) are strictly forbidden in continuous dynamics.
+   * *Rejection of Discrete Hacks:* Artificial transformer artifacts (such as discrete Mixture-of-Experts routing, hard un-smoothed token drops) are strictly forbidden in continuous dynamics.
 3. **Principle 3 (Research & Cybernetics First):**
    Before proposing any architectural modification or hypothesis, search and analyze recent literature in neuroscience, cognitive science, and machine learning (Friston, Buzsáki, Hopfield, Mamba, S4).
 4. **Principle 4 (Zero Tolerance for Dead Code & Stale Interfaces):**
@@ -38,13 +37,17 @@ Development within this repository is governed strictly by empirical data, bioph
    Prohibits artificial dimensional bottlenecks (such as legacy $512 \to 128$ down-projections or low-rank $N=64$ basin constraints) unless mathematically mandated by proven cybernetic loss.
 8. **Principle 8 (Compositional Depth Over Flat Width):**
    A single-layer network cannot substitute compositional reasoning with exponential width. Multi-stage hierarchical laminar depth is mandatory for complex multi-step reasoning.
+9. **Principle 9 (Continuous Spontaneous Dual-Refactoring Mandate):**
+   Refactoring is not a deferred or decorative task; it is an active, spontaneous, and continuous obligation executed on two mandatory axes:
+   * **Axis A (Engineering & Hardware Safety):** Immediate elimination of runtime bugs, vulnerabilities, PCIe `.item()` sync stalls, unvectorized bottlenecks, and numerical instabilities.
+   * **Axis B (Biophysical & KEP Compliance):** Continuous auditing for 100% fidelity to Principle 2, ensuring that no artificial crutches, fake variables, or non-biological shortcuts pollute the architecture.
 
 ---
 
 ## 3. The 8 Fundamental KEP Rules
 
 ### KEP Rule #1 (Hypothesis & Telemetry First)
-No feature, layer, or theoretical modification may be merged into production codebase files (`karyon_agent.py`, `karyon_core.cpp`, `train_single_pass.py`) without passing an isolated benchmark script (`experiments/exp_*.py`) logging before/after empirical telemetry.
+No feature, layer, or theoretical modification may be merged into production codebase files (`karyon_agent.py`, `karyon_core.cpp`, `train_single_pass.py`) without passing an isolated benchmark script (`experiments/exp_*.py`) logging empirical telemetry.
 
 ### KEP Rule #2 (Data-Driven 3-Tier Decision Engine)
 Objective metrics dictate verdicts. Every benchmark MUST conclude with an explicit evaluation:
