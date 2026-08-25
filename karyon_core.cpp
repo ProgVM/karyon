@@ -276,7 +276,7 @@ public:
 };
 
 // ============================================================================
-// 6. CALIBRATED PARALLEL SSD CORE (SOMATIC-MODULATED LANGEVIN SDE SCAN)
+// 6. NATIVE C++20 SELECTIVE PARALLEL SSD CORE (DATA-DEPENDENT LATERAL INHIBITION)
 // ============================================================================
 class CalibratedParallelSSDCoreImpl : public torch::nn::Module {
 public:
@@ -292,6 +292,7 @@ public:
     torch::nn::Linear q_proj{nullptr};
     torch::nn::Linear k_proj{nullptr};
     torch::nn::Linear v_proj{nullptr};
+    torch::nn::Linear delta_proj{nullptr};
     torch::Tensor decay_logits;
     torch::nn::Linear out_proj{nullptr};
     torch::nn::LayerNorm norm{nullptr};
@@ -308,6 +309,9 @@ public:
         q_proj = register_module("q_proj", torch::nn::Linear(unified_dim, num_heads * head_k));
         k_proj = register_module("k_proj", torch::nn::Linear(unified_dim, num_heads * head_k));
         v_proj = register_module("v_proj", torch::nn::Linear(unified_dim, num_heads * head_v));
+        
+        // Native C++ Data-Dependent Selective Delta Projection (GABAergic Lateral Inhibition)
+        delta_proj = register_module("delta_proj", torch::nn::Linear(unified_dim, num_heads));
 
         auto opts = torch::TensorOptions().dtype(torch::kFloat32);
         if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) opts = opts.device(torch::kCUDA);
@@ -347,33 +351,41 @@ public:
         auto k = k_proj->forward(w_chunk).view({batch_size, chunk_len, num_heads, head_k}).transpose(1, 2);
         auto v = v_proj->forward(w_chunk).view({batch_size, chunk_len, num_heads, head_v}).transpose(1, 2);
 
-        auto alpha = torch::pow(torch::sigmoid(decay_logits), eff_dt);
+        // Native C++ Data-Dependent Selective Delta Calculation
+        auto selective_delta = torch::softplus(delta_proj->forward(w_chunk))
+            .view({batch_size, chunk_len, num_heads, 1})
+            .transpose(1, 2); // [B, H, chunk_len, 1]
+
+        auto base_alpha = torch::sigmoid(decay_logits); // [1, H, 1, 1]
+        auto alpha = torch::pow(base_alpha, (selective_delta * eff_dt).clamp(0.1f, 10.0f)); // [B, H, chunk_len, 1]
         auto beta = 1.0f - alpha;
 
         auto pos = torch::arange(chunk_len, chunk_emb.options().dtype(torch::kFloat32));
         auto diff = pos.unsqueeze(1) - pos.unsqueeze(0);
-        auto causal_mask = (diff >= 0).to(torch::kFloat32);
+        auto causal_mask = (diff >= 0).to(torch::kFloat32).view({1, 1, chunk_len, chunk_len});
 
-        auto decay_weights = torch::pow(alpha, diff.clamp_min(0)) * causal_mask * beta;
+        auto mean_alpha = alpha.mean(2, true); // [B, H, 1, 1]
+        auto decay_weights = torch::pow(mean_alpha, diff.clamp_min(0).view({1, 1, chunk_len, chunk_len})) * causal_mask * beta.mean(2, true);
+        
         auto s_matrix = torch::matmul(q, k.transpose(-1, -2)) * decay_weights;
         auto y_intra = torch::matmul(s_matrix, v);
 
-        auto decay_to_start = torch::pow(alpha, (pos + 1.0f).view({1, 1, chunk_len, 1}));
+        auto decay_to_start = torch::pow(mean_alpha, (pos + 1.0f).view({1, 1, chunk_len, 1}));
         auto y_inter = torch::matmul(q * decay_to_start, m_prev);
 
         auto y_total = (y_intra + y_inter).transpose(1, 2).reshape({batch_size * chunk_len, hidden_dim});
         auto h_chunk = norm->forward(out_proj->forward(y_total) + y_total);
 
-        auto decay_to_end = torch::pow(alpha, (static_cast<float>(chunk_len) - 1.0f - pos).view({1, 1, chunk_len, 1}));
+        auto decay_to_end = torch::pow(mean_alpha, (static_cast<float>(chunk_len) - 1.0f - pos).view({1, 1, chunk_len, 1}));
         auto k_decayed = k * decay_to_end;
         auto kv_chunk_update = torch::matmul(k_decayed.transpose(-1, -2), v);
 
-        auto alpha_chunk = torch::pow(alpha, static_cast<float>(chunk_len));
+        auto alpha_chunk = torch::pow(mean_alpha, static_cast<float>(chunk_len));
         
         // Biological Somatic-Modulated Langevin Dynamics (Non-deterministic Exploratory Noise)
         auto sigma_somatic = 1e-3f * (0.8f * curiosity + 0.4f * na + 0.1f);
         auto dW = torch::randn_like(m_prev) * torch::sqrt(eff_dt) * sigma_somatic;
-        auto m_next = alpha_chunk * m_prev + beta * kv_chunk_update + dW;
+        auto m_next = alpha_chunk * m_prev + beta.mean(2, true) * kv_chunk_update + dW;
 
         return std::make_tuple(h_chunk, m_next, eff_dt.view({batch_size, 1}));
     }
@@ -414,7 +426,7 @@ public:
 };
 
 // ============================================================================
-// 8. DENSE MODERN HOPFIELD ATTRACTOR HEAD (DOPAMINE-MODULATED BASINS)
+// 8. DENSE MODERN HOPFIELD ATTRACTOR HEAD (COMMITMENT LOSS & PATTERN SEPARATION)
 // ============================================================================
 class DesaturatedHopfieldAttractorHeadImpl : public torch::nn::Module {
 public:
@@ -452,8 +464,22 @@ public:
         auto attn_weights = torch::softmax(sim, -1);
         auto attractor_shift = torch::matmul(attn_weights, attractor_basins);
         auto h_relaxed = norm->forward(h_state + 0.25f * attractor_shift);
-        auto energy = -torch::logsumexp(sim, -1, true);
-        return std::make_tuple(h_relaxed, energy);
+        
+        // Native C++ Bounded Hopfield Commitment Loss
+        auto commit_loss = torch::mse_loss(h_state, h_relaxed.detach()) + 
+                           0.25f * torch::mse_loss(h_state.detach(), h_relaxed);
+        
+        return std::make_tuple(h_relaxed, commit_loss);
+    }
+
+    torch::Tensor compute_pattern_separation_loss() {
+        auto norm_basins = torch::nn::functional::normalize(
+            attractor_basins, 
+            torch::nn::functional::NormalizeFuncOptions().p(2).dim(-1)
+        );
+        auto cosine_matrix = torch::matmul(norm_basins, norm_basins.transpose(0, 1));
+        auto eye = torch::eye(num_attractors, attractor_basins.options());
+        return torch::mse_loss(cosine_matrix, eye);
     }
 };
 
@@ -470,8 +496,8 @@ public:
     torch::nn::Linear posterior_net{nullptr};
     torch::nn::Sequential decoder_net{nullptr};
 
-    LatentPredictorImpl(int64_t hidden_dim = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
-        : hidden_dim(hidden_dim), unified_dim(unified_dim), latent_dim(latent_dim) {
+    LatentPredictorImpl(int64_dim_hidden = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
+        : hidden_dim(512), unified_dim(unified_dim), latent_dim(latent_dim) {
         
         prior_net = register_module("prior_net", torch::nn::Linear(hidden_dim, latent_dim * 2));
         posterior_net = register_module("posterior_net", torch::nn::Linear(hidden_dim + unified_dim, latent_dim * 2));
@@ -716,6 +742,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def_readwrite("attractor_basins", &DesaturatedHopfieldAttractorHeadImpl::attractor_basins)
         .def("relax_to_minima", &DesaturatedHopfieldAttractorHeadImpl::relax_to_minima,
              py::arg("h_state"), py::arg("u_t") = torch::Tensor())
+        .def("compute_pattern_separation_loss", &DesaturatedHopfieldAttractorHeadImpl::compute_pattern_separation_loss)
         .def("parameters", [](std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl> m) { return m->named_parameters(); })
         .def("__call__", &DesaturatedHopfieldAttractorHeadImpl::relax_to_minima,

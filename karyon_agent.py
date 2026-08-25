@@ -2,9 +2,9 @@
 """
 ===============================================================================
 KARYON AGENT CORE v18.5 (ALLOSTATIC ACTIVE INFERENCE MASTER)
-Grounded in Principle 2: Continuous Multi-Timescale State-Space Duality,
-Dynamic Allostatic Regimes (Wakeful SWR Micro-Replay & Deep Sleep Consolidation),
-Dopamine-Modulated Modern Hopfield Attractors (N=256 Basins), and Tied Lexical Readout.
+Grounded in Principle 1 (C++20 as Engine) & Principle 2 (Biological Realism):
+Native C++ Data-Dependent Selective Lateral Gating, Hopfield Commitment Loss,
+Active Inference Latent World Model, and Continuous Packed Streaming.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -60,7 +60,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v18.5 ALLOSTATIC MASTER)
+# MASTER CORE AGENT (v18.5 PROD MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -101,7 +101,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 2. Native C++20 Time-Mixing Multi-Timescale SSD Core
+        # 2. Native C++20 Selective SSD Core with Lateral Inhibition
         self.ssd_core = CalibratedParallelSSDCore(
             text_dim=self.text_dim,
             unified_dim=self.unified_dim,
@@ -112,7 +112,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 3. Native C++20 Channel-Mixing SwiGLU Knowledge Synthesis Block (2048 dim)
+        # 3. Native C++20 SwiGLU Channel-Mixing Block (2048 dim)
         self.channel_mixer = ParallelSwiGLUBlock(
             hidden_dim=self.hidden_dim,
             expand_dim=getattr(config.net, 'expand_dim', 2048),
@@ -136,7 +136,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 6. Dense Modern Hopfield Attractor Memory Landscape (N=256 Basins)
+        # 6. Native C++ Modern Hopfield Attractor with Bounded Commitment Loss
         self.attractor_head = DesaturatedHopfieldAttractorHead(
             hidden_dim=self.hidden_dim, 
             vocab_size=self.text_gen_dim,
@@ -159,7 +159,7 @@ class CoREAgent(nn.Module):
     def get_all_parameters(self) -> List[nn.Parameter]:
         params = (
             list(self.pos_embeddings.parameters()) + 
-            list(self.episodic_sensory_proj.parameters()) + 
+            list(self.episodic_sensory_proj.parameters()) +
             list(self.motor_text_proj.parameters()) + 
             list(self.critic.parameters())
         )
@@ -341,7 +341,7 @@ class CoREAgent(nn.Module):
         else:
             w_integrated = w_current
             
-        # 1. Time-Mixing SSD
+        # 1. Native C++ Time-Mixing Selective SSD
         t_seq = text_in.unsqueeze(1)
         m_dummy = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, device=self.device)
         ssd_out = self.ssd_core.forward_chunk_parallel_ssd(t_seq, m_dummy, u_t, dt)
@@ -383,6 +383,7 @@ class CoREAgent(nn.Module):
         
         num_chunks = max(1, seq_len // chunk_size)
         chunk_losses = []
+        commit_losses = []
         fe_losses = []
         last_eff_dt = torch.tensor([[1.0]], device=self.device)
 
@@ -396,15 +397,15 @@ class CoREAgent(nn.Module):
 
             chunk_emb = self.pos_embeddings(chunk_in, start_pos=c_start, apply_rf=True)
 
-            # Parallel State-Space Duality Scan
+            # Parallel State-Space Duality Scan in Native C++
             ssd_out = self.ssd_core.forward_chunk_parallel_ssd(chunk_emb, m_curr, curr_u_t, 1.0)
             h_chunk, m_curr, last_eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
             
             # SwiGLU Channel Mixer (2048 dim)
             h_reasoned = self.channel_mixer(h_chunk)
 
-            # Modern Hopfield Attractor Landscape (N=256 Basins with DA-modulation)
-            h_relaxed, energy_basin = self.attractor_head.relax_to_minima(h_reasoned, curr_u_t)
+            # Modern Hopfield Attractor Landscape with Native C++ Commitment Loss
+            h_relaxed, chunk_commit = self.attractor_head.relax_to_minima(h_reasoned, curr_u_t)
             
             # Unshackled Tied Lexical Readout (512 -> 256 -> 258)
             h_proj = self.motor_text_proj(h_relaxed)
@@ -413,6 +414,7 @@ class CoREAgent(nn.Module):
             targets_flat = chunk_tgt.contiguous().view(-1)
             chunk_loss = criterion_speech(logits_flat, targets_flat)
             chunk_losses.append(chunk_loss)
+            commit_losses.append(chunk_commit)
 
             # Continuous Active Inference: World Model Predictor
             w_current_slice = self.episodic_sensory_proj(chunk_emb[:, -1, :])
@@ -435,12 +437,20 @@ class CoREAgent(nn.Module):
             m_curr = m_curr.detach()
 
         avg_speech_loss_tensor = torch.stack(chunk_losses).mean()
+        avg_commit_loss_tensor = torch.stack(commit_losses).mean()
         avg_fe_loss_tensor = torch.stack(fe_losses).mean()
+        ortho_loss = self.attractor_head.compute_pattern_separation_loss()
         
         avg_speech_loss_val = avg_speech_loss_tensor.item()
         avg_fe_loss_val = avg_fe_loss_tensor.item()
         
-        total_loss_tensor = avg_speech_loss_tensor + loss_free_energy_weight * avg_fe_loss_tensor
+        # Unified Biological Objective: Speech Accuracy + Latent Free Energy + Hopfield Commitment
+        total_loss_tensor = (
+            avg_speech_loss_tensor + 
+            loss_free_energy_weight * avg_fe_loss_tensor + 
+            0.05 * avg_commit_loss_tensor + 
+            0.01 * ortho_loss
+        )
 
         h_proxy = m_curr.view(batch_size, -1)[:, :self.hidden_dim]
         return total_loss_tensor, avg_speech_loss_val, avg_fe_loss_val, m_curr, h_proxy, curr_u_t, last_eff_dt

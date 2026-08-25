@@ -2,8 +2,8 @@
 """
 ===============================================================================
 KARYON MASSIVE HIGH-VELOCITY STREAMING RUNTIME (52k DATASET, N=5)
-Allostatic Active Inference Architecture (v18.5 Master): Dynamic SWR Replay,
-Nocturnal Sleep Consolidation (Tononi SHY), and Full 2048-Byte Packed Streaming.
+Allostatic Active Inference Architecture (v18.5 Master): Native C++ Selective
+Delta Gating, Modern Hopfield Commitment Loss, Nocturnal Sleep Consolidation.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -147,6 +147,7 @@ stream_loader = DataLoader(
     train_dataset, 
     batch_size=BATCH_SIZE, 
     shuffle=True, 
+    collate_packed_fn if False else collate_packed_fn,
     collate_fn=collate_packed_fn, 
     drop_last=True,
     num_workers=2 if os.name != 'nt' else 0,
@@ -261,7 +262,7 @@ for pass_idx in range(NUM_PASSES):
 
         optimizer.zero_grad()
         
-        # 1. Single Forward Pass with Native AMP FP16
+        # 1. Single Forward Pass with Native C++ Selective SSD + Hopfield Commitment
         t_exec_start = time.perf_counter()
         with torch.amp.autocast(device_type=device_str, dtype=torch.float16, enabled=use_amp):
             total_loss_tensor, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
@@ -336,6 +337,7 @@ for pass_idx in range(NUM_PASSES):
 
             print(f"\n" + "="*85)
             print(f" === [KEP RULE #6 PROCESS DIAGNOSTICS DASHBOARD | PASS {pass_idx+1}/{NUM_PASSES} | STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
+            print("="*85)
             print(f"Plasticity Gating Status  : {status_str}")
             print(f"Submodule Timing (ms)     : Forward+Scan: {t_exec_ms:.1f}ms | Backward+Step: {t_opt_ms:.1f}ms")
             print(f"Batch Performance         : Total Batch: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
