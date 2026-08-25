@@ -147,7 +147,6 @@ stream_loader = DataLoader(
     train_dataset, 
     batch_size=BATCH_SIZE, 
     shuffle=True, 
-    collate_packed_fn if False else collate_packed_fn,
     collate_fn=collate_packed_fn, 
     drop_last=True,
     num_workers=2 if os.name != 'nt' else 0,
