@@ -1,7 +1,15 @@
+# .gitignore
 # =============================================================================
 # KARYON-CORE OFFICIAL GITIGNORE SPEC
 # Hybrid C++20 / PyTorch / LibTorch / Python / Kaggle Runtime Artifacts
 # =============================================================================
+
+# --- Kaggle CoRE Agent Runtime & DB (Isolated from Core Repo) ---
+karyon_agent_runtime/
+.agent_db/
+*.agent.db
+*.agent.db-wal
+*.agent.db-shm
 
 # --- C++ JIT & Build Artifacts ---
 *.so
@@ -22,7 +30,6 @@ bin/
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
 .pytest_cache/
 .coverage
 htmlcov/
@@ -39,7 +46,7 @@ tmp/
 *.log
 .cache/
 
-# --- Large Model Checkpoints & Datasets (Keep base karyon_soul.kcore tracked if <100MB) ---
+# --- Large Model Checkpoints & Datasets ---
 *.pt
 *.pth
 *.bin
