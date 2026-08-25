@@ -314,7 +314,7 @@ class BiophysicalLivingAgent(nn.Module):
     def get_all_parameters(self) -> List[nn.Parameter]:
         params = (
             list(self.pos_embeddings.parameters()) + 
-            list(self.episodic_proj.parameters()) +
+            list(self.episodic_proj.parameters()) + 
             list(self.motor_text_proj.parameters())
         )
         for sub in [self.ssd_core, self.channel_mixer, self.world_model, self.attractor_head]:
@@ -367,10 +367,10 @@ class BiophysicalLivingAgent(nn.Module):
             chunk_fe = (kl_div.mean() + rec_loss)
             fe_losses.append(chunk_fe)
 
-            # One-Shot Hippocampal Encoding on High Surprise (F_t > 0.20)
+            # One-Shot Hippocampal Encoding on High Surprise (F_t > 0.20) with Float Dtype Safety
             with torch.no_grad():
                 if chunk_fe.item() > 0.20 and episodic_memory is not None:
-                    episodic_memory.write(w_current_slice.detach(), w_pred.detach(), protected_slots=3)
+                    episodic_memory.write(w_current_slice.detach().float(), w_pred.detach().float(), protected_slots=3)
 
                 has_eos = (chunk_in == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
                 m_curr = m_curr * (1.0 - has_eos)
@@ -384,10 +384,10 @@ class BiophysicalLivingAgent(nn.Module):
         return total_loss, avg_speech_loss.item(), avg_fe_loss.item()
 
     # =========================================================================
-    # BIOPHYSICAL SLEEP CONSOLIDATION & REPLAY ENGINE (TONONI & HASSAIS)
+    # BIOPHYSICAL SLEEP CONSOLIDATION & REPLAY ENGINE (TONONI & HASSABIS)
     # =========================================================================
     def execute_sleep_consolidation(self, episodic_memory: BatchedEpisodicMemory, hu: HomeostaticUnit,
-                                    num_replay_cycles: int = 5, downscaling_factor: float = 0.05):
+                                    num_replay_cycles: int = 5, downscaling_factor: float = 0.03):
         """Executes full sleep cycle: Hippocampal Replay + Synaptic Downscaling + Somatic Recovery."""
         self.train()
         
@@ -398,12 +398,10 @@ class BiophysicalLivingAgent(nn.Module):
             
             for _ in range(num_replay_cycles):
                 opt_replay.zero_grad()
-                # Sample replayed memories from hippocampus
                 rand_indices = torch.randint(0, active_memory_slots, (min(16, active_memory_slots),), device=self.device)
-                replayed_keys = episodic_memory.keys[0, rand_indices, :] # [M, 256]
-                replayed_vals = episodic_memory.values[0, rand_indices, :] # [M, 256]
+                replayed_keys = episodic_memory.keys[0, rand_indices, :].float()
+                replayed_vals = episodic_memory.values[0, rand_indices, :].float()
 
-                # Consolidation forward pass through associative world model
                 h_dummy = torch.zeros(replayed_keys.size(0), self.hidden_dim, device=self.device)
                 w_pred, kl_div, _, _ = self.world_model(h_dummy, h_dummy, replayed_keys)
                 replay_loss = (1.0 - F.cosine_similarity(w_pred, replayed_vals, dim=-1)).mean() + kl_div.mean() * 0.05
@@ -413,10 +411,9 @@ class BiophysicalLivingAgent(nn.Module):
                 opt_replay.step()
 
         # 2. Synaptic Homeostasis Downscaling (Tononi & Cirelli SHY)
-        # Eliminates daily noise and restores metabolic efficiency
         with torch.no_grad():
             for param in self.get_all_parameters():
-                if param.dim() > 1: # Matrix weights only
+                if param.dim() > 1:
                     param.mul_(1.0 - downscaling_factor)
 
         # 3. Somatic Homeostatic Recovery (ATP restoration & NA reset)
@@ -424,7 +421,7 @@ class BiophysicalLivingAgent(nn.Module):
             hu.state[:, 1] = 1.00 # Energy restored
             hu.state[:, 2] = 1.00 # Stability restored
             hu.state[:, 3] = 1.00 # Health restored
-            hu.state[:, 4] = 0.05 # Arousal reset to calm baseline
+            hu.state[:, 4] = 0.05 # Arousal reset to baseline
 
     def generate_thought_and_speech(self, prompt: str, hu, episodic_memory: BatchedEpisodicMemory = None,
                                    max_generated_tokens: int = 75, temperature: float = 0.45, top_p: float = 0.90) -> str:
@@ -454,10 +451,11 @@ class BiophysicalLivingAgent(nn.Module):
 
             # Volitional Memory Recall (Active Inference Precision Gating)
             if episodic_memory is not None and hu.state[0, 4].item() > 0.12:
-                q_k = self.episodic_proj(ctx_emb.squeeze(1))
+                q_k = self.episodic_proj(ctx_emb.squeeze(1)).float()
                 ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.75, sigmoid_beta=15.0)
                 if (max_sim > 0.75).any():
-                    h_out = h_out + ret_mem.repeat(1, h_out.size(1) // ret_mem.size(1) if h_out.size(1) > ret_mem.size(1) else 1)[:, :h_out.size(1)] * 0.20
+                    ret_mem_cast = ret_mem.to(h_out.dtype)
+                    h_out = h_out + ret_mem_cast.repeat(1, h_out.size(1) // ret_mem_cast.size(1) if h_out.size(1) > ret_mem_cast.size(1) else 1)[:, :h_out.size(1)] * 0.20
 
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_out, hu.state)
             h_proj = self.motor_text_proj(h_relaxed)
@@ -642,7 +640,7 @@ def run_exp_46_benchmark():
                 in_seq, tgt_seq, hu_prop, criterion, episodic_memory=mem_prop, chunk_size=64
             )
 
-        # Three-Factor Plasticity Modulation: Modulated by Somatic Arousal & Energy
+        # Three-Factor Plasticity Modulation: Somatic State Modulator
         curiosity, energy, stability, health, na, da = hu_prop.state[0].tolist()
         somatic_lr_mod = 0.5 + 0.5 * energy + 0.3 * na
 
