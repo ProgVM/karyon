@@ -103,7 +103,7 @@ class ActiveSemanticHopfieldHead(nn.Module):
 
     def relax_to_minima(self, h_state: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Dopamine modulation of basin sharpness
-        da_val = u_t[0][5].item() if (u_t.defined() and u_t.numel() >= 6) else 0.0
+        da_val = u_t[0, 5].item() if (u_t is not None and u_t.numel() >= 6) else 0.0
         beta = 1.0 + 1.5 * da_val
 
         sim = torch.matmul(h_state, self.attractor_basins.transpose(0, 1)) * (self.scale * beta)
@@ -168,8 +168,9 @@ class SelectiveParallelSSDCore(nn.Module):
         if u_t.size(0) != batch_size:
             u_t = u_t.expand(batch_size, -1)
 
-        na = u_t.slice(1, 4, 5).view(batch_size, 1, 1, 1)
-        da = u_t.slice(1, 5, 6).view(batch_size, 1, 1, 1)
+        # Correct Python PyTorch Slicing (Eliminated C++ .slice() API bug)
+        na = u_t[:, 4:5].view(batch_size, 1, 1, 1)
+        da = u_t[:, 5:6].view(batch_size, 1, 1, 1)
         eff_dt = torch.clamp(dt * (1.0 - 0.4 * na + 0.4 * da), 0.30, 2.00)
 
         w_chunk = self.sensory_proj(chunk_emb) # [B, chunk_len, unified_dim]
@@ -183,7 +184,7 @@ class SelectiveParallelSSDCore(nn.Module):
         
         # Modulate dynamic decay per head and per token
         base_alpha = torch.sigmoid(self.decay_logits) # [1, 1, H, 1]
-        alpha = torch.pow(base_alpha, selective_delta * eff_dt) # [B, H, chunk_len, 1]
+        alpha = torch.pow(base_alpha, (selective_delta * eff_dt).clamp(0.1, 10.0)) # [B, H, chunk_len, 1]
         beta = 1.0 - alpha
 
         # Parallel intra-chunk attention with dynamic decay
@@ -243,7 +244,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# 6. BASELINE AGENT: V18.0 CANONICAL (STATIC DECAY + UNSUPERVISED HOPFIELD)
+# 6. BASELINE AGENT: V18.0 CANONICAL (STATIC DECAY + PASSIVE HOPFIELD)
 # =============================================================================
 class BaselineV18Agent(nn.Module):
     def __init__(self, device_str='cpu'):
@@ -614,7 +615,7 @@ def run_exp_48_benchmark():
         return 0.5 * (1.0 + math.cos(math.pi * progress * 0.7))
 
     # -------------------------------------------------------------------------
-    # PART A: RUN BASELINE V18.0 (STATIC DECAY + PASSIVE ATTRACTOR)
+    # PART A: RUN BASELINE V18.0 (STATIC DECAY + PASSIVE HOPFIELD)
     # -------------------------------------------------------------------------
     print("\n" + "-"*85)
     print(" [1/2] RUNNING BASELINE: V18.0 (STATIC DECAY + PASSIVE HOPFIELD)")
@@ -704,7 +705,6 @@ def run_exp_48_benchmark():
 
         loss_history_prop.append(speech_l)
         if (idx + 1) % 100 == 0 or idx == NUM_STEPS - 1:
-            # Audit Attractor Gradient Norm
             attr_grad = model_prop.attractor_head.attractor_basins.grad.norm().item() if model_prop.attractor_head.attractor_basins.grad is not None else 0.0
             print(f"  Proposed Step [{idx+1:04d}/{NUM_STEPS}] | Speech Loss: {speech_l:.4f} (PPL: {math.exp(min(speech_l, 20.0)):.2f}) | Energy: {energy_l:.4f} | Attr Grad: {attr_grad:.6f}")
 
