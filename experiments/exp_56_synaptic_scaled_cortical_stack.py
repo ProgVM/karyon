@@ -1,9 +1,9 @@
-# experiments/exp_54_unified_dual_refactored_core.py
+# experiments/exp_56_synaptic_scaled_cortical_stack.py
 """
 ===============================================================================
-KARYON EXPERIMENTAL BENCHMARK: EXP-54 (UNIFIED DUAL-REFACTORED CORE)
-Full Spontaneous Dual-Refactoring on Axis A (Mamba-2 GroupNorm SSD + Crisp Hopfield)
-and Axis B (Natural GWT Attention + Real Free Energy Somatic Coupling + Theta PAC).
+KARYON EXPERIMENTAL BENCHMARK: EXP-56 (SYNAPTIC-SCALED 2-STAGE CORTICAL STACK)
+Biophysical Synaptic Weight Scaling (Dale's Principle sigma=1/sqrt(D)) +
+Dynamic Dopaminergic Readout Gain + Warmup-Stable-Decay (WSD) Synaptic Plasticity.
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -54,7 +54,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import karyon_config, karyon_core, karyon_agent, karyon_logger
 from karyon_config import CoREConfig
 from karyon_agent import OffsetPositionalByteEmbedding
-from karyon_core import ByteTokenizer, HomeostaticUnit, ParallelSwiGLUBlock, LatentPredictor
+from karyon_core import ByteTokenizer, HomeostaticUnit, ParallelSwiGLUBlock
 
 logger = karyon_logger.get_logger()
 torch.set_grad_enabled(True)
@@ -65,136 +65,67 @@ use_amp = (device_str == 'cuda')
 
 
 # =============================================================================
-# 1. REFACTORED AXIS B: NATURAL SENSORY GATEWAY (ZERO ARTIFICIAL BIAS)
+# 1. SPECIALIZED BALANCED SSD LAYER (MAMBA-2 GROUPNORM)
 # =============================================================================
-class NaturalSensoryGateway(nn.Module):
-    """
-    Global Workspace Gateway with pure biophysical competitive attention.
-    Eradicates artificial hardcoded '+1.5f' biases. Modalities compete purely
-    based on sensory salience, somatic arousal (NA), and top-down mental volition.
-    """
-    def __init__(self, unified_dim: int = 256, hidden_dim: int = 512, homeo_dim: int = 6,
-                 text_dim: int = 256, vision_dim: int = 256, action_dim: int = 3, device_str: str = 'cpu'):
+class BalancedSSDLayer(nn.Module):
+    def __init__(self, in_dim: int = 512, out_dim: int = 512, num_heads: int = 8,
+                 head_k: int = 64, head_v: int = 128, min_beta: float = 0.0005, max_beta: float = 0.08):
         super().__init__()
-        self.unified_dim = unified_dim
-        self.inv_sqrt_dim = 1.0 / math.sqrt(unified_dim)
-
-        self.text_proj = nn.Linear(text_dim, unified_dim)
-        self.vision_proj = nn.Linear(vision_dim, unified_dim)
-        self.motor_proj = nn.Linear(action_dim, unified_dim)
-        self.homeo_proj = nn.Linear(homeo_dim, unified_dim)
-        self.mind_proj = nn.Linear(hidden_dim, unified_dim)
-
-        self.attention_query_layer = nn.Linear(hidden_dim, unified_dim)
-        self.channel_norm = nn.LayerNorm(unified_dim)
-        self.query_norm = nn.LayerNorm(unified_dim)
-
-    def forward(self, text_input, vision_input, motor_input, h_prev, u_t):
-        batch_size = h_prev.size(0)
-
-        # 1. Project all sensory channels
-        text_ch = self.text_proj(text_input)
-        vis_ch = self.vision_proj(vision_input)
-        mot_ch = self.motor_proj(motor_input)
-        body_ch = self.homeo_proj(u_t)
-        mind_ch = self.mind_proj(h_prev)
-
-        stacked_channels = torch.stack([text_ch, vis_ch, mot_ch, body_ch, mind_ch], dim=1) # [B, 5, D]
-        norm_channels = self.channel_norm(stacked_channels)
-
-        # 2. Volitional query from top-down state
-        query = self.query_norm(self.attention_query_layer(h_prev)).unsqueeze(1) # [B, 1, D]
-
-        # 3. Pure dot-product competitive attention without artificial bias
-        sim = torch.sum(query * norm_channels, dim=-1) * self.inv_sqrt_dim # [B, 5]
-        
-        # Modulate text salience purely via Noradrenaline (Arousal)
-        na_salience = u_t[:, 4:5] * 0.5
-        sim[:, 0:1] = sim[:, 0:1] + na_salience
-
-        attn_weights = F.softmax(sim, dim=-1)
-        epistemic_entropy = -torch.sum(attn_weights * torch.log(attn_weights + 1e-9), dim=-1, keepdim=True)
-        w_t = torch.sum(attn_weights.unsqueeze(-1) * stacked_channels, dim=1)
-
-        return w_t, attn_weights, epistemic_entropy
-
-
-# =============================================================================
-# 2. REFACTORED AXIS A: BALANCED MAMBA-2 SSD CORE + CRISP HOPFIELD ATTRACTOR
-# =============================================================================
-class RefactoredSSDCore(nn.Module):
-    """
-    Balanced Mamba-2 Parallel SSD Core with GroupNorm Head Equalization,
-    FP32 State Scan, and Linguistic Timescales [0.92, 0.9995].
-    """
-    def __init__(self, text_dim: int = 256, unified_dim: int = 256, hidden_dim: int = 512,
-                 num_heads: int = 8, head_k: int = 64, head_v: int = 128, device_str: str = 'cpu'):
-        super().__init__()
-        self.text_dim = text_dim
-        self.unified_dim = unified_dim
-        self.hidden_dim = hidden_dim
+        self.in_dim = in_dim
+        self.out_dim = out_dim
         self.num_heads = num_heads
         self.head_k = head_k
         self.head_v = head_v
         self.inv_sqrt_k = 1.0 / math.sqrt(head_k)
 
-        self.sensory_proj = nn.Linear(text_dim, unified_dim)
-        self.q_proj = nn.Linear(unified_dim, num_heads * head_k)
-        self.k_proj = nn.Linear(unified_dim, num_heads * head_k)
-        self.v_proj = nn.Linear(unified_dim, num_heads * head_v)
-        self.delta_proj = nn.Linear(unified_dim, num_heads)
+        self.q_proj = nn.Linear(in_dim, num_heads * head_k)
+        self.k_proj = nn.Linear(in_dim, num_heads * head_k)
+        self.v_proj = nn.Linear(in_dim, num_heads * head_v)
+        self.delta_proj = nn.Linear(in_dim, num_heads)
 
-        # Multi-timescale decay spectrum: alpha in [0.92, 0.9995]
-        betas = torch.exp(torch.linspace(math.log(0.08), math.log(0.0005), num_heads))
+        betas = torch.exp(torch.linspace(math.log(max_beta), math.log(min_beta), num_heads))
         alphas = 1.0 - betas
         logit_init = torch.log(alphas / (1.0 - alphas)).view(1, num_heads, 1, 1)
         self.decay_logits = nn.Parameter(logit_init)
 
         self.head_norm = nn.GroupNorm(num_groups=num_heads, num_channels=num_heads * head_v)
-        self.out_proj = nn.Linear(num_heads * head_v, hidden_dim)
-        self.norm = nn.LayerNorm(hidden_dim)
+        self.out_proj = nn.Linear(num_heads * head_v, out_dim)
+        self.norm = nn.LayerNorm(out_dim)
 
-    def forward_chunk_parallel_ssd(self, chunk_emb: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, dt: float = 1.0):
-        batch_size, chunk_len, _ = chunk_emb.size()
+    def forward(self, x_seq: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, dt: float = 1.0):
+        batch_size, chunk_len, _ = x_seq.size()
 
         curiosity = u_t.select(1, 0).view(batch_size, 1, 1, 1)
         na = u_t.select(1, 4).view(batch_size, 1, 1, 1)
         da = u_t.select(1, 5).view(batch_size, 1, 1, 1)
         eff_dt = torch.clamp(dt * (1.0 - 0.4 * na + 0.4 * da), 0.30, 2.00)
 
-        w_chunk = self.sensory_proj(chunk_emb)
+        q = (self.q_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)) * self.inv_sqrt_k
+        k = self.k_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)
+        v = self.v_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_v).transpose(1, 2)
 
-        q = (self.q_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)) * self.inv_sqrt_k
-        k = self.k_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)
-        v = self.v_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, self.head_v).transpose(1, 2)
-
-        selective_delta = F.softplus(self.delta_proj(w_chunk)).view(batch_size, chunk_len, self.num_heads, 1).transpose(1, 2)
+        selective_delta = F.softplus(self.delta_proj(x_seq)).view(batch_size, chunk_len, self.num_heads, 1).transpose(1, 2)
         base_alpha = torch.sigmoid(self.decay_logits)
         alpha = torch.pow(base_alpha, (selective_delta * eff_dt).clamp(0.1, 10.0))
         beta = 1.0 - alpha
 
-        pos = torch.arange(chunk_len, device=chunk_emb.device, dtype=torch.float32)
+        pos = torch.arange(chunk_len, device=x_seq.device, dtype=torch.float32)
         diff = pos.unsqueeze(1) - pos.unsqueeze(0)
         causal_mask = (diff >= 0).float().view(1, 1, chunk_len, chunk_len)
 
         mean_alpha = alpha.mean(dim=2, keepdim=True)
         decay_weights = torch.pow(mean_alpha, diff.clamp_min(0).view(1, 1, chunk_len, chunk_len)) * causal_mask
 
-        # 1. Intra-chunk attention
         s_matrix = torch.matmul(q, k.transpose(-1, -2)) * decay_weights
         y_intra = torch.matmul(s_matrix, v)
 
-        # 2. Inter-chunk state retrieval in FP32
         decay_to_start = torch.pow(mean_alpha.float(), (pos + 1.0).view(1, 1, chunk_len, 1))
         y_inter = torch.matmul(q.float() * decay_to_start, m_prev.float()).to(q.dtype)
 
         y_total = (y_intra + y_inter).transpose(1, 2).reshape(batch_size * chunk_len, self.num_heads * self.head_v)
-
-        # 3. Head equalization
         y_normed = self.head_norm(y_total)
         h_chunk = self.norm(self.out_proj(y_normed))
 
-        # 4. State update with EMA beta bounds
         decay_to_end = torch.pow(mean_alpha.float(), (float(chunk_len) - 1.0 - pos).view(1, 1, chunk_len, 1))
         k_decayed = k.float() * decay_to_end * beta.mean(dim=2, keepdim=True).float()
         kv_chunk_update = torch.matmul(k_decayed.transpose(-1, -2), v.float())
@@ -207,11 +138,39 @@ class RefactoredSSDCore(nn.Module):
         return h_chunk, m_next
 
 
+# =============================================================================
+# 2. CORTICAL STAGE (SSD + SWIGLU + PRE-LAYERNORM)
+# =============================================================================
+class CorticalStage(nn.Module):
+    def __init__(self, hidden_dim: int = 512, expand_dim: int = 2048, num_heads: int = 8,
+                 head_k: int = 64, head_v: int = 128, min_beta: float = 0.0005, max_beta: float = 0.08, device_str: str = 'cpu'):
+        super().__init__()
+        self.pre_norm_ssd = nn.LayerNorm(hidden_dim)
+        self.ssd = BalancedSSDLayer(
+            in_dim=hidden_dim, out_dim=hidden_dim, num_heads=num_heads,
+            head_k=head_k, head_v=head_v, min_beta=min_beta, max_beta=max_beta
+        )
+        self.pre_norm_swiglu = nn.LayerNorm(hidden_dim)
+        self.swiglu = karyon_core.ParallelSwiGLUBlock(
+            hidden_dim=hidden_dim, expand_dim=expand_dim, device=device_str
+        )
+
+    def forward(self, x: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, dt: float = 1.0):
+        norm_x = self.pre_norm_ssd(x)
+        h_ssd, m_next = self.ssd(norm_x, m_prev, u_t, dt)
+        x_res1 = x + h_ssd.view_as(x)
+
+        norm_res1 = self.pre_norm_swiglu(x_res1)
+        h_swiglu = self.swiglu(norm_res1.contiguous().view(-1, x.size(-1)))
+        x_out = x_res1 + h_swiglu.view_as(x_res1)
+
+        return x_out, m_next
+
+
+# =============================================================================
+# 3. CRISP CONTINUOUS HOPFIELD ATTRACTOR HEAD
+# =============================================================================
 class CrispContinuousHopfieldHead(nn.Module):
-    """
-    Modern Continuous Hopfield Head with unit-sphere normalization (||b_i||=1)
-    and dopamine-modulated contrast sharpening (beta=12.0).
-    """
     def __init__(self, hidden_dim: int = 512, vocab_size: int = 258, num_attractors: int = 256, device_str: str = 'cpu'):
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -239,17 +198,11 @@ class CrispContinuousHopfieldHead(nn.Module):
         commit_loss = F.mse_loss(h_state, h_relaxed.detach()) + 0.25 * F.mse_loss(h_state.detach(), h_relaxed)
         return h_relaxed, commit_loss
 
-    def compute_pattern_separation_loss(self):
-        norm_basins = F.normalize(self.attractor_basins, p=2, dim=-1)
-        cosine_matrix = torch.matmul(norm_basins, norm_basins.transpose(0, 1))
-        eye = torch.eye(self.num_attractors, device=self.attractor_basins.device)
-        return F.mse_loss(cosine_matrix, eye)
-
 
 # =============================================================================
-# 3. COMPLETE DUAL-REFACTORED KARYON AGENT
+# 4. EXP-56 SYNAPTICALLY-SCALED 2-STAGE CORTICAL AGENT
 # =============================================================================
-class DualRefactoredCoREAgent(nn.Module):
+class SynapticScaledCorticalAgent(nn.Module):
     def __init__(self, config: CoREConfig, device_str: str = 'cpu'):
         super().__init__()
         self.device_str = device_str
@@ -258,39 +211,36 @@ class DualRefactoredCoREAgent(nn.Module):
         self.text_dim = config.net.text_dim
         self.hidden_dim = config.net.hidden_dim
         self.expand_dim = config.net.expand_dim
-        self.latent_dim = getattr(config.net, 'latent_dim', 128)
         self.num_heads = config.net.num_heads
         self.head_k = 64
         self.head_v = 128
         self.text_gen_dim = 258
-        self.inv_sqrt_text_dim = 1.0 / math.sqrt(self.text_dim)
 
         self.pos_embeddings = OffsetPositionalByteEmbedding(
             vocab_size=self.text_gen_dim, text_dim=self.text_dim, max_len=8192, device_str=device_str
         ).to(self.device)
 
-        self.gateway = NaturalSensoryGateway(
-            unified_dim=self.text_dim, hidden_dim=self.hidden_dim, homeo_dim=6,
-            text_dim=self.text_dim, vision_dim=256, action_dim=3, device_str=device_str
+        # Biophysical Synaptic Scaling (Dale's Principle: sigma = 1 / sqrt(D))
+        nn.init.normal_(self.pos_embeddings.byte_embed.weight, mean=0.0, std=1.0 / math.sqrt(self.text_dim))
+
+        self.in_proj = nn.Linear(self.text_dim, self.hidden_dim).to(self.device)
+
+        # Stage 1: Fast Morpho-Syntactic Cortical Sheet (alpha in [0.85, 0.995])
+        self.stage1 = CorticalStage(
+            hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
+            head_k=self.head_k, head_v=self.head_v, min_beta=0.005, max_beta=0.15, device_str=device_str
         ).to(self.device)
 
-        self.ssd_core = RefactoredSSDCore(
-            text_dim=self.text_dim, unified_dim=self.text_dim, hidden_dim=self.hidden_dim,
-            num_heads=self.num_heads, head_k=self.head_k, head_v=self.head_v, device_str=device_str
+        # Stage 2: Slow Semantic-Discourse Cortical Sheet (alpha in [0.95, 0.9999])
+        self.stage2 = CorticalStage(
+            hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
+            head_k=self.head_k, head_v=self.head_v, min_beta=0.0001, max_beta=0.05, device_str=device_str
         ).to(self.device)
-
-        self.channel_mixer = karyon_core.ParallelSwiGLUBlock(
-            hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, device=device_str
-        )
 
         self.attractor_head = CrispContinuousHopfieldHead(
             hidden_dim=self.hidden_dim, vocab_size=self.text_gen_dim,
             num_attractors=256, device_str=device_str
         ).to(self.device)
-
-        self.world_model = LatentPredictor(
-            hidden_dim=self.hidden_dim, unified_dim=self.text_dim, latent_dim=self.latent_dim, device=device_str
-        )
 
         self.motor_text_proj = nn.Sequential(
             nn.Linear(self.hidden_dim, self.text_dim),
@@ -300,58 +250,55 @@ class DualRefactoredCoREAgent(nn.Module):
 
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, criterion, chunk_size: int = 64):
         batch_size, seq_len = input_seq.size()
-        m_curr = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
+        m_s1 = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
+        m_s2 = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
         curr_u_t = hu_batch.state.clone().detach()
-        h_prev = torch.zeros(batch_size, self.hidden_dim, device=self.device)
 
         num_chunks = max(1, seq_len // chunk_size)
         chunk_losses = []
         commit_losses = []
-        fe_losses = []
+
+        # Dopaminergic Somatic Readout Gain
+        da_level = curr_u_t[:, 5:6]
+        motor_gain = (1.0 + 1.0 * da_level).unsqueeze(1)
 
         for chunk_idx in range(num_chunks):
             c_start = chunk_idx * chunk_size
             c_end = min((chunk_idx + 1) * chunk_size, seq_len)
+            c_len = c_end - c_start
             chunk_in = input_seq[:, c_start:c_end]
             chunk_tgt = target_seq[:, c_start:c_end]
 
             chunk_emb = self.pos_embeddings(chunk_in, start_pos=c_start, apply_rf=True)
-            h_chunk, m_curr = self.ssd_core.forward_chunk_parallel_ssd(chunk_emb, m_curr, curr_u_t, 1.0)
+            h_in = self.in_proj(chunk_emb)
 
-            h_reasoned = self.channel_mixer(h_chunk)
-            h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_reasoned, curr_u_t)
+            h_s1, m_s1 = self.stage1(h_in, m_s1, curr_u_t, dt=1.0)
+            h_s2, m_s2 = self.stage2(h_s1, m_s2, curr_u_t, dt=1.0)
 
-            h_proj = self.motor_text_proj(h_relaxed)
-            logits_flat = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
+            h_flat = h_s2.contiguous().view(-1, self.hidden_dim)
+            h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, curr_u_t)
+
+            # Pure Afferent-Efferent Motor Projection
+            h_proj = self.motor_text_proj(h_relaxed).view(batch_size, c_len, self.text_dim)
+            h_proj_gain = (h_proj * motor_gain).contiguous().view(-1, self.text_dim)
+
+            logits_flat = F.linear(h_proj_gain, self.pos_embeddings.byte_embed.weight)
             targets_flat = chunk_tgt.contiguous().view(-1)
 
             loss = criterion(logits_flat, targets_flat)
             chunk_losses.append(loss)
             commit_losses.append(commit_loss)
 
-            # Active Inference World Model Loss
-            w_slice = chunk_emb[:, -1, :]
-            h_last = h_reasoned.view(batch_size, -1, self.hidden_dim)[:, -1, :]
-            w_pred, kl_div, _, _ = self.world_model(h_prev, h_last, w_slice)
-            h_prev = h_last.detach()
-
-            rec_loss = (1.0 - F.cosine_similarity(w_slice, w_pred, dim=-1, eps=1e-8)).mean()
-            chunk_fe = kl_div.mean() + rec_loss
-            fe_losses.append(chunk_fe)
-
             has_eos = (chunk_in == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
-            m_curr = (m_curr * (1.0 - has_eos)).detach()
+            m_s1 = (m_s1 * (1.0 - has_eos)).detach()
+            m_s2 = (m_s2 * (1.0 - has_eos)).detach()
 
         avg_loss = torch.stack(chunk_losses).mean()
         avg_commit = torch.stack(commit_losses).mean()
-        avg_fe = torch.stack(fe_losses).mean()
-        ortho_loss = self.attractor_head.compute_pattern_separation_loss()
-        
-        total_loss = avg_loss + 0.05 * avg_fe + 0.05 * avg_commit + 0.01 * ortho_loss
-        return total_loss, avg_loss.item(), avg_fe.item()
+        total_loss = avg_loss + 0.05 * avg_commit
+        return total_loss, avg_loss.item()
 
-    def generate_theta_pac_speech(self, prompt: str, max_tokens: int = 70) -> str:
-        """Theta-Gamma Phase-Amplitude Coupled (PAC) Autoregressive Speech Synthesis."""
+    def generate_speech(self, prompt: str, max_tokens: int = 70) -> str:
         self.eval()
         tokenizer = ByteTokenizer()
         prompt_ids = tokenizer.encode(prompt)
@@ -359,16 +306,18 @@ class DualRefactoredCoREAgent(nn.Module):
             prompt_ids = prompt_ids[:-1]
 
         prompt_t = torch.tensor([prompt_ids], dtype=torch.long, device=self.device)
-        m_curr = torch.zeros(1, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
+        m_s1 = torch.zeros(1, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
+        m_s2 = torch.zeros(1, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
         hu_state = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], device=self.device)
 
         prompt_emb = self.pos_embeddings(prompt_t, start_pos=0, apply_rf=True)
         prompt_len = prompt_t.size(1)
-        h_step = None
 
         for c_idx in range(0, prompt_len, 64):
             c_emb = prompt_emb[:, c_idx : min(c_idx + 64, prompt_len), :]
-            h_step, m_curr = self.ssd_core.forward_chunk_parallel_ssd(c_emb, m_curr, hu_state, 1.0)
+            h_in = self.in_proj(c_emb)
+            h_s1, m_s1 = self.stage1(h_in, m_s1, hu_state, 1.0)
+            h_s2, m_s2 = self.stage2(h_s1, m_s2, hu_state, 1.0)
 
         rolling_ids = prompt_ids.copy()
         generated_chars = []
@@ -380,24 +329,26 @@ class DualRefactoredCoREAgent(nn.Module):
                 win_emb = self.pos_embeddings(win_t, start_pos=len(rolling_ids) - len(context), apply_rf=True)
                 t_emb = win_emb[:, -1:, :]
 
-                h_step, m_curr = self.ssd_core.forward_chunk_parallel_ssd(t_emb, m_curr, hu_state, 1.0)
-                h_out = self.channel_mixer(h_step)
-                h_rel, _ = self.attractor_head.relax_to_minima(h_out, hu_state)
+                h_in = self.in_proj(t_emb)
+                h_s1, m_s1 = self.stage1(h_in, m_s1, hu_state, 1.0)
+                h_s2, m_s2 = self.stage2(h_s1, m_s2, hu_state, 1.0)
+
+                h_flat = h_s2.contiguous().view(-1, self.hidden_dim)
+                h_rel, _ = self.attractor_head.relax_to_minima(h_flat, hu_state)
                 h_proj = self.motor_text_proj(h_rel)
 
-                raw_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight) * self.inv_sqrt_text_dim
+                raw_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight)
                 raw_logits[:, 256:] = -1e9
 
-                # Theta-Gamma Phase Transition Detection
                 p_dist = F.softmax(raw_logits, dim=-1)
                 entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1).item()
                 is_boundary = (len(rolling_ids) > 0 and rolling_ids[-1] in [32, 10, 44, 46])
 
-                if is_boundary or entropy > 0.65:
-                    temp = 0.40
+                if is_boundary or entropy > 0.80:
+                    temp = 0.45
                     top_p = 0.90
                 else:
-                    temp = 0.05  # Pristine MAP spelling inside morphemes
+                    temp = 0.08
                     top_p = 0.99
 
                 logits = raw_logits / max(temp, 1e-4)
@@ -423,10 +374,10 @@ class DualRefactoredCoREAgent(nn.Module):
 
 
 # =============================================================================
-# 4. PARITY BENCHMARK EXECUTION
+# 5. REAL DATASET & RUNNER (WSD SCHEDULE: 2.5e-3 -> 8.0e-4)
 # =============================================================================
-def prepare_packed_batches(num_batches: int = 150, batch_size: int = 32, seq_len: int = 512):
-    logger.info("Loading Real Dataset (vicgalle/alpaca-gpt4) for EXP-54...")
+def prepare_packed_stream(num_batches: int = 300, batch_size: int = 32, seq_len: int = 1024):
+    logger.info(f"Loading Real Dataset (vicgalle/alpaca-gpt4) for EXP-56 (S={seq_len}, Steps={num_batches})...")
     ds = load_dataset("vicgalle/alpaca-gpt4", split="train")
     tokenizer = ByteTokenizer()
     full_stream = []
@@ -453,45 +404,56 @@ def prepare_packed_batches(num_batches: int = 150, batch_size: int = 32, seq_len
             batch_tensors.append(torch.tensor(chunk, dtype=torch.long))
         batches.append(torch.stack(batch_tensors, dim=0).to(device))
 
-    logger.info(f"Prepared {len(batches)} Real Packed Batches (B={batch_size}, S={seq_len}).")
+    logger.info(f"Prepared {len(batches)} Real Packed Batches (B={batch_size}, S={seq_len}, Total Tokens: {len(batches)*batch_size*seq_len/1e6:.2f}M).")
     return batches
 
-def run_exp_54_benchmark():
+def run_exp_56_benchmark():
     print("\n" + "="*85)
-    print(" === [KEP EXPERIMENTAL BENCHMARK: EXP-54 (UNIFIED DUAL-REFACTORED CORE)] ===")
+    print(" === [KEP EXPERIMENTAL BENCHMARK: EXP-56 (SYNAPTIC-SCALED 2-STAGE CORTICAL STACK)] ===")
     print("="*85)
     print(f"Hardware Device : {device_str.upper()} | AMP FP16 Enabled: {use_amp}")
 
     config = CoREConfig()
     config.net.text_dim = 256
-    config.net.unified_dim = 256
     config.net.hidden_dim = 512
     config.net.expand_dim = 2048
     config.net.num_heads = 8
-    config.net.head_k = 64
-    config.net.head_v = 128
-    config.train.chunk_size = 64
 
-    b_size, seq_len = 32, 512
-    num_eval_steps = 150
+    b_size, seq_len = 32, 1024
+    num_eval_steps = 300
     chunk_size = 64
 
-    batches = prepare_packed_batches(num_batches=num_eval_steps, batch_size=b_size, seq_len=seq_len)
+    batches = prepare_packed_stream(num_batches=num_eval_steps, batch_size=b_size, seq_len=seq_len)
     criterion = nn.CrossEntropyLoss(ignore_index=256)
     scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
     diag_prompt = "User: What is the primary source of energy for Earth?\nKaryon:"
 
-    # 1. EVALUATE DUAL-REFACTORED CORE
-    print("\n[1/1] Benchmarking EXP-54 Dual-Refactored Unified Agent...")
+    # 1. EVALUATE SYNAPTIC-SCALED AGENT
+    print("\n[1/1] Training Synaptic-Scaled 2-Stage Cortical Stack (300 Steps on S=1024)...")
     torch.manual_seed(42)
-    agent = DualRefactoredCoREAgent(config, device_str=device_str).to(device)
-    optimizer = torch.optim.AdamW(agent.parameters(), lr=3e-3, weight_decay=0.01)
+    agent = SynapticScaledCorticalAgent(config, device_str=device_str).to(device)
+    optimizer = torch.optim.AdamW(agent.parameters(), lr=2.5e-3, weight_decay=0.01)
     hu = HomeostaticUnit(batch_size=b_size, device=device_str)
+
+    # Warmup-Stable-Decay (WSD): 30 warmup -> 170 stable (2.5e-3) -> 100 gentle decay (to 8.0e-4)
+    warmup_steps = 30
+    stable_steps = 170
+    decay_steps = num_eval_steps - (warmup_steps + stable_steps)
+
+    def wsd_schedule(step):
+        if step < warmup_steps:
+            return float(step + 1) / float(warmup_steps)
+        elif step < warmup_steps + stable_steps:
+            return 1.0
+        else:
+            p = float(step - (warmup_steps + stable_steps)) / float(max(1, decay_steps))
+            return 0.32 + 0.68 * 0.5 * (1.0 + math.cos(math.pi * p))
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=wsd_schedule)
 
     if device.type == 'cuda': torch.cuda.reset_peak_memory_stats()
     t_start = time.perf_counter()
     losses = []
-    fe_list = []
 
     for step in range(num_eval_steps):
         batch = batches[step]
@@ -500,47 +462,52 @@ def run_exp_54_benchmark():
 
         optimizer.zero_grad()
         with torch.amp.autocast(device_type=device_str, dtype=torch.float16, enabled=use_amp):
-            tot_loss, speech_loss, fe_loss = agent.forward_sequence(input_s, target_s, hu, criterion, chunk_size=chunk_size)
+            tot_loss, speech_loss = agent.forward_sequence(input_s, target_s, hu, criterion, chunk_size=chunk_size)
 
         scaler.scale(tot_loss).backward()
         scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(agent.parameters(), max_norm=3.0)
+        
+        scale_before = scaler.get_scale()
         scaler.step(optimizer)
         scaler.update()
+        scale_after = scaler.get_scale()
 
-        # Real Free Energy Somatic Update (No Fake Variables!)
-        with torch.no_grad():
-            cost_t = torch.full((b_size, 1), 0.001, device=device)
-            err_t = torch.full((b_size, 1), float(speech_loss * 0.1), device=device)
-            ent_t = torch.full((b_size, 1), float(fe_loss), device=device)
-            cog_t = torch.zeros((b_size, 1), dtype=torch.int64, device=device)
-            hu.update(cost_t, err_t, ent_t, cog_t)
+        if scale_before <= scale_after:
+            scheduler.step()
 
         losses.append(speech_loss)
-        fe_list.append(fe_loss)
+
+        if (step + 1) % 50 == 0 or step == num_eval_steps - 1:
+            cur_loss = sum(losses[-20:]) / min(len(losses), 20)
+            cur_lr = optimizer.param_groups[0]['lr']
+            print(f"  Step [{step+1:03d}/{num_eval_steps}] | Speech Loss: {speech_loss:.4f} (Avg: {cur_loss:.4f}, PPL: {math.exp(cur_loss):.2f}) | LR: {cur_lr:.6f}")
 
     if device.type == 'cuda': torch.cuda.synchronize()
     total_time_sec = time.perf_counter() - t_start
     peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device.type == 'cuda' else 0.0
     throughput = (num_eval_steps * b_size * seq_len) / total_time_sec
-    final_loss = sum(losses[-25:]) / 25.0
-    final_fe = sum(fe_list[-25:]) / 25.0
-    sample_text = agent.generate_theta_pac_speech(diag_prompt, max_tokens=70)
+    final_loss = sum(losses[-30:]) / 30.0
+    sample_text = agent.generate_speech(diag_prompt, max_tokens=70)
 
     # 2. TELEMETRY DASHBOARD
     print("\n" + "="*85)
-    print(" === [KEP EXP-54 DUAL-REFACTORING TELEMETRY DASHBOARD] ===")
+    print(" === [KEP EXP-56 SYNAPTIC-SCALED TELEMETRY DASHBOARD] ===")
     print("="*85)
-    print(f"{'Performance Metric':<36} | {'EXP-54 Unified Architecture Value':<40}")
+    print(f"{'Performance Metric':<36} | {'EXP-56 Synaptic Scaling Value':<40}")
     print("-" * 85)
-    print(f"{'Final Steady-State Speech Loss':<36} | {final_loss:<40.4f} (PPL: {math.exp(final_loss):.2f})")
-    print(f"{'Variational Free Energy (F_t)':<36} | {final_fe:<40.4f}")
+    print(f"{'Initial Loss (Step 1)':<36} | {losses[0]:<40.4f}")
+    print(f"{'Step 100 Loss':<36} | {losses[99]:<40.4f}")
+    print(f"{'Step 200 Loss':<36} | {losses[199]:<40.4f}")
+    print(f"{'Final Steady-State Loss (Step 300)':<36} | {final_loss:<40.4f} (PPL: {math.exp(final_loss):.2f})")
+    print(f"{'Total Loss Drop (Delta)':<36} | {final_loss - losses[0]:<40.4f}")
     print(f"{'Throughput Speed':<36} | {throughput:<40.1f} tok/s")
     print(f"{'Peak VRAM Memory':<36} | {peak_vram_mb:<40.1f} MB")
+    print(f"{'Total Training Time':<36} | {total_time_sec:<40.2f} sec ({total_time_sec/60.0:.1f} min)")
     print("="*85)
 
     print("\n" + "="*85)
-    print(" === [KEP RULE #4 LIVE DIAGNOSTIC THETA-PAC SPEECH AUDIT] ===")
+    print(" === [KEP RULE #4 LIVE DIAGNOSTIC SPEECH SAMPLE AUDIT] ===")
     print("="*85)
     print(f"Prompt : \"{diag_prompt}\"")
     print(f"Output : \"{sample_text}\"")
@@ -548,4 +515,4 @@ def run_exp_54_benchmark():
 
 
 if __name__ == "__main__":
-    run_exp_54_benchmark()
+    run_exp_56_benchmark()
