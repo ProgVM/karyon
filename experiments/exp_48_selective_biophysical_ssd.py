@@ -152,10 +152,10 @@ class SelectiveParallelSSDCore(nn.Module):
             nn.Softplus()
         )
 
-        # Multi-Timescale Base Logits: alpha in [0.70, 0.9995]
+        # Multi-Timescale Base Logits: [1, H, 1, 1]
         betas = torch.exp(torch.linspace(math.log(0.30), math.log(0.0005), num_heads))
         alphas = 1.0 - betas
-        decay_init = torch.log(alphas / (1.0 - alphas)).view(1, 1, num_heads, 1)
+        decay_init = torch.log(alphas / (1.0 - alphas)).view(1, num_heads, 1, 1)
         self.decay_logits = nn.Parameter(decay_init)
 
         self.out_proj = nn.Linear(hidden_dim, hidden_dim)
@@ -168,7 +168,6 @@ class SelectiveParallelSSDCore(nn.Module):
         if u_t.size(0) != batch_size:
             u_t = u_t.expand(batch_size, -1)
 
-        # Correct Python PyTorch Slicing (Eliminated C++ .slice() API bug)
         na = u_t[:, 4:5].view(batch_size, 1, 1, 1)
         da = u_t[:, 5:6].view(batch_size, 1, 1, 1)
         eff_dt = torch.clamp(dt * (1.0 - 0.4 * na + 0.4 * da), 0.30, 2.00)
@@ -179,11 +178,11 @@ class SelectiveParallelSSDCore(nn.Module):
         k = self.k_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)
         v = self.v_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, self.head_v).transpose(1, 2)
 
-        # Data-Dependent Selective Delta Modulation
-        selective_delta = self.delta_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, 1).transpose(1, 2) # [B, H, chunk_len, 1]
+        # Data-Dependent Selective Delta Modulation [B, H, chunk_len, 1]
+        selective_delta = self.delta_proj(w_chunk).view(batch_size, chunk_len, self.num_heads, 1).transpose(1, 2)
         
-        # Modulate dynamic decay per head and per token
-        base_alpha = torch.sigmoid(self.decay_logits) # [1, 1, H, 1]
+        # Exact Broadcastable Base Alpha [1, H, 1, 1]
+        base_alpha = torch.sigmoid(self.decay_logits)
         alpha = torch.pow(base_alpha, (selective_delta * eff_dt).clamp(0.1, 10.0)) # [B, H, chunk_len, 1]
         beta = 1.0 - alpha
 
