@@ -68,3 +68,4 @@ Thumbs.db
 .env
 *.secret
 hf_token.txt
+karyon_agent_runtime/
