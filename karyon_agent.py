@@ -545,7 +545,15 @@ class CoREAgent(nn.Module):
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, hu_st)
             h_proj = self.motor_text_proj(h_relaxed)
             raw_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight)
-            raw_logits[:, 256:] = -1e9
+            
+            # Mask PAD, non-printable control characters, and non-ASCII bytes
+            raw_logits[:, 256] = -1e9
+            raw_logits[:, :9] = -1e9
+            raw_logits[:, 11:13] = -1e9
+            raw_logits[:, 14:32] = -1e9
+            raw_logits[:, 127:256] = -1e9
+            if step < 10:
+                raw_logits[:, 257] = -1e9  # Disallow premature EOS
 
             # Theta-Gamma PAC Entropy-Adaptive Decoding
             p_dist = F.softmax(raw_logits, dim=-1)
