@@ -142,6 +142,9 @@ class BalancedSSDLayer(nn.Module):
     def forward(self, x_seq: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, dt: float = 1.0):
         batch_size, chunk_len, _ = x_seq.size()
 
+        if u_t.size(0) != batch_size:
+            u_t = u_t[:batch_size] if u_t.size(0) > batch_size else u_t.expand(batch_size, -1)
+
         curiosity = u_t.select(1, 0).view(batch_size, 1, 1, 1)
         na = u_t.select(1, 4).view(batch_size, 1, 1, 1)
         da = u_t.select(1, 5).view(batch_size, 1, 1, 1)
@@ -649,7 +652,10 @@ def run_exp_59_benchmark():
             g_gwt = agent.gateway.text_proj.weight.grad.norm().item() if agent.gateway.text_proj.weight.grad is not None else 0.0
             g_s1 = agent.stage1.ssd.q_proj.weight.grad.norm().item() if agent.stage1.ssd.q_proj.weight.grad is not None else 0.0
             g_s2 = agent.stage2.ssd.q_proj.weight.grad.norm().item() if agent.stage2.ssd.q_proj.weight.grad is not None else 0.0
-            g_sw1 = agent.stage1.swiglu.w_gate.weight.grad.norm().item() if agent.stage1.swiglu.w_gate.weight.grad is not None else 0.0
+            g_sw1 = 0.0
+            for p in agent.stage1.swiglu.parameters():
+                if p.grad is not None:
+                    g_sw1 = max(g_sw1, p.grad.norm().item())
             g_wm = agent.world_model.decoder_net[0].weight.grad.norm().item() if agent.world_model.decoder_net[0].weight.grad is not None else 0.0
             g_hop = agent.attractor_head.attractor_basins.grad.norm().item() if agent.attractor_head.attractor_basins.grad is not None else 0.0
 
@@ -665,14 +671,14 @@ def run_exp_59_benchmark():
             print("="*95)
 
         if (step + 1) % 75 == 0:
-            sample_text = agent.generate_natural_speech(diag_prompt, episodic_mem, hu.state, max_tokens=65)
+            sample_text = agent.generate_natural_speech(diag_prompt, episodic_mem, hu.state[0:1], max_tokens=65)
             logger.info(f"💬 [Live Diagnostic Speech Sample @ Step {step+1}] -> \"{sample_text}\"")
 
     if device.type == 'cuda': torch.cuda.synchronize()
     total_time_sec = time.perf_counter() - t_start
     final_loss = sum(losses[-30:]) / 30.0
     final_fe = sum(fe_list[-30:]) / 30.0
-    final_sample = agent.generate_natural_speech(diag_prompt, episodic_mem, hu.state, max_tokens=75)
+    final_sample = agent.generate_natural_speech(diag_prompt, episodic_mem, hu.state[0:1], max_tokens=75)
 
     # 2. FINAL TELEMETRY DASHBOARD
     print("\n" + "="*95)
