@@ -199,6 +199,54 @@ class CoREAgent(nn.Module):
         
         self.critic = nn.Linear(self.hidden_dim, 1).to(self.device)
 
+    def forward(self, sensor_inputs: Dict[str, torch.Tensor], h_fast: torch.Tensor, h_slow: torch.Tensor, u_t: torch.Tensor, dt: float = 1.0):
+        # 1. Gateway integration
+        text_in = sensor_inputs.get('text', torch.zeros(h_fast.size(0), self.text_dim, device=self.device))
+        vision_in = sensor_inputs.get('vision', torch.zeros(h_fast.size(0), self.config.net.vision_dim, device=self.device))
+        motor_in = sensor_inputs.get('motor_efference', torch.zeros(h_fast.size(0), self.action_dim, device=self.device))
+        
+        w_t, attn_weights, channel_names, epistemic_entropy = self.gateway(text_in, vision_in, motor_in, h_slow, u_t)
+        
+        # 2. Cortical Stack forward (single step as 1-len chunk)
+        x_in = self.in_proj(w_t).unsqueeze(1) # [B, 1, 512]
+        
+        # Reshape h_fast/h_slow to m_state if needed, or pass as m_prev
+        if h_fast.dim() == 2:
+            m_s1 = h_fast.view(h_fast.size(0), self.num_heads, self.head_k, self.head_v) if h_fast.numel() == h_fast.size(0) * self.num_heads * self.head_k * self.head_v else torch.zeros(h_fast.size(0), self.num_heads, self.head_k, self.head_v, device=self.device)
+        else:
+            m_s1 = h_fast
+            
+        if h_slow.dim() == 2:
+            m_s2 = h_slow.view(h_slow.size(0), self.num_heads, self.head_k, self.head_v) if h_slow.numel() == h_slow.size(0) * self.num_heads * self.head_k * self.head_v else torch.zeros(h_slow.size(0), self.num_heads, self.head_k, self.head_v, device=self.device)
+        else:
+            m_s2 = h_slow
+
+        h_s1_out, m_s1_next, dt1 = self.stage1(x_in, m_s1, u_t, dt)
+        h_s2_out, m_s2_next, dt2 = self.stage2(h_s1_out, m_s2, u_t, dt)
+        eff_dt = (dt1 + dt2) / 2.0
+
+        # Hopfield Attractor
+        h_flat = h_s2_out.view(-1, self.hidden_dim)
+        h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, u_t)
+        
+        # Motor outputs
+        motor_outs = self.output_gateway(h_relaxed)
+        actions = motor_outs.get("motor_action", torch.zeros(h_fast.size(0), self.action_dim, device=self.device))
+        cog_actions = motor_outs.get("cognitive_gating", torch.zeros(h_fast.size(0), self.config.net.cog_action_dim, device=self.device))
+        text_logits = motor_outs.get("text_generation", torch.zeros(h_fast.size(0), self.text_gen_dim, device=self.device))
+
+        # Latent Predictor
+        h_prev_proxy = m_s1.view(h_fast.size(0), -1)[:, :self.hidden_dim]
+        w_pred, kl_div, fe, z_t = self.world_model(h_prev_proxy, h_relaxed, w_t)
+        
+        value_est = self.critic(h_relaxed)
+        
+        # Return 12-element tuple for backward compatibility with init_priors and dialogue
+        h_fast_next = m_s1_next.view(h_fast.size(0), -1)[:, :self.hidden_dim]
+        h_slow_next = m_s2_next.view(h_slow.size(0), -1)[:, :self.hidden_dim]
+        
+        return (h_fast_next, h_slow_next, actions, cog_actions, text_logits, fe, attn_weights, w_t, w_pred, value_est, epistemic_entropy, eff_dt)
+
     def get_all_parameters(self) -> List[nn.Parameter]:
         params = (
             list(self.pos_embeddings.parameters()) + 
