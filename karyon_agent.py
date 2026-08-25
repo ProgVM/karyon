@@ -159,7 +159,7 @@ class CoREAgent(nn.Module):
     def get_all_parameters(self) -> List[nn.Parameter]:
         params = (
             list(self.pos_embeddings.parameters()) + 
-            list(self.episodic_sensory_proj.parameters()) +
+            list(self.episodic_sensory_proj.parameters()) + 
             list(self.motor_text_proj.parameters()) + 
             list(self.critic.parameters())
         )
@@ -257,10 +257,11 @@ class CoREAgent(nn.Module):
 
     def execute_wake_swr_micro_replay(self, episodic_memory: BatchedEpisodicMemory, num_samples: int = 4):
         """Executes ultra-fast (O(1)) awake Sharp-Wave Ripple micro-replay in background."""
-        if episodic_memory is None or episodic_memory.max_active_cpu < 3:
+        active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
+        if episodic_memory is None or active_slots < 3:
             return
         with torch.no_grad():
-            max_act = min(episodic_memory.max_active_cpu, episodic_memory.max_capacity)
+            max_act = min(active_slots, episodic_memory.max_capacity)
             rand_idx = torch.randint(0, max_act, (min(num_samples, max_act),), device=self.device)
             k_samples = episodic_memory.keys[0, rand_idx, :]
             h_dummy = torch.zeros(k_samples.size(0), self.hidden_dim, device=self.device)
@@ -270,7 +271,8 @@ class CoREAgent(nn.Module):
                                       num_replay_cycles: int = 5, downscaling_factor: float = 0.03):
         """Executes deep nocturnal sleep consolidation: Full Replay + SHY Downscaling + Somatic Reset."""
         self.train()
-        active_memory_slots = min(episodic_memory.max_active_cpu, episodic_memory.max_capacity)
+        active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
+        active_memory_slots = min(active_slots, episodic_memory.max_capacity)
         
         if active_memory_slots > 3:
             opt_replay = torch.optim.AdamW(self.get_all_parameters(), lr=5e-4, weight_decay=0.01)
@@ -323,7 +325,8 @@ class CoREAgent(nn.Module):
         
         volitional_recall_gate = torch.sigmoid(2.0 * noradrenaline + 1.5 * curiosity - 0.5 * (1.0 - energy))
         na_trigger = getattr(self.config.memory, 'volitional_na_trigger', 0.12)
-        should_search_memory = (episodic_memory is not None) and (noradrenaline.mean().item() > na_trigger) and (episodic_memory.max_active_cpu > 0)
+        active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
+        should_search_memory = (episodic_memory is not None) and (noradrenaline.mean().item() > na_trigger) and (active_slots > 0)
 
         if should_search_memory:
             with torch.no_grad():
@@ -482,7 +485,8 @@ class CoREAgent(nn.Module):
             h_out = self.channel_mixer(h_step_ssm)
 
             # Volitional Memory Recall (Active Inference Precision Gating)
-            if episodic_memory is not None and hu.state[0, 4].item() > 0.12 and episodic_memory.max_active_cpu > 0:
+            active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
+            if episodic_memory is not None and hu.state[0, 4].item() > 0.12 and active_slots > 0:
                 q_k = self.episodic_sensory_proj(t_emb.squeeze(1)).float()
                 ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.75, sigmoid_beta=15.0)
                 if (max_sim > 0.75).any():

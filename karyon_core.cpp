@@ -446,7 +446,6 @@ public:
         if (u_t.defined() && u_t.numel() >= 6) {
             da_val = u_t[0][5].item<float>();
         }
-        // Dopamine D1-receptor agonism: Sharpen attractor signal-to-noise ratio
         float beta = 1.0f + 1.5f * da_val;
 
         auto sim = torch::matmul(h_state, attractor_basins.transpose(0, 1)) * (scale * beta);
@@ -736,6 +735,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def_readwrite("batch_size", &BatchedEpisodicMemoryImpl::batch_size)
         .def_readwrite("memory_dim", &BatchedEpisodicMemoryImpl::memory_dim)
         .def_readwrite("max_capacity", &BatchedEpisodicMemoryImpl::max_capacity)
+        .def_readwrite("max_active_cpu", &BatchedEpisodicMemoryImpl::max_active_cpu)
         .def_readwrite("keys", &BatchedEpisodicMemoryImpl::keys)
         .def_readwrite("values", &BatchedEpisodicMemoryImpl::values)
         .def_readwrite("pointer", &BatchedEpisodicMemoryImpl::pointer)
