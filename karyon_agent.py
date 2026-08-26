@@ -63,8 +63,18 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MODULE 2: EXACT PARALLEL LOG-SPACE CUMULATIVE DECAY SSD LAYER
+# MODULE 2: EXACT PARALLEL LOG-SPACE CUMULATIVE DECAY SSD LAYER WITH ROPE
 # =============================================================================
+
+def rotate_half(x: torch.Tensor) -> torch.Tensor:
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+def apply_rotary_pos_emb(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> tuple:
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    return q_embed, k_embed
 
 class ParallelLogDecaySSDLayer(nn.Module):
     def __init__(self, in_dim: int = 512, out_dim: int = 512, num_heads: int = 8,
@@ -80,6 +90,7 @@ class ParallelLogDecaySSDLayer(nn.Module):
         self.q_proj = nn.Linear(in_dim, num_heads * head_k)
         self.k_proj = nn.Linear(in_dim, num_heads * head_k)
         self.v_proj = nn.Linear(in_dim, num_heads * head_v)
+        self.z_proj = nn.Linear(in_dim, num_heads * head_v)
         self.delta_proj = nn.Linear(in_dim, num_heads)
 
         betas = torch.exp(torch.linspace(math.log(max_beta), math.log(min_beta), num_heads))
@@ -90,6 +101,18 @@ class ParallelLogDecaySSDLayer(nn.Module):
         self.head_norm = nn.GroupNorm(num_groups=num_heads, num_channels=num_heads * head_v)
         self.out_proj = nn.Linear(num_heads * head_v, out_dim)
         self.norm = nn.LayerNorm(out_dim)
+
+        # Precompute RoPE frequencies for head_k
+        inv_freq = 1.0 / (10000.0 ** (torch.arange(0, head_k, 2, dtype=torch.float32) / head_k))
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+    def _get_rope_cos_sin(self, chunk_len: int, device: torch.device, dtype: torch.dtype):
+        t = torch.arange(chunk_len, device=device, dtype=self.inv_freq.dtype)
+        freqs = torch.outer(t, self.inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1)
+        cos = emb.cos().view(1, 1, chunk_len, self.head_k).to(dtype)
+        sin = emb.sin().view(1, 1, chunk_len, self.head_k).to(dtype)
+        return cos, sin
 
     def forward(self, x_seq: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, 
                 saliency_gate: torch.Tensor = None, dt: float = 1.0):
@@ -106,6 +129,11 @@ class ParallelLogDecaySSDLayer(nn.Module):
         q = (self.q_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)) * self.inv_sqrt_k
         k = self.k_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)
         v = self.v_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_v).transpose(1, 2)
+        z = F.silu(self.z_proj(x_seq)).view(batch_size * chunk_len, self.num_heads * self.head_v)
+
+        # Apply Rotary Position Embeddings (RoPE) to Q and K
+        cos, sin = self._get_rope_cos_sin(chunk_len, x_seq.device, x_seq.dtype)
+        q, k = apply_rotary_pos_emb(q, k, cos, sin)
 
         # Base alpha per head and token: [B, H, chunk_len]
         selective_delta = F.softplus(self.delta_proj(x_seq)).view(batch_size, chunk_len, self.num_heads).transpose(1, 2)
@@ -138,7 +166,8 @@ class ParallelLogDecaySSDLayer(nn.Module):
 
         y_total = (y_intra + y_inter).transpose(1, 2).reshape(batch_size * chunk_len, self.num_heads * self.head_v)
         y_normed = self.head_norm(y_total)
-        h_chunk = self.norm(self.out_proj(y_normed))
+        y_gated = y_normed * z
+        h_chunk = self.norm(self.out_proj(y_gated))
 
         lambda_end = lambda_t[:, :, -1:].unsqueeze(-1) # [B, H, 1, 1]
         decay_to_end = torch.exp(torch.clamp(lambda_end - lambda_t.unsqueeze(-1), -20.0, 0.0)) # [B, H, chunk_len, 1]
@@ -158,7 +187,7 @@ class ParallelLogDecaySSDLayer(nn.Module):
 # =============================================================================
 
 class EntropyAdaptiveBoundaryDetector(nn.Module):
-    def __init__(self, hidden_dim: int = 512):
+    def __init__(self, hidden_dim: int = 768):
         super().__init__()
         self.boundary_gate_net = nn.Sequential(
             nn.Linear(hidden_dim, 128),
