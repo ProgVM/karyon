@@ -98,3 +98,4 @@ Karyon-CoRE development strictly follows the **KEP Protocol**:
 Distributed under the **MIT License**.
 
 Designed and created by **Bazilevs (ProgVM member)** in 2026.
+ 
