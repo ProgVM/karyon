@@ -2,8 +2,11 @@
 """
 ===============================================================================
 KARYON MASSIVE HIGH-VELOCITY STREAMING RUNTIME (52k DATASET, N=5)
-Allostatic Active Inference Architecture (v18.5 Master): Native C++ Selective
-Delta Gating, Modern Hopfield Commitment Loss, Nocturnal Sleep Consolidation.
+Allostatic Active Inference Architecture (v22.0 Master Native C++20 Engine):
+- Native PW-LPER 2-Stage Cascaded Cortical Stack
+- Native Log-Decay Parallel SSD Scan with RoPE & Mamba-2 GLU Output Gating
+- Native Multi-Scale Byte Pyramid Receptive Field & EABS Boundary Detector
+- Modern Hopfield Commitment Loss, Nocturnal Sleep Consolidation
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -104,11 +107,11 @@ dataset = load_dataset("vicgalle/alpaca-gpt4", split="train")
 tokenizer = ByteTokenizer()
 
 # =============================================================================
-# 1. CONTINUOUS PACKED STREAM DATASET (0% PADDING, S=2048)
+# 1. CONTINUOUS PACKED STREAM DATASET (0% PADDING, S=1024)
 # =============================================================================
 class ContinuousPackedDataset(Dataset):
-    """Zero-Padding Continuous Stream Packing with EOS Separators (S=2048)."""
-    def __init__(self, hf_data, tokenizer, seq_len=2048):
+    """Zero-Padding Continuous Stream Packing with EOS Separators (S=1024)."""
+    def __init__(self, hf_data, tokenizer, seq_len=1024):
         self.seq_len = seq_len
         full_token_stream = []
 
@@ -137,8 +140,8 @@ class ContinuousPackedDataset(Dataset):
 def collate_packed_fn(batch):
     return torch.stack(batch, dim=0)
 
-BATCH_SIZE = 64
-SEQ_LEN = 2048
+BATCH_SIZE = 32
+SEQ_LEN = 1024
 NUM_PASSES = 5
 CHUNK_SIZE = 64
 
@@ -242,7 +245,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.train()
     return "".join(generated_chars).strip()
 
-logger.info(f"Starting High-Occupancy Session ({NUM_PASSES} Passes, B={BATCH_SIZE}, S={SEQ_LEN}, 131k tokens/step)...")
+logger.info(f"Starting High-Occupancy Session ({NUM_PASSES} Passes, B={BATCH_SIZE}, S={SEQ_LEN}, 32,768 tokens/step)...")
 
 # =============================================================================
 # 4. PRODUCTION MULTI-PASS STREAMING LOOP WITH NOCTURNAL SLEEP CONSOLIDATION

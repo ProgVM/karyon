@@ -1,14 +1,14 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v22.0 MASTER (ACTIVE INFERENCE PRECISION-WEIGHTED LAMINAR ARCHITECTURE)
-Grounded in Principle 1 (C++20 as Engine) & Principle 2 (Biological Realism):
-- 2-Stage Cascaded Cortical Stack (Fast Morpho-Syntactic + Slow Semantic Sheets)
-- Precision-Weighted Laminar Error Routing (PW-LPER - EXP-75 Validated)
-- Multi-Scale Morphological Byte Pyramid Receptive Field (EXP-70 Validated)
-- Causal Depthwise ConvSwiGLU Channel-Mixing (EXP-73/EXP-74 Validated)
-- Exact Parallel Log-Space Cumulative Retention Decay Scan (EXP-63 Validated)
-- Entropy-Adaptive Word/Morpheme Boundary Saliency Detector (EABS)
+KARYON AGENT CORE v22.0 MASTER (ACTIVE INFERENCE NATIVE C++20 CORTICAL ARCHITECTURE)
+Grounded in Principle 1 (C++20 as Engine, Python as Client) & Principle 2 (Biological Realism):
+- 100% Native C++20 2-Stage Cascaded Cortical Stack (Fast Morpho-Syntactic + Slow Semantic)
+- Native Precision-Weighted Laminar Error Routing (PW-LPER - EXP-75 & EXP-81 Validated)
+- Native Multi-Scale Morphological Byte Pyramid Receptive Field (EXP-70 Validated)
+- Native Causal Depthwise ConvSwiGLU Channel-Mixing (EXP-73/EXP-74 Validated)
+- Native Exact Parallel Log-Space Cumulative Retention Decay Scan with RoPE & Mamba-2 Gating
+- Native Entropy-Adaptive Word/Morpheme Boundary Detector (EABS)
 - Theta-Gamma PAC Entropy-Adaptive Decoding & Mamba-2 Head Equalization
 - Active Inference Latent World Model & Autocast-Safe Episodic Projections
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
@@ -27,7 +27,14 @@ from karyon_core import (
     SensoryGateway,
     MotorGateway,
     CausalByteReceptiveField,
+    MultiScaleBytePyramidReceptiveField,
+    ParallelLogDecaySSDLayer,
+    CalibratedParallelSSDCore,
+    CausalConvSwiGLUBlock,
     ParallelSwiGLUBlock,
+    EntropyAdaptiveBoundaryDetector,
+    CorticalStage,
+    PrecisionWeightedLPER,
     DesaturatedHopfieldAttractorHead,
     LatentPredictor,
     BatchedEpisodicMemory
@@ -35,49 +42,8 @@ from karyon_core import (
 
 
 # =============================================================================
-# MODULE 1: MULTI-SCALE MORPHOLOGICAL BYTE PYRAMID RECEPTIVE FIELD (EXP-70)
+# MODULE 1: POSITIONAL BYTE EMBEDDING WITH NATIVE MULTI-SCALE PYRAMID RF
 # =============================================================================
-
-class MultiScaleBytePyramidReceptiveField(nn.Module):
-    """
-    Multi-Scale Causal Depthwise Byte Pyramid covering:
-    - Micro Scale (K=2): Short operators, ASCII punctuation, bigrams
-    - Meso Scale (K=4): Syllables, morphemes (prefixes/suffixes)
-    - Macro Scale (K=8): Common word stems and lexical chunks
-    Merged via dynamic softmax scale gating (EXP-70 Validated).
-    """
-    def __init__(self, text_dim: int = 256):
-        super().__init__()
-        self.text_dim = text_dim
-        
-        self.conv_k2 = nn.Conv1d(text_dim, text_dim, kernel_size=2, groups=text_dim, bias=False)
-        self.conv_k4 = nn.Conv1d(text_dim, text_dim, kernel_size=4, groups=text_dim, bias=False)
-        self.conv_k8 = nn.Conv1d(text_dim, text_dim, kernel_size=8, groups=text_dim, bias=False)
-        
-        self.scale_gate = nn.Linear(text_dim, 3)
-        self.norm = nn.LayerNorm(text_dim)
-
-    def forward(self, x_seq: torch.Tensor) -> torch.Tensor:
-        batch_size, seq_len, _ = x_seq.size()
-        x_trans = x_seq.transpose(1, 2)
-
-        x_pad_k2 = F.pad(x_trans, (1, 0))
-        out_k2 = F.silu(self.conv_k2(x_pad_k2)).transpose(1, 2)
-
-        x_pad_k4 = F.pad(x_trans, (3, 0))
-        out_k4 = F.silu(self.conv_k4(x_pad_k4)).transpose(1, 2)
-
-        x_pad_k8 = F.pad(x_trans, (7, 0))
-        out_k8 = F.silu(self.conv_k8(x_pad_k8)).transpose(1, 2)
-
-        gates = F.softmax(self.scale_gate(x_seq), dim=-1)
-        g2 = gates[..., 0:1]
-        g4 = gates[..., 1:2]
-        g8 = gates[..., 2:3]
-
-        pyramid_out = g2 * out_k2 + g4 * out_k4 + g8 * out_k8
-        return self.norm(x_seq + pyramid_out)
-
 
 class OffsetPositionalByteEmbedding(nn.Module):
     def __init__(self, vocab_size=258, text_dim=256, max_len=8192, device_str='cpu'):
@@ -85,7 +51,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
         self.vocab_size = vocab_size
         self.text_dim = text_dim
         self.byte_embed = nn.Embedding(vocab_size, text_dim)
-        self.receptive_field = MultiScaleBytePyramidReceptiveField(text_dim=text_dim)
+        self.receptive_field = MultiScaleBytePyramidReceptiveField(text_dim=text_dim, device=device_str)
         
         pe = torch.zeros(max_len, text_dim)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
@@ -103,269 +69,6 @@ class OffsetPositionalByteEmbedding(nn.Module):
         if apply_rf and seq_len > 1:
             embedded = self.receptive_field(embedded)
         return embedded
-
-
-# =============================================================================
-# MODULE 2: EXACT PARALLEL LOG-SPACE CUMULATIVE DECAY SSD LAYER WITH ROPE
-# =============================================================================
-
-def rotate_half(x: torch.Tensor) -> torch.Tensor:
-    x1 = x[..., : x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2 :]
-    return torch.cat((-x2, x1), dim=-1)
-
-def apply_rotary_pos_emb(q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> tuple:
-    q_embed = (q * cos) + (rotate_half(q) * sin)
-    k_embed = (k * cos) + (rotate_half(k) * sin)
-    return q_embed, k_embed
-
-class ParallelLogDecaySSDLayer(nn.Module):
-    def __init__(self, in_dim: int = 768, out_dim: int = 768, num_heads: int = 12,
-                 head_k: int = 64, head_v: int = 128, min_beta: float = 0.0005, max_beta: float = 0.08):
-        super().__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-        self.num_heads = num_heads
-        self.head_k = head_k
-        self.head_v = head_v
-        self.inv_sqrt_k = 1.0 / math.sqrt(head_k)
-
-        self.q_proj = nn.Linear(in_dim, num_heads * head_k)
-        self.k_proj = nn.Linear(in_dim, num_heads * head_k)
-        self.v_proj = nn.Linear(in_dim, num_heads * head_v)
-        self.z_proj = nn.Linear(in_dim, num_heads * head_v)
-        self.delta_proj = nn.Linear(in_dim, num_heads)
-
-        betas = torch.exp(torch.linspace(math.log(max_beta), math.log(min_beta), num_heads))
-        alphas = 1.0 - betas
-        logit_init = torch.log(alphas / (1.0 - alphas)).view(1, num_heads, 1)
-        self.decay_logits = nn.Parameter(logit_init)
-
-        self.head_norm = nn.GroupNorm(num_groups=num_heads, num_channels=num_heads * head_v)
-        self.out_proj = nn.Linear(num_heads * head_v, out_dim)
-        self.norm = nn.LayerNorm(out_dim)
-
-        inv_freq = 1.0 / (10000.0 ** (torch.arange(0, head_k, 2, dtype=torch.float32) / head_k))
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
-
-        self._cos_cached = None
-        self._sin_cached = None
-        self._causal_mask_cached = None
-
-    def _get_rope_cos_sin(self, chunk_len: int, device: torch.device, dtype: torch.dtype):
-        if self._cos_cached is not None and self._cos_cached.size(2) == chunk_len and self._cos_cached.device == device and self._cos_cached.dtype == dtype:
-            return self._cos_cached, self._sin_cached
-
-        t = torch.arange(chunk_len, device=device, dtype=self.inv_freq.dtype)
-        freqs = torch.outer(t, self.inv_freq)
-        emb = torch.cat((freqs, freqs), dim=-1)
-        cos = emb.cos().view(1, 1, chunk_len, self.head_k).to(dtype)
-        sin = emb.sin().view(1, 1, chunk_len, self.head_k).to(dtype)
-        self._cos_cached = cos
-        self._sin_cached = sin
-        return cos, sin
-
-    def forward(self, x_seq: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, 
-                saliency_gate: torch.Tensor = None, dt: float = 1.0):
-        batch_size, chunk_len, _ = x_seq.size()
-
-        if u_t.size(0) != batch_size:
-            u_t = u_t[:batch_size] if u_t.size(0) > batch_size else u_t.expand(batch_size, -1)
-
-        curiosity = u_t.select(1, 0).view(batch_size, 1, 1, 1)
-        na = u_t.select(1, 4).view(batch_size, 1, 1, 1)
-        da = u_t.select(1, 5).view(batch_size, 1, 1, 1)
-        eff_dt = torch.clamp(dt * (1.0 - 0.4 * na + 0.4 * da), 0.30, 2.00)
-
-        q = (self.q_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)) * self.inv_sqrt_k
-        k = self.k_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)
-        v = self.v_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_v).transpose(1, 2)
-        z = F.silu(self.z_proj(x_seq)).view(batch_size * chunk_len, self.num_heads * self.head_v)
-
-        cos, sin = self._get_rope_cos_sin(chunk_len, x_seq.device, x_seq.dtype)
-        q, k = apply_rotary_pos_emb(q, k, cos, sin)
-
-        selective_delta = F.softplus(self.delta_proj(x_seq)).view(batch_size, chunk_len, self.num_heads).transpose(1, 2)
-        base_alpha = torch.sigmoid(self.decay_logits)
-        alpha = torch.pow(base_alpha, (selective_delta * eff_dt.squeeze(-1)).clamp(0.1, 10.0))
-
-        if saliency_gate is not None:
-            alpha = alpha * (1.0 - 0.80 * saliency_gate)
-
-        alpha = torch.clamp(alpha, 1e-4, 0.9999)
-        log_alpha = torch.log(alpha)
-        beta = 1.0 - alpha
-
-        lambda_t = torch.cumsum(log_alpha, dim=-1)
-
-        log_decay_matrix = lambda_t.unsqueeze(-1) - lambda_t.unsqueeze(-2)
-        decay_matrix = torch.exp(torch.clamp(log_decay_matrix, -20.0, 0.0))
-
-        if self._causal_mask_cached is not None and self._causal_mask_cached.size(2) == chunk_len and self._causal_mask_cached.device == x_seq.device:
-            causal_mask = self._causal_mask_cached
-        else:
-            pos = torch.arange(chunk_len, device=x_seq.device)
-            causal_mask = (pos.unsqueeze(1) >= pos.unsqueeze(0)).float().view(1, 1, chunk_len, chunk_len)
-            self._causal_mask_cached = causal_mask
-
-        decay_weights = decay_matrix * causal_mask
-
-        s_matrix = torch.matmul(q, k.transpose(-1, -2)) * decay_weights
-        y_intra = torch.matmul(s_matrix, v)
-
-        decay_to_start = torch.exp(torch.clamp(lambda_t, -20.0, 0.0)).unsqueeze(-1)
-        y_inter = torch.matmul(q.float() * decay_to_start, m_prev.float()).to(q.dtype)
-
-        y_total = (y_intra + y_inter).transpose(1, 2).reshape(batch_size * chunk_len, self.num_heads * self.head_v)
-        y_normed = self.head_norm(y_total)
-        y_gated = y_normed * z
-        h_chunk = self.norm(self.out_proj(y_gated))
-
-        lambda_end = lambda_t[:, :, -1:].unsqueeze(-1)
-        decay_to_end = torch.exp(torch.clamp(lambda_end - lambda_t.unsqueeze(-1), -20.0, 0.0))
-        k_decayed = k.float() * decay_to_end * beta.unsqueeze(-1).float()
-        kv_chunk_update = torch.matmul(k_decayed.transpose(-1, -2), v.float())
-
-        alpha_chunk = torch.exp(torch.clamp(lambda_t[:, :, -1:], -20.0, 0.0)).unsqueeze(-1)
-        sigma_somatic = 1e-3 * (0.8 * curiosity.float() + 0.4 * na.float() + 0.1)
-        dW = torch.randn_like(m_prev) * torch.sqrt(eff_dt.float()) * sigma_somatic
-        m_next = alpha_chunk * m_prev.float() + kv_chunk_update + dW
-
-        return h_chunk, m_next, eff_dt.mean().item()
-
-
-# =============================================================================
-# MODULE 3: ENTROPY-ADAPTIVE BOUNDARY DETECTOR (EABS)
-# =============================================================================
-
-class EntropyAdaptiveBoundaryDetector(nn.Module):
-    def __init__(self, hidden_dim: int = 768):
-        super().__init__()
-        self.boundary_gate_net = nn.Sequential(
-            nn.Linear(hidden_dim, 128),
-            nn.SiLU(),
-            nn.Linear(128, 1),
-            nn.Sigmoid()
-        )
-        self.register_buffer('boundary_bytes', torch.tensor([32, 10, 44, 46, 58, 59, 63, 33, 34, 39], dtype=torch.long))
-
-    def forward(self, h_stage1: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
-        pred_boundary = self.boundary_gate_net(h_stage1)
-        is_token_boundary = torch.isin(input_ids, self.boundary_bytes).float().unsqueeze(-1)
-        saliency = torch.clamp(0.05 + 0.60 * pred_boundary + 0.35 * is_token_boundary, 0.0, 1.0)
-        return saliency.squeeze(-1).unsqueeze(1)
-
-
-# =============================================================================
-# MODULE 4: CAUSAL DEPTHWISE CONVSWIGLU CHANNEL-MIXING BLOCK (EXP-73/74)
-# =============================================================================
-
-class CausalConvSwiGLUBlock(nn.Module):
-    """
-    SwiGLU Channel-Mixing Block with Causal Depthwise Conv1d (K=kernel_size) inside the gate branch:
-    gate = SiLU(CausalConv1d_K(W_gate X))
-    up = W_up X
-    ffn_out = W_down (gate * up)
-    Supplies local n-gram temporal context during non-linear channel synthesis.
-    """
-    def __init__(self, hidden_dim: int = 768, expand_dim: int = 3072, kernel_size: int = 3):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.expand_dim = expand_dim
-        self.kernel_size = kernel_size
-        self.pad_left = kernel_size - 1
-
-        self.w_gate = nn.Linear(hidden_dim, expand_dim, bias=False)
-        self.gate_conv = nn.Conv1d(expand_dim, expand_dim, kernel_size=kernel_size, groups=expand_dim, bias=False)
-        self.w_up = nn.Linear(hidden_dim, expand_dim, bias=False)
-        self.w_down = nn.Linear(expand_dim, hidden_dim, bias=False)
-        self.norm = nn.LayerNorm(hidden_dim)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        batch_size, seq_len, _ = x.size()
-        raw_gate = self.w_gate(x)
-        
-        gate_trans = raw_gate.transpose(1, 2)
-        gate_pad = F.pad(gate_trans, (self.pad_left, 0))
-        conv_gate = self.gate_conv(gate_pad).transpose(1, 2)
-        
-        gate = F.silu(conv_gate)
-        up = self.w_up(x)
-        ffn_out = self.w_down(gate * up)
-        return self.norm(x + ffn_out)
-
-
-# =============================================================================
-# MODULE 5: CORTICAL STAGE (SSD + CONVSWIGLU + PRE-LAYERNORM)
-# =============================================================================
-
-class CorticalStage(nn.Module):
-    def __init__(self, hidden_dim: int = 768, expand_dim: int = 3072, num_heads: int = 12,
-                 head_k: int = 64, head_v: int = 128, min_beta: float = 0.0005, max_beta: float = 0.08,
-                 swiglu_kernel_size: int = 3, device_str: str = 'cpu'):
-        super().__init__()
-        self.pre_norm_ssd = nn.LayerNorm(hidden_dim)
-        self.ssd = ParallelLogDecaySSDLayer(
-            in_dim=hidden_dim, out_dim=hidden_dim, num_heads=num_heads,
-            head_k=head_k, head_v=head_v, min_beta=min_beta, max_beta=max_beta
-        )
-        self.pre_norm_swiglu = nn.LayerNorm(hidden_dim)
-        self.swiglu = CausalConvSwiGLUBlock(
-            hidden_dim=hidden_dim,
-            expand_dim=expand_dim,
-            kernel_size=swiglu_kernel_size
-        )
-
-    def forward(self, x: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, 
-                saliency_gate: torch.Tensor = None, dt: float = 1.0):
-        norm_x = self.pre_norm_ssd(x)
-        h_ssd, m_next, eff_dt = self.ssd(norm_x, m_prev, u_t, saliency_gate=saliency_gate, dt=dt)
-        x_res1 = x + h_ssd.view_as(x)
-
-        norm_res1 = self.pre_norm_swiglu(x_res1)
-        x_out = self.swiglu(norm_res1)
-
-        return x_out, m_next, eff_dt
-
-
-# =============================================================================
-# MODULE 6: PRECISION-WEIGHTED LAMINAR ERROR ROUTING (PW-LPER - EXP-75 VALIDATED)
-# =============================================================================
-
-class PrecisionWeightedLPER(nn.Module):
-    """
-    Karl Friston Active Inference Precision-Weighted Laminar Error Routing (PW-LPER):
-    e1_raw = h1 - TopDownPred(h1_shifted)
-    Pi_t = 2.0 * Sigmoid(Precision_Net([h1, h1_pred, NA_level]))
-    e1_weighted = Pi_t * e1_raw
-    """
-    def __init__(self, hidden_dim: int = 768):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.topdown_pred_net = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim)
-        )
-        self.precision_net = nn.Sequential(
-            nn.Linear(hidden_dim * 2 + 1, 128),
-            nn.SiLU(),
-            nn.Linear(128, hidden_dim),
-            nn.Sigmoid()
-        )
-
-    def forward(self, h_s1: torch.Tensor, h1_prev_last: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, float]:
-        batch_size, chunk_len, _ = h_s1.size()
-        h1_shifted = torch.cat([h1_prev_last, h_s1[:, :-1, :]], dim=1)
-        h1_pred = self.topdown_pred_net(h1_shifted)
-        e1_raw = h_s1 - h1_pred
-
-        na_level = u_t[:, 4:5].unsqueeze(1).expand(-1, chunk_len, -1)
-        prec_in = torch.cat([h_s1, h1_pred, na_level], dim=-1)
-        pi_t = 2.0 * self.precision_net(prec_in)
-
-        e1_weighted = pi_t * e1_raw
-        return e1_weighted, h_s1[:, -1:, :].detach(), pi_t.mean().item()
 
 
 # =============================================================================
@@ -412,26 +115,26 @@ class CoREAgent(nn.Module):
         )
         self.in_proj = nn.Linear(self.text_dim, self.hidden_dim).to(self.device)
         
-        # 2. 2-Stage Cascaded Cortical Stack
+        # 2. Native C++20 2-Stage Cascaded Cortical Stack
         # Stage 1: Fast Morpho-Syntactic Cortical Sheet (Decay 0.005 - 0.15, ConvSwiGLU K=3)
         self.stage1 = CorticalStage(
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
             head_k=self.head_k, head_v=self.head_v, min_beta=0.005, max_beta=0.15,
-            swiglu_kernel_size=3, device_str=self.device_str
-        ).to(self.device)
+            swiglu_kernel_size=3, device=self.device_str
+        )
 
-        # Entropy-Adaptive Word/Morpheme Boundary Detector (EABS)
-        self.boundary_detector = EntropyAdaptiveBoundaryDetector(hidden_dim=self.hidden_dim).to(self.device)
+        # Native Entropy-Adaptive Word/Morpheme Boundary Detector (EABS)
+        self.boundary_detector = EntropyAdaptiveBoundaryDetector(hidden_dim=self.hidden_dim, device=self.device_str)
 
-        # Precision-Weighted LPER Module (EXP-75 Validated)
-        self.pw_lper = PrecisionWeightedLPER(hidden_dim=self.hidden_dim).to(self.device)
+        # Native Precision-Weighted LPER Module (EXP-75 & EXP-81 Validated)
+        self.pw_lper = PrecisionWeightedLPER(hidden_dim=self.hidden_dim, device=self.device_str)
 
         # Stage 2: Slow Semantic-Discourse Cortical Sheet (Decay 0.0001 - 0.05, ConvSwiGLU K=7)
         self.stage2 = CorticalStage(
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
             head_k=self.head_k, head_v=self.head_v, min_beta=0.0001, max_beta=0.05,
-            swiglu_kernel_size=7, device_str=self.device_str
-        ).to(self.device)
+            swiglu_kernel_size=7, device=self.device_str
+        )
 
         # 3. Active Inference Latent World Model (Predictive Coding)
         self.world_model = LatentPredictor(
@@ -488,14 +191,14 @@ class CoREAgent(nn.Module):
         else:
             m_s2 = h_slow
 
-        h_s1_out, m_s1_next, dt1 = self.stage1(x_in, m_s1, u_t, dt=dt)
+        h_s1_out, m_s1_next, dt1 = self.stage1(x_in, m_s1, u_t, torch.Tensor(), dt)
         dummy_ids = torch.zeros(x_in.size(0), 1, dtype=torch.long, device=self.device)
         sal_gate = self.boundary_detector(h_s1_out, dummy_ids)
 
         h1_prev_proxy = m_s1.view(h_fast.size(0), -1)[:, :self.hidden_dim].unsqueeze(1)
         e1_weighted, _, _ = self.pw_lper(h_s1_out, h1_prev_proxy, u_t)
 
-        h_s2_out, m_s2_next, dt2 = self.stage2(e1_weighted, m_s2, u_t, saliency_gate=sal_gate, dt=dt)
+        h_s2_out, m_s2_next, dt2 = self.stage2(e1_weighted, m_s2, u_t, sal_gate, dt)
         eff_dt = (dt1 + dt2) / 2.0
 
         h_combined = h_s1_out + h_s2_out
@@ -696,7 +399,6 @@ class CoREAgent(nn.Module):
         # 1. Vectorized full-sequence embedding, receptive field, and linear projection
         full_emb = self.pos_embeddings(input_seq, start_pos=0, apply_rf=True)
         full_h_in = self.in_proj(full_emb)
-        full_is_boundary = torch.isin(input_seq, self.boundary_detector.boundary_bytes).float().unsqueeze(-1)
         
         num_chunks = max(1, seq_len // chunk_size)
         chunk_losses = []
@@ -716,19 +418,17 @@ class CoREAgent(nn.Module):
             chunk_tgt = target_seq[:, c_start:c_end]
             h_in = full_h_in[:, c_start:c_end, :]
 
-            # Stage 1: Fast Morpho-Syntactic Cortical Pass
-            h_s1, m_s1, dt1 = self.stage1(h_in, m_s1, curr_u_t, dt=1.0)
+            # Stage 1: Fast Morpho-Syntactic Cortical Pass (Native C++)
+            h_s1, m_s1, dt1 = self.stage1(h_in, m_s1, curr_u_t, torch.Tensor(), 1.0)
 
-            # Detect Dynamic Word / Morpheme Boundary Saliency (EABS)
-            pred_bnd = self.boundary_detector.boundary_gate_net(h_s1)
-            is_bnd = full_is_boundary[:, c_start:c_end, :]
-            saliency_gate = torch.clamp(0.05 + 0.60 * pred_bnd + 0.35 * is_bnd, 0.0, 1.0).squeeze(-1).unsqueeze(1)
+            # Detect Dynamic Word / Morpheme Boundary Saliency (EABS Native C++)
+            saliency_gate = self.boundary_detector(h_s1, chunk_in)
 
-            # --- PRECISION-WEIGHTED LAMINAR ERROR ROUTING (PW-LPER - EXP-75) ---
+            # --- PRECISION-WEIGHTED LAMINAR ERROR ROUTING (PW-LPER Native C++) ---
             e1_weighted, h1_prev_last, _ = self.pw_lper(h_s1, h1_prev_last, curr_u_t)
 
-            # Stage 2: Slow Semantic-Discourse Pass on Precision-Weighted Error e1_weighted
-            h_s2, m_s2, dt2 = self.stage2(e1_weighted, m_s2, curr_u_t, saliency_gate=saliency_gate, dt=1.0)
+            # Stage 2: Slow Semantic-Discourse Pass on Precision-Weighted Error e1_weighted (Native C++)
+            h_s2, m_s2, dt2 = self.stage2(e1_weighted, m_s2, curr_u_t, saliency_gate, 1.0)
             last_eff_dt = (dt1 + dt2) / 2.0
 
             # Combined Laminar Representation (Stage 1 + Stage 2)
@@ -814,11 +514,11 @@ class CoREAgent(nn.Module):
             c_emb = prompt_embs[:, c_idx : min(c_idx + 64, prompt_len), :]
             c_in = prompt_tokens[:, c_idx : min(c_idx + 64, prompt_len)]
             h_in = self.in_proj(c_emb)
-            h_s1, m_s1, _ = self.stage1(h_in, m_s1, hu_st, dt=1.0)
+            h_s1, m_s1, _ = self.stage1(h_in, m_s1, hu_st, torch.Tensor(), 1.0)
             sal_gate = self.boundary_detector(h_s1, c_in)
 
             e1_weighted, h1_prev_last, _ = self.pw_lper(h_s1, h1_prev_last, hu_st)
-            h_s2, m_s2, _ = self.stage2(e1_weighted, m_s2, hu_st, saliency_gate=sal_gate, dt=1.0)
+            h_s2, m_s2, _ = self.stage2(e1_weighted, m_s2, hu_st, sal_gate, 1.0)
         
         rolling_token_ids = prompt_tokens[0].tolist()
         energy_action_cost = torch.tensor([[getattr(config.homeo, 'motor_speech_cost_per_patch', 0.0015)]], device=self.device)
@@ -837,11 +537,11 @@ class CoREAgent(nn.Module):
             t_emb = window_emb[:, -1:, :]
             
             h_in = self.in_proj(t_emb)
-            h_s1, m_s1, _ = self.stage1(h_in, m_s1, hu_st, dt=1.0)
+            h_s1, m_s1, _ = self.stage1(h_in, m_s1, hu_st, torch.Tensor(), 1.0)
             sal_gate = self.boundary_detector(h_s1, window_t[:, -1:])
 
             e1_weighted, h1_prev_last, _ = self.pw_lper(h_s1, h1_prev_last, hu_st)
-            h_s2, m_s2, _ = self.stage2(e1_weighted, m_s2, hu_st, saliency_gate=sal_gate, dt=1.0)
+            h_s2, m_s2, _ = self.stage2(e1_weighted, m_s2, hu_st, sal_gate, 1.0)
             h_combined = h_s1 + h_s2
 
             # Volitional Memory Recall

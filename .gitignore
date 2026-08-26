@@ -55,6 +55,7 @@ tmp/
 *.tar.gz
 *.zip
 *.h5
+*.kcore
 
 # --- IDE & OS System Artifacts ---
 .vscode/
