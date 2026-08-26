@@ -1,11 +1,14 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v19.0 MASTER (2-STAGE CORTICAL ACTIVE INFERENCE ARCHITECTURE)
+KARYON AGENT CORE v21.0 MASTER (LAMINAR PREDICTIVE ACTIVE INFERENCE ARCHITECTURE)
 Grounded in Principle 1 (C++20 as Engine) & Principle 2 (Biological Realism):
-2-Stage Compositional Cortical Stack (Morpho-Syntactic + Semantic Sheets),
-Theta-Gamma PAC Entropy-Adaptive Decoding, Mamba-2 Head Equalization,
-Active Inference Latent World Model, and High-Velocity Packed Streaming.
+- 2-Stage Cascaded Cortical Stack (Fast Morpho-Syntactic + Slow Semantic Sheets)
+- Laminar Predictive Error Routing (LPER - EXP-64 Validated)
+- Exact Parallel Log-Space Cumulative Retention Decay Scan (EXP-63 Validated)
+- Entropy-Adaptive Word/Morpheme Boundary Saliency Detector (EABS)
+- Theta-Gamma PAC Entropy-Adaptive Decoding & Mamba-2 Head Equalization
+- Active Inference Latent World Model & Autocast-Safe Episodic Projections
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -22,7 +25,6 @@ from karyon_core import (
     SensoryGateway,
     MotorGateway,
     CausalByteReceptiveField,
-    CalibratedParallelSSDCore,
     ParallelSwiGLUBlock,
     DesaturatedHopfieldAttractorHead,
     LatentPredictor,
@@ -61,27 +63,130 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MODULE 2: CORTICAL STAGE (SSD TIME-MIXING + SWIGLU CHANNEL-MIXING + PRE-LAYERNORM)
+# MODULE 2: EXACT PARALLEL LOG-SPACE CUMULATIVE DECAY SSD LAYER
+# =============================================================================
+
+class ParallelLogDecaySSDLayer(nn.Module):
+    def __init__(self, in_dim: int = 512, out_dim: int = 512, num_heads: int = 8,
+                 head_k: int = 64, head_v: int = 128, min_beta: float = 0.0005, max_beta: float = 0.08):
+        super().__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.num_heads = num_heads
+        self.head_k = head_k
+        self.head_v = head_v
+        self.inv_sqrt_k = 1.0 / math.sqrt(head_k)
+
+        self.q_proj = nn.Linear(in_dim, num_heads * head_k)
+        self.k_proj = nn.Linear(in_dim, num_heads * head_k)
+        self.v_proj = nn.Linear(in_dim, num_heads * head_v)
+        self.delta_proj = nn.Linear(in_dim, num_heads)
+
+        betas = torch.exp(torch.linspace(math.log(max_beta), math.log(min_beta), num_heads))
+        alphas = 1.0 - betas
+        logit_init = torch.log(alphas / (1.0 - alphas)).view(1, num_heads, 1)
+        self.decay_logits = nn.Parameter(logit_init)
+
+        self.head_norm = nn.GroupNorm(num_groups=num_heads, num_channels=num_heads * head_v)
+        self.out_proj = nn.Linear(num_heads * head_v, out_dim)
+        self.norm = nn.LayerNorm(out_dim)
+
+    def forward(self, x_seq: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, 
+                saliency_gate: torch.Tensor = None, dt: float = 1.0):
+        batch_size, chunk_len, _ = x_seq.size()
+
+        if u_t.size(0) != batch_size:
+            u_t = u_t[:batch_size] if u_t.size(0) > batch_size else u_t.expand(batch_size, -1)
+
+        curiosity = u_t.select(1, 0).view(batch_size, 1, 1, 1)
+        na = u_t.select(1, 4).view(batch_size, 1, 1, 1)
+        da = u_t.select(1, 5).view(batch_size, 1, 1, 1)
+        eff_dt = torch.clamp(dt * (1.0 - 0.4 * na + 0.4 * da), 0.30, 2.00)
+
+        q = (self.q_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)) * self.inv_sqrt_k
+        k = self.k_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_k).transpose(1, 2)
+        v = self.v_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_v).transpose(1, 2)
+
+        # Base alpha per head and token: [B, H, chunk_len]
+        selective_delta = F.softplus(self.delta_proj(x_seq)).view(batch_size, chunk_len, self.num_heads).transpose(1, 2)
+        base_alpha = torch.sigmoid(self.decay_logits)
+        alpha = torch.pow(base_alpha, (selective_delta * eff_dt.squeeze(-1)).clamp(0.1, 10.0))
+
+        # Modulate alpha by word boundary saliency: [B, 1, chunk_len]
+        if saliency_gate is not None:
+            alpha = alpha * (1.0 - 0.80 * saliency_gate)
+
+        alpha = torch.clamp(alpha, 1e-4, 0.9999)
+        log_alpha = torch.log(alpha)
+        beta = 1.0 - alpha
+
+        # Exact Parallel Log-Space Cumulative Scan: Lambda_t = sum_{m=1}^t log(alpha_m)
+        lambda_t = torch.cumsum(log_alpha, dim=-1) # [B, H, chunk_len]
+
+        log_decay_matrix = lambda_t.unsqueeze(-1) - lambda_t.unsqueeze(-2)
+        decay_matrix = torch.exp(torch.clamp(log_decay_matrix, -20.0, 0.0))
+
+        pos = torch.arange(chunk_len, device=x_seq.device)
+        causal_mask = (pos.unsqueeze(1) >= pos.unsqueeze(0)).float().view(1, 1, chunk_len, chunk_len)
+        decay_weights = decay_matrix * causal_mask
+
+        s_matrix = torch.matmul(q, k.transpose(-1, -2)) * decay_weights
+        y_intra = torch.matmul(s_matrix, v)
+
+        decay_to_start = torch.exp(torch.clamp(lambda_t, -20.0, 0.0)).unsqueeze(-1) # [B, H, chunk_len, 1]
+        y_inter = torch.matmul(q.float() * decay_to_start, m_prev.float()).to(q.dtype)
+
+        y_total = (y_intra + y_inter).transpose(1, 2).reshape(batch_size * chunk_len, self.num_heads * self.head_v)
+        y_normed = self.head_norm(y_total)
+        h_chunk = self.norm(self.out_proj(y_normed))
+
+        lambda_end = lambda_t[:, :, -1:].unsqueeze(-1) # [B, H, 1, 1]
+        decay_to_end = torch.exp(torch.clamp(lambda_end - lambda_t.unsqueeze(-1), -20.0, 0.0)) # [B, H, chunk_len, 1]
+        k_decayed = k.float() * decay_to_end * beta.unsqueeze(-1).float()
+        kv_chunk_update = torch.matmul(k_decayed.transpose(-1, -2), v.float())
+
+        alpha_chunk = torch.exp(torch.clamp(lambda_t[:, :, -1:], -20.0, 0.0)).unsqueeze(-1) # [B, H, 1, 1]
+        sigma_somatic = 1e-3 * (0.8 * curiosity.float() + 0.4 * na.float() + 0.1)
+        dW = torch.randn_like(m_prev) * torch.sqrt(eff_dt.float()) * sigma_somatic
+        m_next = alpha_chunk * m_prev.float() + kv_chunk_update + dW
+
+        return h_chunk, m_next, eff_dt.mean().item()
+
+
+# =============================================================================
+# MODULE 3: ENTROPY-ADAPTIVE BOUNDARY DETECTOR (EABS)
+# =============================================================================
+
+class EntropyAdaptiveBoundaryDetector(nn.Module):
+    def __init__(self, hidden_dim: int = 512):
+        super().__init__()
+        self.boundary_gate_net = nn.Sequential(
+            nn.Linear(hidden_dim, 128),
+            nn.SiLU(),
+            nn.Linear(128, 1),
+            nn.Sigmoid()
+        )
+        self.register_buffer('boundary_bytes', torch.tensor([32, 10, 44, 46, 58, 59, 63, 33, 34, 39], dtype=torch.long))
+
+    def forward(self, h_stage1: torch.Tensor, input_ids: torch.Tensor) -> torch.Tensor:
+        pred_boundary = self.boundary_gate_net(h_stage1)
+        is_token_boundary = torch.isin(input_ids, self.boundary_bytes).float().unsqueeze(-1)
+        saliency = torch.clamp(0.05 + 0.60 * pred_boundary + 0.35 * is_token_boundary, 0.0, 1.0)
+        return saliency.squeeze(-1).unsqueeze(1) # [B, 1, L]
+
+
+# =============================================================================
+# MODULE 4: CORTICAL STAGE (SSD + SWIGLU + PRE-LAYERNORM)
 # =============================================================================
 
 class CorticalStage(nn.Module):
-    """
-    Cortical Sheet Layer integrating SSD Time-Mixing, SwiGLU Channel-Mixing,
-    and Pre-LayerNorm Residual Highways.
-    """
     def __init__(self, hidden_dim: int = 512, expand_dim: int = 2048, num_heads: int = 8,
-                 head_k: int = 64, head_v: int = 128, text_dim: int = 512, unified_dim: int = 512,
-                 device_str: str = 'cpu'):
+                 head_k: int = 64, head_v: int = 128, min_beta: float = 0.0005, max_beta: float = 0.08, device_str: str = 'cpu'):
         super().__init__()
         self.pre_norm_ssd = nn.LayerNorm(hidden_dim)
-        self.ssd = CalibratedParallelSSDCore(
-            text_dim=hidden_dim,
-            unified_dim=hidden_dim,
-            hidden_dim=hidden_dim,
-            num_heads=num_heads,
-            head_k=head_k,
-            head_v=head_v,
-            device=device_str
+        self.ssd = ParallelLogDecaySSDLayer(
+            in_dim=hidden_dim, out_dim=hidden_dim, num_heads=num_heads,
+            head_k=head_k, head_v=head_v, min_beta=min_beta, max_beta=max_beta
         )
         self.pre_norm_swiglu = nn.LayerNorm(hidden_dim)
         self.swiglu = ParallelSwiGLUBlock(
@@ -90,10 +195,10 @@ class CorticalStage(nn.Module):
             device=device_str
         )
 
-    def forward(self, x: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, dt: float = 1.0):
+    def forward(self, x: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, 
+                saliency_gate: torch.Tensor = None, dt: float = 1.0):
         norm_x = self.pre_norm_ssd(x)
-        ssd_out = self.ssd.forward_chunk_parallel_ssd(norm_x, m_prev, u_t, dt)
-        h_ssd, m_next, eff_dt = ssd_out[0], ssd_out[1], ssd_out[2]
+        h_ssd, m_next, eff_dt = self.ssd(norm_x, m_prev, u_t, saliency_gate=saliency_gate, dt=dt)
         x_res1 = x + h_ssd.view_as(x)
 
         norm_res1 = self.pre_norm_swiglu(x_res1)
@@ -104,7 +209,7 @@ class CorticalStage(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v19.0 PROD MASTER)
+# MASTER CORE AGENT (v21.0 PROD MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -148,17 +253,27 @@ class CoREAgent(nn.Module):
         self.in_proj = nn.Linear(self.text_dim, self.hidden_dim).to(self.device)
         
         # 2. 2-Stage Cascaded Cortical Stack
-        # Stage 1: Fast Morpho-Syntactic Cortical Sheet
+        # Stage 1: Fast Morpho-Syntactic Cortical Sheet (Decay 0.005 - 0.15)
         self.stage1 = CorticalStage(
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
-            head_k=self.head_k, head_v=self.head_v, text_dim=self.text_dim, unified_dim=self.hidden_dim,
+            head_k=self.head_k, head_v=self.head_v, min_beta=0.005, max_beta=0.15,
             device_str=self.device_str
         ).to(self.device)
 
-        # Stage 2: Slow Semantic-Discourse Cortical Sheet
+        # Entropy-Adaptive Word/Morpheme Boundary Detector (EABS)
+        self.boundary_detector = EntropyAdaptiveBoundaryDetector(hidden_dim=self.hidden_dim).to(self.device)
+
+        # LPER Top-Down Predictive Filter: Predicts Stage 1 next state from previous Stage 1 state
+        self.topdown_pred_net = nn.Sequential(
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.SiLU(),
+            nn.Linear(self.hidden_dim, self.hidden_dim)
+        ).to(self.device)
+
+        # Stage 2: Slow Semantic-Discourse Cortical Sheet (Decay 0.0001 - 0.05)
         self.stage2 = CorticalStage(
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
-            head_k=self.head_k, head_v=self.head_v, text_dim=self.hidden_dim, unified_dim=self.hidden_dim,
+            head_k=self.head_k, head_v=self.head_v, min_beta=0.0001, max_beta=0.05,
             device_str=self.device_str
         ).to(self.device)
 
@@ -200,17 +315,13 @@ class CoREAgent(nn.Module):
         self.critic = nn.Linear(self.hidden_dim, 1).to(self.device)
 
     def forward(self, sensor_inputs: Dict[str, torch.Tensor], h_fast: torch.Tensor, h_slow: torch.Tensor, u_t: torch.Tensor, dt: float = 1.0):
-        # 1. Gateway integration
         text_in = sensor_inputs.get('text', torch.zeros(h_fast.size(0), self.text_dim, device=self.device))
         vision_in = sensor_inputs.get('vision', torch.zeros(h_fast.size(0), self.config.net.vision_dim, device=self.device))
         motor_in = sensor_inputs.get('motor_efference', torch.zeros(h_fast.size(0), self.action_dim, device=self.device))
         
         w_t, attn_weights, channel_names, epistemic_entropy = self.gateway(text_in, vision_in, motor_in, h_slow, u_t)
+        x_in = self.in_proj(w_t).unsqueeze(1)
         
-        # 2. Cortical Stack forward (single step as 1-len chunk)
-        x_in = self.in_proj(w_t).unsqueeze(1) # [B, 1, 512]
-        
-        # Reshape h_fast/h_slow to m_state if needed, or pass as m_prev
         if h_fast.dim() == 2:
             m_s1 = h_fast.view(h_fast.size(0), self.num_heads, self.head_k, self.head_v) if h_fast.numel() == h_fast.size(0) * self.num_heads * self.head_k * self.head_v else torch.zeros(h_fast.size(0), self.num_heads, self.head_k, self.head_v, device=self.device)
         else:
@@ -221,27 +332,31 @@ class CoREAgent(nn.Module):
         else:
             m_s2 = h_slow
 
-        h_s1_out, m_s1_next, dt1 = self.stage1(x_in, m_s1, u_t, dt)
-        h_s2_out, m_s2_next, dt2 = self.stage2(h_s1_out, m_s2, u_t, dt)
+        h_s1_out, m_s1_next, dt1 = self.stage1(x_in, m_s1, u_t, dt=dt)
+        dummy_ids = torch.zeros(x_in.size(0), 1, dtype=torch.long, device=self.device)
+        sal_gate = self.boundary_detector(h_s1_out, dummy_ids)
+
+        h1_prev_proxy = m_s1.view(h_fast.size(0), -1)[:, :self.hidden_dim].unsqueeze(1)
+        h1_pred = self.topdown_pred_net(h1_prev_proxy)
+        e1 = h_s1_out - h1_pred
+
+        h_s2_out, m_s2_next, dt2 = self.stage2(e1, m_s2, u_t, saliency_gate=sal_gate, dt=dt)
         eff_dt = (dt1 + dt2) / 2.0
 
-        # Hopfield Attractor
-        h_flat = h_s2_out.view(-1, self.hidden_dim)
+        h_combined = h_s1_out + h_s2_out
+        h_flat = h_combined.view(-1, self.hidden_dim)
         h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, u_t)
         
-        # Motor outputs
         motor_outs = self.output_gateway(h_relaxed)
         actions = motor_outs.get("motor_action", torch.zeros(h_fast.size(0), self.action_dim, device=self.device))
         cog_actions = motor_outs.get("cognitive_gating", torch.zeros(h_fast.size(0), self.config.net.cog_action_dim, device=self.device))
         text_logits = motor_outs.get("text_generation", torch.zeros(h_fast.size(0), self.text_gen_dim, device=self.device))
 
-        # Latent Predictor
         h_prev_proxy = m_s1.view(h_fast.size(0), -1)[:, :self.hidden_dim]
         w_pred, kl_div, fe, z_t = self.world_model(h_prev_proxy, h_relaxed, w_t)
         
         value_est = self.critic(h_relaxed)
         
-        # Return 12-element tuple for backward compatibility with init_priors and dialogue
         h_fast_next = m_s1_next.view(h_fast.size(0), -1)[:, :self.hidden_dim]
         h_slow_next = m_s2_next.view(h_slow.size(0), -1)[:, :self.hidden_dim]
         
@@ -251,6 +366,8 @@ class CoREAgent(nn.Module):
         params = (
             list(self.pos_embeddings.parameters()) + 
             list(self.in_proj.parameters()) +
+            list(self.boundary_detector.parameters()) +
+            list(self.topdown_pred_net.parameters()) +
             list(self.episodic_sensory_proj.parameters()) +
             list(self.motor_text_proj.parameters()) + 
             list(self.critic.parameters())
@@ -271,6 +388,12 @@ class CoREAgent(nn.Module):
         }
         for name, param in self.pos_embeddings.named_parameters():
             sd[f"pos_embeddings.{name}"] = param.detach().cpu()
+
+        for name, param in self.boundary_detector.named_parameters():
+            sd[f"boundary_detector.{name}"] = param.detach().cpu()
+
+        for name, param in self.topdown_pred_net.named_parameters():
+            sd[f"topdown_pred_net.{name}"] = param.detach().cpu()
 
         for name, param in self.motor_text_proj.named_parameters():
             sd[f"motor_text_proj.{name}"] = param.detach().cpu()
@@ -299,6 +422,16 @@ class CoREAgent(nn.Module):
             elif name.startswith("pos_embeddings."):
                 p_name = name.replace("pos_embeddings.", "")
                 for sub_p_name, sub_p in self.pos_embeddings.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("boundary_detector."):
+                p_name = name.replace("boundary_detector.", "")
+                for sub_p_name, sub_p in self.boundary_detector.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("topdown_pred_net."):
+                p_name = name.replace("topdown_pred_net.", "")
+                for sub_p_name, sub_p in self.topdown_pred_net.named_parameters():
                     if sub_p_name == p_name:
                         self._safe_copy_param(sub_p.data, tensor)
             elif name.startswith("in_proj."):
@@ -348,7 +481,6 @@ class CoREAgent(nn.Module):
         return free_energy_val > dynamic_threshold
 
     def execute_wake_swr_micro_replay(self, episodic_memory: BatchedEpisodicMemory, num_samples: int = 4):
-        """Executes ultra-fast (O(1)) awake Sharp-Wave Ripple micro-replay in background."""
         active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
         if episodic_memory is None or active_slots < 3:
             return
@@ -361,7 +493,6 @@ class CoREAgent(nn.Module):
 
     def execute_deep_allostatic_sleep(self, episodic_memory: BatchedEpisodicMemory, hu: HomeostaticUnit,
                                       num_replay_cycles: int = 5, downscaling_factor: float = 0.03):
-        """Executes deep nocturnal sleep consolidation: Full Replay + SHY Downscaling + Somatic Reset."""
         self.train()
         active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
         active_memory_slots = min(active_slots, episodic_memory.max_capacity)
@@ -390,10 +521,10 @@ class CoREAgent(nn.Module):
 
         # Full Somatic Recovery
         with torch.no_grad():
-            hu.state[:, 1] = 1.00 # Energy restored
-            hu.state[:, 2] = 1.00 # Stability restored
-            hu.state[:, 3] = 1.00 # Health restored
-            hu.state[:, 4] = 0.05 # Arousal reset to baseline
+            hu.state[:, 1] = 1.00
+            hu.state[:, 2] = 1.00
+            hu.state[:, 3] = 1.00
+            hu.state[:, 4] = 0.05
 
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, 
                          criterion_speech: nn.Module, episodic_memory=None, loss_free_energy_weight: float = 0.05, 
@@ -404,6 +535,7 @@ class CoREAgent(nn.Module):
         m_s2 = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
         curr_u_t = hu_batch.state.clone().detach()
         h_prev_fast = torch.zeros(batch_size, self.hidden_dim, device=self.device)
+        h1_prev_last = torch.zeros(batch_size, 1, self.hidden_dim, device=self.device)
         
         num_chunks = max(1, seq_len // chunk_size)
         chunk_losses = []
@@ -425,13 +557,27 @@ class CoREAgent(nn.Module):
             chunk_emb = self.pos_embeddings(chunk_in, start_pos=c_start, apply_rf=True)
             h_in = self.in_proj(chunk_emb)
 
-            # 2-Stage Compositional Cortical Pass
+            # Stage 1: Fast Morpho-Syntactic Cortical Pass
             h_s1, m_s1, dt1 = self.stage1(h_in, m_s1, curr_u_t, dt=1.0)
-            h_s2, m_s2, dt2 = self.stage2(h_s1, m_s2, curr_u_t, dt=1.0)
+
+            # Detect Dynamic Word / Morpheme Boundary Saliency (EABS)
+            saliency_gate = self.boundary_detector(h_s1, chunk_in)
+
+            # --- LAMINAR PREDICTIVE ERROR ROUTING (LPER) ---
+            h1_shifted = torch.cat([h1_prev_last, h_s1[:, :-1, :]], dim=1)
+            h1_pred = self.topdown_pred_net(h1_shifted)
+            e1 = h_s1 - h1_pred
+            h1_prev_last = h_s1[:, -1:, :].detach()
+
+            # Stage 2: Slow Semantic-Discourse Pass on Prediction Error e1
+            h_s2, m_s2, dt2 = self.stage2(e1, m_s2, curr_u_t, saliency_gate=saliency_gate, dt=1.0)
             last_eff_dt = (dt1 + dt2) / 2.0
 
+            # Combined Laminar Representation (Stage 1 + Stage 2)
+            h_combined = h_s1 + h_s2
+
             # Modern Hopfield Attractor Landscape with Native C++ Commitment Loss
-            h_flat = h_s2.contiguous().view(-1, self.hidden_dim)
+            h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, chunk_commit = self.attractor_head.relax_to_minima(h_flat, curr_u_t)
             
             # Dopaminergic Afferent-Efferent Motor Readout (512 -> 256 -> 258)
@@ -446,7 +592,7 @@ class CoREAgent(nn.Module):
 
             # Continuous Active Inference: World Model Predictor
             w_current_slice = self.episodic_sensory_proj(chunk_emb[:, -1, :])
-            h_curr_fast = h_s2[:, -1, :]
+            h_curr_fast = h_combined[:, -1, :]
             w_pred, kl_div, _, _ = self.world_model(h_prev_fast, h_curr_fast, w_current_slice)
             h_prev_fast = h_curr_fast.detach()
 
@@ -501,15 +647,24 @@ class CoREAgent(nn.Module):
         
         m_s1 = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
         m_s2 = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
+        h1_prev_last = torch.zeros(1, 1, self.hidden_dim, device=self.device)
             
         yield {"status": "speech_start"}
         
         prompt_len = prompt_tokens.size(1)
         for c_idx in range(0, prompt_len, 64):
             c_emb = prompt_embs[:, c_idx : min(c_idx + 64, prompt_len), :]
+            c_in = prompt_tokens[:, c_idx : min(c_idx + 64, prompt_len)]
             h_in = self.in_proj(c_emb)
-            h_s1, m_s1, _ = self.stage1(h_in, m_s1, hu_st, 1.0)
-            h_s2, m_s2, _ = self.stage2(h_s1, m_s2, hu_st, 1.0)
+            h_s1, m_s1, _ = self.stage1(h_in, m_s1, hu_st, dt=1.0)
+            sal_gate = self.boundary_detector(h_s1, c_in)
+
+            h1_shifted = torch.cat([h1_prev_last, h_s1[:, :-1, :]], dim=1)
+            h1_pred = self.topdown_pred_net(h1_shifted)
+            e1 = h_s1 - h1_pred
+            h1_prev_last = h_s1[:, -1:, :].detach()
+
+            h_s2, m_s2, _ = self.stage2(e1, m_s2, hu_st, saliency_gate=sal_gate, dt=1.0)
         
         rolling_token_ids = prompt_tokens[0].tolist()
         energy_action_cost = torch.tensor([[getattr(config.homeo, 'motor_speech_cost_per_patch', 0.0015)]], device=self.device)
@@ -528,8 +683,16 @@ class CoREAgent(nn.Module):
             t_emb = window_emb[:, -1:, :]
             
             h_in = self.in_proj(t_emb)
-            h_s1, m_s1, _ = self.stage1(h_in, m_s1, hu_st, 1.0)
-            h_s2, m_s2, _ = self.stage2(h_s1, m_s2, hu_st, 1.0)
+            h_s1, m_s1, _ = self.stage1(h_in, m_s1, hu_st, dt=1.0)
+            sal_gate = self.boundary_detector(h_s1, window_t[:, -1:])
+
+            h1_shifted = torch.cat([h1_prev_last, h_s1[:, :-1, :]], dim=1)
+            h1_pred = self.topdown_pred_net(h1_shifted)
+            e1 = h_s1 - h1_pred
+            h1_prev_last = h_s1[:, -1:, :].detach()
+
+            h_s2, m_s2, _ = self.stage2(e1, m_s2, hu_st, saliency_gate=sal_gate, dt=1.0)
+            h_combined = h_s1 + h_s2
 
             # Volitional Memory Recall
             active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
@@ -537,11 +700,11 @@ class CoREAgent(nn.Module):
                 q_k = self.episodic_sensory_proj(t_emb.squeeze(1)).float()
                 ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.75, sigmoid_beta=15.0)
                 if (max_sim > 0.75).any():
-                    ret_mem_cast = ret_mem.to(h_s2.dtype) # Shape [1, 256]
-                    ret_mem_proj = self.in_proj(ret_mem_cast).unsqueeze(1) # Shape [1, 1, 512]
-                    h_s2 = h_s2 + ret_mem_proj * 0.20
+                    ret_mem_cast = ret_mem.to(h_combined.dtype)
+                    ret_mem_proj = self.in_proj(ret_mem_cast).unsqueeze(1)
+                    h_combined = h_combined + ret_mem_proj * 0.20
 
-            h_flat = h_s2.contiguous().view(-1, self.hidden_dim)
+            h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, hu_st)
             h_proj = self.motor_text_proj(h_relaxed)
             raw_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight)
@@ -553,7 +716,7 @@ class CoREAgent(nn.Module):
             raw_logits[:, 14:32] = -1e9
             raw_logits[:, 127:256] = -1e9
             if step < 10:
-                raw_logits[:, 257] = -1e9  # Disallow premature EOS
+                raw_logits[:, 257] = -1e9
 
             # Theta-Gamma PAC Entropy-Adaptive Decoding
             p_dist = F.softmax(raw_logits, dim=-1)
@@ -561,10 +724,10 @@ class CoREAgent(nn.Module):
             is_boundary = (len(rolling_token_ids) > 0 and rolling_token_ids[-1] in [32, 10, 44, 46])
 
             if is_boundary or entropy > 0.70:
-                temp = 0.50
-                top_p_val = 0.90
+                temp = 0.45
+                top_p_val = 0.88
             else:
-                temp = 0.10
+                temp = 0.08
                 top_p_val = 0.99
 
             logits = raw_logits / max(temp, 1e-4)
@@ -609,7 +772,7 @@ class CoREAgent(nn.Module):
             }
             
             if hu_st[0, 1].item() <= 0.05:
-                yield {"status": "exhausted", "text": " [fatigued...]", "m_state": m_s2, "h_state": h_s2}
+                yield {"status": "exhausted", "text": " [fatigued...]", "m_state": m_s2, "h_state": h_combined}
                 return
 
-        yield {"status": "speech_end", "m_state": m_s2, "h_state": h_s2}
+        yield {"status": "speech_end", "m_state": m_s2, "h_state": h_combined}
