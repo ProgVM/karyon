@@ -246,7 +246,45 @@ class EntropyAdaptiveBoundaryDetector(nn.Module):
 
 
 # =============================================================================
-# MODULE 4: CORTICAL STAGE (SSD + SWIGLU + PRE-LAYERNORM)
+# MODULE 4: CAUSAL DEPTHWISE CONVSWIGLU CHANNEL-MIXING BLOCK (EXP-73 VALIDATED)
+# =============================================================================
+
+class CausalConvSwiGLUBlock(nn.Module):
+    """
+    SwiGLU Channel-Mixing Block with Causal Depthwise Conv1d (K=3) inside the gate branch:
+    gate = SiLU(CausalConv1d_K3(W_gate X))
+    up = W_up X
+    ffn_out = W_down (gate * up)
+    Supplies local n-gram temporal context during non-linear channel synthesis (EXP-73 Validated).
+    """
+    def __init__(self, hidden_dim: int = 768, expand_dim: int = 3072):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.expand_dim = expand_dim
+
+        self.w_gate = nn.Linear(hidden_dim, expand_dim, bias=False)
+        self.gate_conv = nn.Conv1d(expand_dim, expand_dim, kernel_size=3, groups=expand_dim, bias=False)
+        self.w_up = nn.Linear(hidden_dim, expand_dim, bias=False)
+        self.w_down = nn.Linear(expand_dim, hidden_dim, bias=False)
+        self.norm = nn.LayerNorm(hidden_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x shape: [B, L, D]
+        batch_size, seq_len, _ = x.size()
+        raw_gate = self.w_gate(x)
+        
+        gate_trans = raw_gate.transpose(1, 2)
+        gate_pad = F.pad(gate_trans, (2, 0)) # Causal left-padding 2
+        conv_gate = self.gate_conv(gate_pad).transpose(1, 2)
+        
+        gate = F.silu(conv_gate)
+        up = self.w_up(x)
+        ffn_out = self.w_down(gate * up)
+        return self.norm(x + ffn_out)
+
+
+# =============================================================================
+# MODULE 5: CORTICAL STAGE (SSD + CONVSWIGLU + PRE-LAYERNORM)
 # =============================================================================
 
 class CorticalStage(nn.Module):
@@ -259,10 +297,9 @@ class CorticalStage(nn.Module):
             head_k=head_k, head_v=head_v, min_beta=min_beta, max_beta=max_beta
         )
         self.pre_norm_swiglu = nn.LayerNorm(hidden_dim)
-        self.swiglu = ParallelSwiGLUBlock(
+        self.swiglu = CausalConvSwiGLUBlock(
             hidden_dim=hidden_dim,
-            expand_dim=expand_dim,
-            device=device_str
+            expand_dim=expand_dim
         )
 
     def forward(self, x: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, 
@@ -272,8 +309,7 @@ class CorticalStage(nn.Module):
         x_res1 = x + h_ssd.view_as(x)
 
         norm_res1 = self.pre_norm_swiglu(x_res1)
-        h_swiglu = self.swiglu(norm_res1.contiguous().view(-1, x.size(-1)))
-        x_out = x_res1 + h_swiglu.view_as(x_res1)
+        x_out = self.swiglu(norm_res1)
 
         return x_out, m_next, eff_dt
 
