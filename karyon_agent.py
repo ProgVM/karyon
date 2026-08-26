@@ -246,24 +246,26 @@ class EntropyAdaptiveBoundaryDetector(nn.Module):
 
 
 # =============================================================================
-# MODULE 4: CAUSAL DEPTHWISE CONVSWIGLU CHANNEL-MIXING BLOCK (EXP-73 VALIDATED)
+# MODULE 4: CAUSAL DEPTHWISE CONVSWIGLU CHANNEL-MIXING BLOCK (EXP-73/EXP-74 VALIDATED)
 # =============================================================================
 
 class CausalConvSwiGLUBlock(nn.Module):
     """
-    SwiGLU Channel-Mixing Block with Causal Depthwise Conv1d (K=3) inside the gate branch:
-    gate = SiLU(CausalConv1d_K3(W_gate X))
+    SwiGLU Channel-Mixing Block with Causal Depthwise Conv1d (K=kernel_size) inside the gate branch:
+    gate = SiLU(CausalConv1d_K(W_gate X))
     up = W_up X
     ffn_out = W_down (gate * up)
-    Supplies local n-gram temporal context during non-linear channel synthesis (EXP-73 Validated).
+    Supplies local n-gram temporal context during non-linear channel synthesis (EXP-73/EXP-74 Validated).
     """
-    def __init__(self, hidden_dim: int = 768, expand_dim: int = 3072):
+    def __init__(self, hidden_dim: int = 768, expand_dim: int = 3072, kernel_size: int = 3):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.expand_dim = expand_dim
+        self.kernel_size = kernel_size
+        self.pad_left = kernel_size - 1
 
         self.w_gate = nn.Linear(hidden_dim, expand_dim, bias=False)
-        self.gate_conv = nn.Conv1d(expand_dim, expand_dim, kernel_size=3, groups=expand_dim, bias=False)
+        self.gate_conv = nn.Conv1d(expand_dim, expand_dim, kernel_size=kernel_size, groups=expand_dim, bias=False)
         self.w_up = nn.Linear(hidden_dim, expand_dim, bias=False)
         self.w_down = nn.Linear(expand_dim, hidden_dim, bias=False)
         self.norm = nn.LayerNorm(hidden_dim)
@@ -274,7 +276,7 @@ class CausalConvSwiGLUBlock(nn.Module):
         raw_gate = self.w_gate(x)
         
         gate_trans = raw_gate.transpose(1, 2)
-        gate_pad = F.pad(gate_trans, (2, 0)) # Causal left-padding 2
+        gate_pad = F.pad(gate_trans, (self.pad_left, 0)) # Causal left-padding (kernel_size - 1)
         conv_gate = self.gate_conv(gate_pad).transpose(1, 2)
         
         gate = F.silu(conv_gate)
@@ -289,7 +291,8 @@ class CausalConvSwiGLUBlock(nn.Module):
 
 class CorticalStage(nn.Module):
     def __init__(self, hidden_dim: int = 768, expand_dim: int = 3072, num_heads: int = 12,
-                 head_k: int = 64, head_v: int = 128, min_beta: float = 0.0005, max_beta: float = 0.08, device_str: str = 'cpu'):
+                 head_k: int = 64, head_v: int = 128, min_beta: float = 0.0005, max_beta: float = 0.08,
+                 swiglu_kernel_size: int = 3, device_str: str = 'cpu'):
         super().__init__()
         self.pre_norm_ssd = nn.LayerNorm(hidden_dim)
         self.ssd = ParallelLogDecaySSDLayer(
@@ -299,7 +302,8 @@ class CorticalStage(nn.Module):
         self.pre_norm_swiglu = nn.LayerNorm(hidden_dim)
         self.swiglu = CausalConvSwiGLUBlock(
             hidden_dim=hidden_dim,
-            expand_dim=expand_dim
+            expand_dim=expand_dim,
+            kernel_size=swiglu_kernel_size
         )
 
     def forward(self, x: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, 
@@ -359,11 +363,11 @@ class CoREAgent(nn.Module):
         self.in_proj = nn.Linear(self.text_dim, self.hidden_dim).to(self.device)
         
         # 2. 2-Stage Cascaded Cortical Stack
-        # Stage 1: Fast Morpho-Syntactic Cortical Sheet (Decay 0.005 - 0.15)
+        # Stage 1: Fast Morpho-Syntactic Cortical Sheet (Decay 0.005 - 0.15, ConvSwiGLU K=3)
         self.stage1 = CorticalStage(
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
             head_k=self.head_k, head_v=self.head_v, min_beta=0.005, max_beta=0.15,
-            device_str=self.device_str
+            swiglu_kernel_size=3, device_str=self.device_str
         ).to(self.device)
 
         # Entropy-Adaptive Word/Morpheme Boundary Detector (EABS)
@@ -376,11 +380,11 @@ class CoREAgent(nn.Module):
             nn.Linear(self.hidden_dim, self.hidden_dim)
         ).to(self.device)
 
-        # Stage 2: Slow Semantic-Discourse Cortical Sheet (Decay 0.0001 - 0.05)
+        # Stage 2: Slow Semantic-Discourse Cortical Sheet (Decay 0.0001 - 0.05, ConvSwiGLU K=7)
         self.stage2 = CorticalStage(
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
             head_k=self.head_k, head_v=self.head_v, min_beta=0.0001, max_beta=0.05,
-            device_str=self.device_str
+            swiglu_kernel_size=7, device_str=self.device_str
         ).to(self.device)
 
         # 3. Active Inference Latent World Model (Predictive Coding)
