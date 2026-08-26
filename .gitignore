@@ -66,7 +66,7 @@ Thumbs.db
 *~
 
 # --- Secrets & Private Tokens ---
-.env
+.env*
 *.secret
 hf_token.txt
 karyon_agent_runtime/
