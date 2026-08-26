@@ -19,7 +19,8 @@ Karyon-CoRE transcends static matrix-multiplication deep learning models ("weigh
 
 1. **Raw UTF-8 Byte Universal Representation ($V=258$):** Eliminates static tokenizers and BPE vocabularies. Maps text, vision, audio, motor efference, and homeostatic body signals into a unified embedding space ($D=128/256$).
 2. **Zero-Loop Parallel State-Space Duality Scan (Time-Mixing @ 176k tok/s):** Replaces serial recurrence loops with closed-form parallel matrix scanning:
-$$\mathbf{Y}_{\text{chunk}} = \mathbf{Y}_{\text{intra}} + \mathbf{Y}_{\text{inter}}$$
+```math
+\(\mathbf{Y}_{\text{chunk}} = \mathbf{Y}_{\text{intra}} + \mathbf{Y}_{\text{inter}} \%\%\)MAGIT_PARSER_PROTECT%%```
 collapsing 512-step batch latency from $3700\text{ ms} \to \mathbf{92\text{ ms}}$ (**40x speedup**!).
 3. **Parallel SwiGLU Knowledge Synthesis Block (Channel-Mixing):** Combines continuous-time temporal recurrence with dense non-linear cross-channel associative reasoning ($\text{expand\\_dim} = 1536$), eliminating byte-level entropy plateaus.
 4. **Non-Linear Causal Byte Receptive Field ($K=4$, SiLU):** Applies causal 1D depthwise convolutions over byte streams, converting raw bytes into stable phonemes and morphemes with rolling-buffer test-time consistency.
