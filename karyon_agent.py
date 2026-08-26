@@ -147,12 +147,22 @@ class ParallelLogDecaySSDLayer(nn.Module):
         inv_freq = 1.0 / (10000.0 ** (torch.arange(0, head_k, 2, dtype=torch.float32) / head_k))
         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
+        # Persistent runtime tensor buffers
+        self._cos_cached = None
+        self._sin_cached = None
+        self._causal_mask_cached = None
+
     def _get_rope_cos_sin(self, chunk_len: int, device: torch.device, dtype: torch.dtype):
+        if self._cos_cached is not None and self._cos_cached.size(2) == chunk_len and self._cos_cached.device == device and self._cos_cached.dtype == dtype:
+            return self._cos_cached, self._sin_cached
+
         t = torch.arange(chunk_len, device=device, dtype=self.inv_freq.dtype)
         freqs = torch.outer(t, self.inv_freq)
         emb = torch.cat((freqs, freqs), dim=-1)
         cos = emb.cos().view(1, 1, chunk_len, self.head_k).to(dtype)
         sin = emb.sin().view(1, 1, chunk_len, self.head_k).to(dtype)
+        self._cos_cached = cos
+        self._sin_cached = sin
         return cos, sin
 
     def forward(self, x_seq: torch.Tensor, m_prev: torch.Tensor, u_t: torch.Tensor, 
@@ -172,7 +182,7 @@ class ParallelLogDecaySSDLayer(nn.Module):
         v = self.v_proj(x_seq).view(batch_size, chunk_len, self.num_heads, self.head_v).transpose(1, 2)
         z = F.silu(self.z_proj(x_seq)).view(batch_size * chunk_len, self.num_heads * self.head_v)
 
-        # Apply Rotary Position Embeddings (RoPE) to Q and K
+        # Apply Rotary Position Embeddings (RoPE) to Q and K with cached buffers
         cos, sin = self._get_rope_cos_sin(chunk_len, x_seq.device, x_seq.dtype)
         q, k = apply_rotary_pos_emb(q, k, cos, sin)
 
@@ -195,8 +205,13 @@ class ParallelLogDecaySSDLayer(nn.Module):
         log_decay_matrix = lambda_t.unsqueeze(-1) - lambda_t.unsqueeze(-2)
         decay_matrix = torch.exp(torch.clamp(log_decay_matrix, -20.0, 0.0))
 
-        pos = torch.arange(chunk_len, device=x_seq.device)
-        causal_mask = (pos.unsqueeze(1) >= pos.unsqueeze(0)).float().view(1, 1, chunk_len, chunk_len)
+        if self._causal_mask_cached is not None and self._causal_mask_cached.size(2) == chunk_len and self._causal_mask_cached.device == x_seq.device:
+            causal_mask = self._causal_mask_cached
+        else:
+            pos = torch.arange(chunk_len, device=x_seq.device)
+            causal_mask = (pos.unsqueeze(1) >= pos.unsqueeze(0)).float().view(1, 1, chunk_len, chunk_len)
+            self._causal_mask_cached = causal_mask
+
         decay_weights = decay_matrix * causal_mask
 
         s_matrix = torch.matmul(q, k.transpose(-1, -2)) * decay_weights
@@ -647,6 +662,11 @@ class CoREAgent(nn.Module):
         h_prev_fast = torch.zeros(batch_size, self.hidden_dim, device=self.device)
         h1_prev_last = torch.zeros(batch_size, 1, self.hidden_dim, device=self.device)
         
+        # 1. Vectorized full-sequence embedding, receptive field, and linear projection (1 single Tensor Core pass)
+        full_emb = self.pos_embeddings(input_seq, start_pos=0, apply_rf=True)
+        full_h_in = self.in_proj(full_emb)
+        full_is_boundary = torch.isin(input_seq, self.boundary_detector.boundary_bytes).float().unsqueeze(-1)
+        
         num_chunks = max(1, seq_len // chunk_size)
         chunk_losses = []
         commit_losses = []
@@ -663,15 +683,15 @@ class CoREAgent(nn.Module):
 
             chunk_in = input_seq[:, c_start:c_end]
             chunk_tgt = target_seq[:, c_start:c_end]
-
-            chunk_emb = self.pos_embeddings(chunk_in, start_pos=c_start, apply_rf=True)
-            h_in = self.in_proj(chunk_emb)
+            h_in = full_h_in[:, c_start:c_end, :]
 
             # Stage 1: Fast Morpho-Syntactic Cortical Pass
             h_s1, m_s1, dt1 = self.stage1(h_in, m_s1, curr_u_t, dt=1.0)
 
-            # Detect Dynamic Word / Morpheme Boundary Saliency (EABS)
-            saliency_gate = self.boundary_detector(h_s1, chunk_in)
+            # Detect Dynamic Word / Morpheme Boundary Saliency (EABS) with precomputed mask
+            pred_bnd = self.boundary_detector.boundary_gate_net(h_s1)
+            is_bnd = full_is_boundary[:, c_start:c_end, :]
+            saliency_gate = torch.clamp(0.05 + 0.60 * pred_bnd + 0.35 * is_bnd, 0.0, 1.0).squeeze(-1).unsqueeze(1)
 
             # --- LAMINAR PREDICTIVE ERROR ROUTING (LPER) ---
             h1_shifted = torch.cat([h1_prev_last, h_s1[:, :-1, :]], dim=1)
@@ -701,7 +721,7 @@ class CoREAgent(nn.Module):
             commit_losses.append(chunk_commit)
 
             # Continuous Active Inference: World Model Predictor
-            w_current_slice = self.episodic_sensory_proj(chunk_emb[:, -1, :])
+            w_current_slice = self.episodic_sensory_proj(full_emb[:, c_end - 1, :])
             h_curr_fast = h_combined[:, -1, :]
             w_pred, kl_div, _, _ = self.world_model(h_prev_fast, h_curr_fast, w_current_slice)
             h_prev_fast = h_curr_fast.detach()
