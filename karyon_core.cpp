@@ -334,15 +334,13 @@ static inline torch::Tensor rotate_half(const torch::Tensor& x) {
     return torch::cat({-x2, x1}, -1);
 }
 
-static inline std::tuple<torch::Tensor, torch::Tensor> apply_rotary_pos_emb_cpp(
-    const torch::Tensor& q, const torch::Tensor& k, const torch::Tensor& cos, const torch::Tensor& sin) {
-    auto q_embed = (q * cos) + (rotate_half(q) * sin);
-    auto k_embed = (k * cos) + (rotate_half(k) * sin);
-    return std::make_tuple(q_embed, k_embed);
+static inline torch::Tensor apply_rotary_pos_emb_cpp(
+    const torch::Tensor& x, const torch::Tensor& cos, const torch::Tensor& sin) {
+    return (x * cos) + (rotate_half(x) * sin);
 }
 
 // ============================================================================
-// 8. EXACT PARALLEL LOG-SPACE CUMULATIVE RETENTION DECAY SSD LAYER (EXP-63/68/69)
+// 8. FUSED CHUNK-PARALLEL LOG-SPACE RETENTION DECAY SSD LAYER (EXP-82/83)
 // ============================================================================
 struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
     int64_t in_dim;
@@ -350,6 +348,7 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
     int64_t num_heads;
     int64_t head_k;
     int64_t head_v;
+    int64_t chunk_size;
     float inv_sqrt_k;
 
     torch::nn::Linear q_proj{nullptr};
@@ -370,8 +369,8 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
 
     ParallelLogDecaySSDLayerImpl(int64_t in_dim = 768, int64_t out_dim = 768, int64_t num_heads = 12,
                                 int64_t head_k = 64, int64_t head_v = 128, float min_beta = 0.0005f, float max_beta = 0.08f,
-                                std::string device_str = "cpu")
-        : in_dim(in_dim), out_dim(out_dim), num_heads(num_heads), head_k(head_k), head_v(head_v) {
+                                int64_t chunk_size = 64, std::string device_str = "cpu")
+        : in_dim(in_dim), out_dim(out_dim), num_heads(num_heads), head_k(head_k), head_v(head_v), chunk_size(chunk_size) {
 
         inv_sqrt_k = 1.0f / std::sqrt(static_cast<float>(head_k));
 
@@ -388,7 +387,7 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
 
         auto betas = torch::exp(torch::linspace(std::log(max_beta), std::log(min_beta), num_heads, opts));
         auto alphas = 1.0f - betas;
-        auto logit_init = torch::log(alphas / (1.0f - alphas)).view({1, num_heads, 1});
+        auto logit_init = torch::log(alphas / (1.0f - alphas)).view({1, 1, num_heads, 1});
         decay_logits = register_parameter("decay_logits", logit_init);
 
         head_norm = register_module("head_norm", torch::nn::GroupNorm(torch::nn::GroupNormOptions(num_heads, num_heads * head_v)));
@@ -404,14 +403,14 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
     }
 
     std::tuple<torch::Tensor, torch::Tensor> get_rope_cos_sin(int64_t chunk_len, torch::Device dev, torch::ScalarType dtype) {
-        if (cos_cached.defined() && cos_cached.size(2) == chunk_len && cos_cached.device() == dev && cos_cached.scalar_type() == dtype) {
+        if (cos_cached.defined() && cos_cached.size(3) == chunk_len && cos_cached.device() == dev && cos_cached.scalar_type() == dtype) {
             return std::make_tuple(cos_cached, sin_cached);
         }
         auto t = torch::arange(chunk_len, torch::TensorOptions().device(dev).dtype(inv_freq.dtype()));
         auto freqs = torch::outer(t, inv_freq);
         auto emb = torch::cat({freqs, freqs}, -1);
-        cos_cached = emb.cos().view({1, 1, chunk_len, head_k}).to(dtype);
-        sin_cached = emb.sin().view({1, 1, chunk_len, head_k}).to(dtype);
+        cos_cached = emb.cos().view({1, 1, 1, chunk_len, head_k}).to(dtype);
+        sin_cached = emb.sin().view({1, 1, 1, chunk_len, head_k}).to(dtype);
         return std::make_tuple(cos_cached, sin_cached);
     }
 
@@ -420,33 +419,49 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         torch::Tensor saliency_gate = torch::Tensor(), float dt = 1.0f) {
 
         int64_t batch_size = x_seq.size(0);
-        int64_t chunk_len = x_seq.size(1);
+        int64_t seq_len = x_seq.size(1);
+        int64_t Q = chunk_size;
+        int64_t pad_len = 0;
+
+        if (seq_len < Q) {
+            Q = seq_len;
+        } else {
+            pad_len = (Q - (seq_len % Q)) % Q;
+            if (pad_len > 0) {
+                x_seq = torch::nn::functional::pad(x_seq.transpose(1, 2), torch::nn::functional::PadFuncOptions({pad_len, 0}).mode(torch::kConstant).value(0.0)).transpose(1, 2);
+                if (saliency_gate.defined() && saliency_gate.numel() > 0) {
+                    saliency_gate = torch::nn::functional::pad(saliency_gate, torch::nn::functional::PadFuncOptions({pad_len, 0}).mode(torch::kConstant).value(0.0));
+                }
+                seq_len = x_seq.size(1);
+            }
+        }
+        int64_t num_chunks = seq_len / Q;
 
         if (u_t.size(0) != batch_size) {
             u_t = (u_t.size(0) > batch_size) ? u_t.slice(0, 0, batch_size) : u_t.expand({batch_size, -1});
         }
 
-        auto curiosity = u_t.select(1, 0).view({batch_size, 1, 1, 1});
-        auto na = u_t.select(1, 4).view({batch_size, 1, 1, 1});
-        auto da = u_t.select(1, 5).view({batch_size, 1, 1, 1});
+        auto curiosity = u_t.select(1, 0).view({batch_size, 1, 1, 1, 1});
+        auto na = u_t.select(1, 4).view({batch_size, 1, 1, 1, 1});
+        auto da = u_t.select(1, 5).view({batch_size, 1, 1, 1, 1});
         auto eff_dt = torch::clamp(dt * (1.0f - 0.4f * na + 0.4f * da), 0.30f, 2.00f);
 
-        auto q = (q_proj->forward(x_seq).view({batch_size, chunk_len, num_heads, head_k}).transpose(1, 2)) * inv_sqrt_k;
-        auto k = k_proj->forward(x_seq).view({batch_size, chunk_len, num_heads, head_k}).transpose(1, 2);
-        auto v = v_proj->forward(x_seq).view({batch_size, chunk_len, num_heads, head_v}).transpose(1, 2);
-        auto z = torch::silu(z_proj->forward(x_seq)).view({batch_size * chunk_len, num_heads * head_v});
+        auto q_full = (q_proj->forward(x_seq).view({batch_size, num_chunks, Q, num_heads, head_k}).transpose(2, 3)) * inv_sqrt_k;
+        auto k_full = k_proj->forward(x_seq).view({batch_size, num_chunks, Q, num_heads, head_k}).transpose(2, 3);
+        auto v_full = v_proj->forward(x_seq).view({batch_size, num_chunks, Q, num_heads, head_v}).transpose(2, 3);
+        auto z_full = torch::silu(z_proj->forward(x_seq)).view({batch_size * seq_len, num_heads * head_v});
 
-        auto cos_sin = get_rope_cos_sin(chunk_len, x_seq.device(), x_seq.scalar_type());
-        auto q_k_emb = apply_rotary_pos_emb_cpp(q, k, std::get<0>(cos_sin), std::get<1>(cos_sin));
-        q = std::get<0>(q_k_emb);
-        k = std::get<1>(q_k_emb);
+        auto cos_sin = get_rope_cos_sin(Q, x_seq.device(), x_seq.scalar_type());
+        q_full = apply_rotary_pos_emb_cpp(q_full, std::get<0>(cos_sin), std::get<1>(cos_sin));
+        k_full = apply_rotary_pos_emb_cpp(k_full, std::get<0>(cos_sin), std::get<1>(cos_sin));
 
-        auto selective_delta = torch::softplus(delta_proj->forward(x_seq)).view({batch_size, chunk_len, num_heads}).transpose(1, 2);
-        auto base_alpha = torch::sigmoid(decay_logits);
-        auto alpha = torch::pow(base_alpha, (selective_delta * eff_dt.squeeze(-1)).clamp(0.1f, 10.0f));
+        auto delta_full = torch::softplus(delta_proj->forward(x_seq)).view({batch_size, num_chunks, Q, num_heads}).permute({0, 1, 3, 2});
+        auto base_alpha = torch::sigmoid(decay_logits.view({1, 1, num_heads, 1}));
+        auto alpha = torch::pow(base_alpha, (delta_full * eff_dt.squeeze(-1)).clamp(0.1f, 10.0f));
 
         if (saliency_gate.defined() && saliency_gate.numel() > 0) {
-            alpha = alpha * (1.0f - 0.80f * saliency_gate);
+            auto sal_chunk = saliency_gate.view({batch_size, num_chunks, 1, Q});
+            alpha = alpha * (1.0f - 0.80f * sal_chunk);
         }
 
         alpha = torch::clamp(alpha, 1e-4f, 0.9999f);
@@ -457,34 +472,50 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         auto log_decay_matrix = lambda_t.unsqueeze(-1) - lambda_t.unsqueeze(-2);
         auto decay_matrix = torch::exp(torch::clamp(log_decay_matrix, -20.0f, 0.0f));
 
-        if (!causal_mask_cached.defined() || causal_mask_cached.size(2) != chunk_len || causal_mask_cached.device() != x_seq.device()) {
-            auto pos = torch::arange(chunk_len, torch::TensorOptions().device(x_seq.device()).dtype(torch::kFloat32));
-            causal_mask_cached = (pos.unsqueeze(1) >= pos.unsqueeze(0)).to(torch::kFloat32).view({1, 1, chunk_len, chunk_len});
-        }
-        auto decay_weights = decay_matrix * causal_mask_cached;
+        auto pos = torch::arange(Q, torch::TensorOptions().device(x_seq.device()).dtype(torch::kFloat32));
+        auto causal_mask = (pos.unsqueeze(1) >= pos.unsqueeze(0)).to(torch::kFloat32).view({1, 1, 1, Q, Q});
+        auto decay_weights = decay_matrix * causal_mask;
 
-        auto s_matrix = torch::matmul(q, k.transpose(-1, -2)) * decay_weights;
-        auto y_intra = torch::matmul(s_matrix, v);
+        auto s_matrix = torch::matmul(q_full, k_full.transpose(-1, -2)) * decay_weights;
+        auto y_intra = torch::matmul(s_matrix, v_full);
 
         auto decay_to_start = torch::exp(torch::clamp(lambda_t, -20.0f, 0.0f)).unsqueeze(-1);
-        auto y_inter = torch::matmul(q.to(torch::kFloat32) * decay_to_start, m_prev.to(torch::kFloat32)).to(q.scalar_type());
-
-        auto y_total = (y_intra + y_inter).transpose(1, 2).reshape({batch_size * chunk_len, num_heads * head_v});
-        auto y_normed = head_norm->forward(y_total);
-        auto y_gated = y_normed * z;
-        auto h_chunk = norm->forward(out_proj->forward(y_gated));
-
-        auto lambda_end = lambda_t.slice(2, -1).unsqueeze(-1);
+        auto lambda_end = lambda_t.slice(3, -1).unsqueeze(-1);
         auto decay_to_end = torch::exp(torch::clamp(lambda_end - lambda_t.unsqueeze(-1), -20.0f, 0.0f));
-        auto k_decayed = k.to(torch::kFloat32) * decay_to_end * beta.unsqueeze(-1).to(torch::kFloat32);
-        auto kv_chunk_update = torch::matmul(k_decayed.transpose(-1, -2), v.to(torch::kFloat32));
 
-        auto alpha_chunk = torch::exp(torch::clamp(lambda_t.slice(2, -1), -20.0f, 0.0f)).unsqueeze(-1);
-        auto sigma_somatic = 1e-3f * (0.8f * curiosity.to(torch::kFloat32) + 0.4f * na.to(torch::kFloat32) + 0.1f);
-        auto dW = torch::randn_like(m_prev) * torch::sqrt(eff_dt.to(torch::kFloat32)) * sigma_somatic;
-        auto m_next = alpha_chunk * m_prev.to(torch::kFloat32) + kv_chunk_update + dW;
+        auto k_decayed = k_full.to(torch::kFloat32) * decay_to_end * beta.unsqueeze(-1).to(torch::kFloat32);
+        auto kv_chunk_updates = torch::matmul(k_decayed.transpose(-1, -2), v_full.to(torch::kFloat32));
+        auto alpha_chunks = torch::exp(torch::clamp(lambda_t.slice(3, -1), -20.0f, 0.0f)).unsqueeze(-1);
 
-        return std::make_tuple(h_chunk, m_next, eff_dt.mean().item<float>());
+        auto m_curr = m_prev.to(torch::kFloat32);
+        std::vector<torch::Tensor> y_inter_list;
+        y_inter_list.reserve(num_chunks);
+
+        auto sigma_somatic = 1e-3f * (0.8f * curiosity.squeeze(1).to(torch::kFloat32) + 0.4f * na.squeeze(1).to(torch::kFloat32) + 0.1f);
+
+        for (int64_t c = 0; c < num_chunks; ++c) {
+            auto q_c = q_full.select(1, c);
+            auto dec_start_c = decay_to_start.select(1, c);
+            auto y_inter_c = torch::matmul(q_c.to(torch::kFloat32) * dec_start_c, m_curr).to(q_full.scalar_type());
+            y_inter_list.push_back(y_inter_c);
+
+            auto alpha_c = alpha_chunks.select(1, c);
+            auto kv_c = kv_chunk_updates.select(1, c);
+            auto dW_c = torch::randn_like(m_curr) * torch::sqrt(eff_dt.squeeze(1).to(torch::kFloat32)) * sigma_somatic;
+            m_curr = alpha_c * m_curr + kv_c + dW_c;
+        }
+
+        auto y_inter = torch::stack(y_inter_list, 1);
+        auto y_total = (y_intra + y_inter).permute({0, 1, 3, 2, 4}).reshape({batch_size * seq_len, num_heads * head_v});
+        auto y_normed = head_norm->forward(y_total);
+        auto y_gated = y_normed * z_full;
+        auto h_seq = norm->forward(out_proj->forward(y_gated)).view({batch_size, seq_len, out_dim});
+
+        if (pad_len > 0) {
+            h_seq = h_seq.slice(1, pad_len);
+        }
+
+        return std::make_tuple(h_seq, m_curr, eff_dt.mean().item<float>());
     }
 };
 
@@ -575,11 +606,11 @@ struct CorticalStageImpl : torch::nn::Module {
 
     CorticalStageImpl(int64_t hidden_dim = 768, int64_t expand_dim = 3072, int64_t num_heads = 12,
                      int64_t head_k = 64, int64_t head_v = 128, float min_beta = 0.0005f, float max_beta = 0.08f,
-                     int64_t swiglu_kernel_size = 3, std::string device_str = "cpu") {
+                     int64_t swiglu_kernel_size = 3, int64_t chunk_size = 64, std::string device_str = "cpu") {
 
         pre_norm_ssd = register_module("pre_norm_ssd", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
         ssd = register_module("ssd", std::make_shared<ParallelLogDecaySSDLayerImpl>(
-            hidden_dim, hidden_dim, num_heads, head_k, head_v, min_beta, max_beta, device_str
+            hidden_dim, hidden_dim, num_heads, head_k, head_v, min_beta, max_beta, chunk_size, device_str
         ));
         pre_norm_swiglu = register_module("pre_norm_swiglu", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
         swiglu = register_module("swiglu", std::make_shared<CausalConvSwiGLUBlockImpl>(
@@ -953,10 +984,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("__call__", &MultiScaleBytePyramidReceptiveFieldImpl::forward);
 
     py::class_<ParallelLogDecaySSDLayerImpl, torch::nn::Module, std::shared_ptr<ParallelLogDecaySSDLayerImpl>>(m, "ParallelLogDecaySSDLayer")
-        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, float, float, std::string>(),
+        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, float, float, int64_t, std::string>(),
              py::arg("in_dim") = 768, py::arg("out_dim") = 768, py::arg("num_heads") = 12,
              py::arg("head_k") = 64, py::arg("head_v") = 128, py::arg("min_beta") = 0.0005f, py::arg("max_beta") = 0.08f,
-             py::arg("device") = "cpu")
+             py::arg("chunk_size") = 64, py::arg("device") = "cpu")
         .def("forward", [](ParallelLogDecaySSDLayerImpl& self, torch::Tensor x_seq, torch::Tensor m_prev, torch::Tensor u_t) {
             return self.forward(x_seq, m_prev, u_t, torch::Tensor(), 1.0f);
         })
@@ -978,8 +1009,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
             return self.forward(x_seq, m_prev, u_t, saliency_gate, dt);
         });
 
-
-
     py::class_<CausalConvSwiGLUBlockImpl, torch::nn::Module, std::shared_ptr<CausalConvSwiGLUBlockImpl>>(m, "CausalConvSwiGLUBlock")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
              py::arg("hidden_dim") = 768, py::arg("expand_dim") = 3072, py::arg("kernel_size") = 3, py::arg("device") = "cpu")
@@ -997,10 +1026,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("__call__", &EntropyAdaptiveBoundaryDetectorImpl::forward);
 
     py::class_<CorticalStageImpl, torch::nn::Module, std::shared_ptr<CorticalStageImpl>>(m, "CorticalStage")
-        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, float, float, int64_t, std::string>(),
+        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, float, float, int64_t, int64_t, std::string>(),
              py::arg("hidden_dim") = 768, py::arg("expand_dim") = 3072, py::arg("num_heads") = 12,
              py::arg("head_k") = 64, py::arg("head_v") = 128, py::arg("min_beta") = 0.0005f, py::arg("max_beta") = 0.08f,
-             py::arg("swiglu_kernel_size") = 3, py::arg("device") = "cpu")
+             py::arg("swiglu_kernel_size") = 3, py::arg("chunk_size") = 64, py::arg("device") = "cpu")
         .def("forward", [](CorticalStageImpl& self, torch::Tensor x, torch::Tensor m_prev, torch::Tensor u_t) {
             return self.forward(x, m_prev, u_t, torch::Tensor(), 1.0f);
         })
