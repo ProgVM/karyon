@@ -33,8 +33,49 @@ from karyon_core import (
 
 
 # =============================================================================
-# MODULE 1: UNSHACKLED 256D POSITIONAL BYTE EMBEDDING
+# MODULE 1: MULTI-SCALE MORPHOLOGICAL BYTE PYRAMID RECEPTIVE FIELD (EXP-70)
 # =============================================================================
+
+class MultiScaleBytePyramidReceptiveField(nn.Module):
+    """
+    Multi-Scale Causal Depthwise Byte Pyramid covering:
+    - Micro Scale (K=2): Short operators, ASCII punctuation, bigrams
+    - Meso Scale (K=4): Syllables, morphemes (prefixes/suffixes)
+    - Macro Scale (K=8): Common word stems and lexical chunks
+    Merged via dynamic softmax scale gating (EXP-70 Validated).
+    """
+    def __init__(self, text_dim: int = 256):
+        super().__init__()
+        self.text_dim = text_dim
+        
+        self.conv_k2 = nn.Conv1d(text_dim, text_dim, kernel_size=2, groups=text_dim, bias=False)
+        self.conv_k4 = nn.Conv1d(text_dim, text_dim, kernel_size=4, groups=text_dim, bias=False)
+        self.conv_k8 = nn.Conv1d(text_dim, text_dim, kernel_size=8, groups=text_dim, bias=False)
+        
+        self.scale_gate = nn.Linear(text_dim, 3)
+        self.norm = nn.LayerNorm(text_dim)
+
+    def forward(self, x_seq: torch.Tensor) -> torch.Tensor:
+        batch_size, seq_len, _ = x_seq.size()
+        x_trans = x_seq.transpose(1, 2)
+
+        x_pad_k2 = F.pad(x_trans, (1, 0))
+        out_k2 = F.silu(self.conv_k2(x_pad_k2)).transpose(1, 2)
+
+        x_pad_k4 = F.pad(x_trans, (3, 0))
+        out_k4 = F.silu(self.conv_k4(x_pad_k4)).transpose(1, 2)
+
+        x_pad_k8 = F.pad(x_trans, (7, 0))
+        out_k8 = F.silu(self.conv_k8(x_pad_k8)).transpose(1, 2)
+
+        gates = F.softmax(self.scale_gate(x_seq), dim=-1)
+        g2 = gates[..., 0:1]
+        g4 = gates[..., 1:2]
+        g8 = gates[..., 2:3]
+
+        pyramid_out = g2 * out_k2 + g4 * out_k4 + g8 * out_k8
+        return self.norm(x_seq + pyramid_out)
+
 
 class OffsetPositionalByteEmbedding(nn.Module):
     def __init__(self, vocab_size=258, text_dim=256, max_len=8192, device_str='cpu'):
@@ -42,7 +83,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
         self.vocab_size = vocab_size
         self.text_dim = text_dim
         self.byte_embed = nn.Embedding(vocab_size, text_dim)
-        self.receptive_field = CausalByteReceptiveField(text_dim=text_dim, kernel_size=4, device=device_str)
+        self.receptive_field = MultiScaleBytePyramidReceptiveField(text_dim=text_dim)
         
         pe = torch.zeros(max_len, text_dim)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
@@ -704,7 +745,7 @@ class CoREAgent(nn.Module):
         consecutive_newlines = 0
 
         for step in range(max_generated_tokens):
-            context_window = rolling_token_ids[-4:]
+            context_window = rolling_token_ids[-8:]
             window_t = torch.tensor([context_window], dtype=torch.long, device=self.device)
             window_start_pos = (total_prompt_len + step) - (len(context_window) - 1)
             

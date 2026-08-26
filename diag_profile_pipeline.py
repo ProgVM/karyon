@@ -63,11 +63,11 @@ def profile_master_karyon_pipeline():
     config = CoREConfig()
     config.net.text_dim = 256
     config.net.unified_dim = 256
-    config.net.hidden_dim = 512
-    config.net.expand_dim = 2048
-    config.net.num_heads = 8
-    config.net.head_k = 32
-    config.net.head_v = 64
+    config.net.hidden_dim = 768
+    config.net.expand_dim = 3072
+    config.net.num_heads = 12
+    config.net.head_k = 64
+    config.net.head_v = 128
     config.net.num_attractors = 256
     config.train.chunk_size = 64
 
