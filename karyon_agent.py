@@ -180,7 +180,7 @@ class EntropyAdaptiveBoundaryDetector(nn.Module):
 # =============================================================================
 
 class CorticalStage(nn.Module):
-    def __init__(self, hidden_dim: int = 512, expand_dim: int = 2048, num_heads: int = 8,
+    def __init__(self, hidden_dim: int = 768, expand_dim: int = 3072, num_heads: int = 12,
                  head_k: int = 64, head_v: int = 128, min_beta: float = 0.0005, max_beta: float = 0.08, device_str: str = 'cpu'):
         super().__init__()
         self.pre_norm_ssd = nn.LayerNorm(hidden_dim)
@@ -222,10 +222,10 @@ class CoREAgent(nn.Module):
         self.unified_dim = config.net.unified_dim
         self.text_dim = config.net.text_dim
         self.action_dim = config.net.action_dim
-        self.expand_dim = getattr(config.net, 'expand_dim', 2048)
+        self.expand_dim = getattr(config.net, 'expand_dim', 3072)
         self.latent_dim = getattr(config.net, 'latent_dim', 128)
         self.text_gen_dim = getattr(config.net, 'text_gen_dim', 258)
-        self.num_heads = getattr(config.net, 'num_heads', 8)
+        self.num_heads = getattr(config.net, 'num_heads', 12)
         self.head_k = getattr(config.net, 'head_k', 64)
         self.head_v = getattr(config.net, 'head_v', 128)
         self.inv_sqrt_text_dim = 1.0 / math.sqrt(self.text_dim)

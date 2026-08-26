@@ -45,9 +45,10 @@ def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore
     core_config = CoREConfig()
     core_config.net.text_dim = 256
     core_config.net.unified_dim = 256
-    core_config.net.hidden_dim = 512
+    core_config.net.hidden_dim = 768
     core_config.net.latent_dim = 128
-    core_config.net.expand_dim = 2048
+    core_config.net.expand_dim = 3072
+    core_config.net.num_heads = 12
     core_config.net.num_attractors = 256
     core_config.net.text_gen_dim = 258
     core_config.train.batch_size = 1

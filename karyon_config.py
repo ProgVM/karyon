@@ -65,12 +65,12 @@ class NetworkConfig:
     text_gen_dim: int = 258
     
     unified_dim: int = 256
-    hidden_dim: int = 512
+    hidden_dim: int = 768
     latent_dim: int = 128
-    expand_dim: int = 2048
-    num_heads: int = 8
-    head_k: int = 32
-    head_v: int = 64
+    expand_dim: int = 3072
+    num_heads: int = 12
+    head_k: int = 64
+    head_v: int = 128
     num_attractors: int = 256
     max_seq_len: int = 8192
 
