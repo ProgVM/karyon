@@ -414,7 +414,16 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         return std::make_tuple(cos_cached, sin_cached);
     }
 
-    std::tuple<torch::Tensor, torch::Tensor, float> forward(
+    torch::Tensor get_causal_mask(int64_t Q, torch::Device dev, torch::ScalarType dtype) {
+        if (causal_mask_cached.defined() && causal_mask_cached.size(3) == Q && causal_mask_cached.device() == dev && causal_mask_cached.scalar_type() == dtype) {
+            return causal_mask_cached;
+        }
+        auto pos = torch::arange(Q, torch::TensorOptions().device(dev).dtype(dtype));
+        causal_mask_cached = (pos.unsqueeze(1) >= pos.unsqueeze(0)).to(dtype).view({1, 1, 1, Q, Q});
+        return causal_mask_cached;
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward(
         torch::Tensor x_seq, torch::Tensor m_prev, torch::Tensor u_t,
         torch::Tensor saliency_gate = torch::Tensor(), float dt = 1.0f) {
 
@@ -472,8 +481,7 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         auto log_decay_matrix = lambda_t.unsqueeze(-1) - lambda_t.unsqueeze(-2);
         auto decay_matrix = torch::exp(torch::clamp(log_decay_matrix, -20.0f, 0.0f));
 
-        auto pos = torch::arange(Q, torch::TensorOptions().device(x_seq.device()).dtype(torch::kFloat32));
-        auto causal_mask = (pos.unsqueeze(1) >= pos.unsqueeze(0)).to(torch::kFloat32).view({1, 1, 1, Q, Q});
+        auto causal_mask = get_causal_mask(Q, x_seq.device(), x_seq.scalar_type());
         auto decay_weights = decay_matrix * causal_mask;
 
         auto s_matrix = torch::matmul(q_full, k_full.transpose(-1, -2)) * decay_weights;
@@ -492,6 +500,7 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         y_inter_list.reserve(num_chunks);
 
         auto sigma_somatic = 1e-3f * (0.8f * curiosity.squeeze(1).to(torch::kFloat32) + 0.4f * na.squeeze(1).to(torch::kFloat32) + 0.1f);
+        auto dW_all = torch::randn({num_chunks, batch_size, num_heads, head_k, head_v}, m_curr.options());
 
         for (int64_t c = 0; c < num_chunks; ++c) {
             auto q_c = q_full.select(1, c);
@@ -501,7 +510,7 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
 
             auto alpha_c = alpha_chunks.select(1, c);
             auto kv_c = kv_chunk_updates.select(1, c);
-            auto dW_c = torch::randn_like(m_curr) * torch::sqrt(eff_dt.squeeze(1).to(torch::kFloat32)) * sigma_somatic;
+            auto dW_c = dW_all.select(0, c) * torch::sqrt(eff_dt.squeeze(1).to(torch::kFloat32)) * sigma_somatic;
             m_curr = alpha_c * m_curr + kv_c + dW_c;
         }
 
@@ -515,7 +524,7 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
             h_seq = h_seq.slice(1, pad_len);
         }
 
-        return std::make_tuple(h_seq, m_curr, eff_dt.mean().item<float>());
+        return std::make_tuple(h_seq, m_curr, eff_dt.mean());
     }
 };
 
@@ -622,7 +631,7 @@ struct CorticalStageImpl : torch::nn::Module {
         }
     }
 
-    std::tuple<torch::Tensor, torch::Tensor, float> forward(
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward(
         torch::Tensor x, torch::Tensor m_prev, torch::Tensor u_t,
         torch::Tensor saliency_gate = torch::Tensor(), float dt = 1.0f) {
 
@@ -630,7 +639,7 @@ struct CorticalStageImpl : torch::nn::Module {
         auto ssd_out = ssd->forward(norm_x, m_prev, u_t, saliency_gate, dt);
         auto h_ssd = std::get<0>(ssd_out);
         auto m_next = std::get<1>(ssd_out);
-        float eff_dt = std::get<2>(ssd_out);
+        auto eff_dt = std::get<2>(ssd_out);
 
         auto x_res1 = x + h_ssd.view_as(x);
         auto norm_res1 = pre_norm_swiglu->forward(x_res1);
@@ -666,7 +675,7 @@ struct PrecisionWeightedLPERImpl : torch::nn::Module {
         }
     }
 
-    std::tuple<torch::Tensor, torch::Tensor, float> forward(
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward(
         torch::Tensor h_s1, torch::Tensor h1_prev_last, torch::Tensor u_t) {
 
         int64_t batch_size = h_s1.size(0);
@@ -681,7 +690,7 @@ struct PrecisionWeightedLPERImpl : torch::nn::Module {
         auto pi_t = 2.0f * precision_net->forward(prec_in);
 
         auto e1_weighted = pi_t * e1_raw;
-        return std::make_tuple(e1_weighted, h_s1.slice(1, -1).detach(), pi_t.mean().item<float>());
+        return std::make_tuple(e1_weighted, h_s1.slice(1, -1).detach(), pi_t.mean());
     }
 };
 
@@ -714,11 +723,13 @@ public:
     }
 
     std::tuple<torch::Tensor, torch::Tensor> relax_to_minima(torch::Tensor h_state, torch::Tensor u_t) {
-        float da_val = 0.0f;
+        torch::Tensor beta;
         if (u_t.defined() && u_t.numel() >= 6) {
-            da_val = u_t[0][5].item<float>();
+            auto da_val = u_t.select(1, 5).view({-1, 1});
+            beta = 1.0f + 1.5f * da_val;
+        } else {
+            beta = torch::ones({1, 1}, h_state.options());
         }
-        float beta = 1.0f + 1.5f * da_val;
 
         auto sim = torch::matmul(h_state, attractor_basins.transpose(0, 1)) * (scale * beta);
         auto attn_weights = torch::softmax(sim, -1);

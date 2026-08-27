@@ -7,6 +7,7 @@ Allostatic Active Inference Architecture (v22.0 Master Native C++20 Engine):
 - Native Log-Decay Parallel SSD Scan with RoPE & Mamba-2 GLU Output Gating
 - Native Multi-Scale Byte Pyramid Receptive Field & EABS Boundary Detector
 - Modern Hopfield Commitment Loss, Nocturnal Sleep Consolidation
+- Optimized RAM/VRAM Footprint & PCIe Sync-Free C++ Recurrence
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -19,6 +20,8 @@ import os
 import struct
 import json
 import importlib
+import gc
+import numpy as np
 import torch
 
 # =============================================================================
@@ -107,35 +110,36 @@ dataset = load_dataset("vicgalle/alpaca-gpt4", split="train")
 tokenizer = ByteTokenizer()
 
 # =============================================================================
-# 1. CONTINUOUS PACKED STREAM DATASET (0% PADDING, S=1024)
+# 1. CONTINUOUS PACKED STREAM DATASET (0% PADDING, S=1024) - OPTIMIZED RAM
 # =============================================================================
 class ContinuousPackedDataset(Dataset):
-    """Zero-Padding Continuous Stream Packing with EOS Separators (S=1024)."""
+    """Zero-Padding Continuous Stream Packing with EOS Separators (S=1024) - Optimized RAM footprint."""
     def __init__(self, hf_data, tokenizer, seq_len=1024):
         self.seq_len = seq_len
-        full_token_stream = []
-
+        
+        # Build flat stream directly as a compact numpy uint16 array to save 1.5 GB RAM
+        temp_list = []
         for item in hf_data:
             inst = item.get("instruction", "").strip()
             out = item.get("output", "").strip()
             if inst and out:
                 dialog = f"User: {inst}\nKaryon: {out}"
                 ids = tokenizer.encode(dialog)
-                full_token_stream.extend(ids)
+                temp_list.extend(ids)
+                
+        self.flat_stream = np.array(temp_list, dtype=np.uint16)
+        del temp_list
+        gc.collect()
 
-        num_blocks = len(full_token_stream) // (seq_len + 1)
-        self.samples = []
-        for b_idx in range(num_blocks):
-            start = b_idx * (seq_len + 1)
-            end = start + (seq_len + 1)
-            chunk = full_token_stream[start:end]
-            self.samples.append(torch.tensor(chunk, dtype=torch.long))
+        self.num_blocks = len(self.flat_stream) // (seq_len + 1)
 
     def __len__(self):
-        return len(self.samples)
+        return self.num_blocks
 
     def __getitem__(self, idx):
-        return self.samples[idx]
+        start = idx * (self.seq_len + 1)
+        end = start + (self.seq_len + 1)
+        return torch.from_numpy(self.flat_stream[start:end].astype(np.int64))
 
 def collate_packed_fn(batch):
     return torch.stack(batch, dim=0)
@@ -174,6 +178,10 @@ core_config.net.text_gen_dim = 258
 core_config.train.batch_size = BATCH_SIZE
 core_config.train.chunk_size = CHUNK_SIZE
 
+# Calibrate setpoints to ensure active learning on non-repeating streams
+core_config.train.mastery_setpoint = 0.001
+core_config.train.speech_mastery_setpoint = 0.05
+
 agent_brain = CoREAgent(config=core_config, device=device_str).to(device)
 hu = HomeostaticUnit(batch_size=BATCH_SIZE, device=device_str)
 episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_config.net.unified_dim, max_capacity=1000, device=device_str)
@@ -202,8 +210,8 @@ moving_mean_fe = 0.15
 moving_var_fe = 0.01
 alpha_ma = getattr(core_config.train, 'dfet_alpha_ma', 0.05)
 
-FREE_ENERGY_MASTERY_SETPOINT = getattr(core_config.train, 'mastery_setpoint', 0.025)
-SPEECH_MASTERY_SETPOINT = getattr(core_config.train, 'speech_mastery_setpoint', 0.30)
+FREE_ENERGY_MASTERY_SETPOINT = getattr(core_config.train, 'mastery_setpoint', 0.001)
+SPEECH_MASTERY_SETPOINT = getattr(core_config.train, 'speech_mastery_setpoint', 0.05)
 
 total_skipped_batches = 0
 total_adapted_batches = 0
@@ -363,5 +371,10 @@ for pass_idx in range(NUM_PASSES):
 
     # Persist progress after each pass and sleep consolidation
     save_karyon(agent_brain, episodic_mem, hu, h_curr[0:1], h_curr[0:1], epoch=saved_epoch + pass_idx + 1, story_idx=len(stream_loader) * BATCH_SIZE * (pass_idx + 1), filepath=kcore_path)
+    
+    # Explicit garbage collection and VRAM flush to keep footprint extremely low
+    gc.collect()
+    if device_str == 'cuda':
+        torch.cuda.empty_cache()
 
 logger.info(f"High-Occupancy Allostatic Session Complete! Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches}.")
