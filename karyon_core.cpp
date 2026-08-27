@@ -125,6 +125,9 @@ public:
 
     torch::nn::Linear text_proj{nullptr};
     torch::nn::Linear vision_proj{nullptr};
+    torch::nn::Linear audio_proj{nullptr};
+    torch::nn::Linear binary_proj{nullptr};
+    torch::nn::Linear telepathic_proj{nullptr};
     torch::nn::Linear motor_proj{nullptr};
     torch::nn::Linear homeo_proj{nullptr};
     torch::nn::Linear mind_proj{nullptr};
@@ -133,13 +136,17 @@ public:
     torch::nn::LayerNorm channel_norm{nullptr};
     torch::nn::LayerNorm query_norm{nullptr};
 
-    SensoryGatewayImpl(int64_t unified_dim = 256, int64_t hidden_dim = 512, int64_t homeo_dim = 6,
-                       int64_t text_dim = 256, int64_t vision_dim = 256, int64_t action_dim = 3,
+    SensoryGatewayImpl(int64_t unified_dim = 256, int64_t hidden_dim = 768, int64_t homeo_dim = 6,
+                       int64_t text_dim = 256, int64_t vision_dim = 256, int64_t audio_dim = 256,
+                       int64_t binary_dim = 256, int64_t telepathic_dim = 256, int64_t action_dim = 3,
                        std::string device_str = "cpu")
         : unified_dim(unified_dim), hidden_dim(hidden_dim), homeo_dim(homeo_dim) {
 
         text_proj = register_module("text_proj", torch::nn::Linear(text_dim, unified_dim));
         vision_proj = register_module("vision_proj", torch::nn::Linear(vision_dim, unified_dim));
+        audio_proj = register_module("audio_proj", torch::nn::Linear(audio_dim, unified_dim));
+        binary_proj = register_module("binary_proj", torch::nn::Linear(binary_dim, unified_dim));
+        telepathic_proj = register_module("telepathic_proj", torch::nn::Linear(telepathic_dim, unified_dim));
         motor_proj = register_module("motor_proj", torch::nn::Linear(action_dim, unified_dim));
         
         homeo_proj = register_module("homeo_proj", torch::nn::Linear(homeo_dim, unified_dim));
@@ -155,7 +162,8 @@ public:
     }
 
     std::tuple<torch::Tensor, torch::Tensor, std::vector<std::string>, torch::Tensor> forward(
-        torch::Tensor text_input, torch::Tensor vision_input, torch::Tensor motor_input,
+        torch::Tensor text_input, torch::Tensor vision_input, torch::Tensor audio_input,
+        torch::Tensor binary_input, torch::Tensor telepathic_input, torch::Tensor motor_input,
         torch::Tensor h_prev, torch::Tensor u_t) {
 
         int64_t batch_size = h_prev.size(0);
@@ -174,6 +182,24 @@ public:
         projected_channels.push_back(vision_proj->forward(vision_input));
         channel_names.push_back("vision");
         channel_masks.push_back((1.0f - vis_act) * -1e9f);
+
+        auto aud_max = std::get<0>(audio_input.abs().max(-1, true));
+        auto aud_act = (aud_max > 1e-5f).to(torch::kFloat32);
+        projected_channels.push_back(audio_proj->forward(audio_input));
+        channel_names.push_back("audio");
+        channel_masks.push_back((1.0f - aud_act) * -1e9f);
+
+        auto bin_max = std::get<0>(binary_input.abs().max(-1, true));
+        auto bin_act = (bin_max > 1e-5f).to(torch::kFloat32);
+        projected_channels.push_back(binary_proj->forward(binary_input));
+        channel_names.push_back("binary");
+        channel_masks.push_back((1.0f - bin_act) * -1e9f);
+
+        auto tel_max = std::get<0>(telepathic_input.abs().max(-1, true));
+        auto tel_act = (tel_max > 1e-5f).to(torch::kFloat32);
+        projected_channels.push_back(telepathic_proj->forward(telepathic_input));
+        channel_names.push_back("telepathic");
+        channel_masks.push_back((1.0f - tel_act) * -1e9f);
 
         auto mot_max = std::get<0>(motor_input.abs().max(-1, true));
         auto mot_act = (mot_max > 1e-5f).to(torch::kFloat32);
@@ -209,6 +235,15 @@ public:
 
         return std::make_tuple(w_t, attention_weights, channel_names, epistemic_entropy);
     }
+
+    std::tuple<torch::Tensor, torch::Tensor, std::vector<std::string>, torch::Tensor> forward(
+        torch::Tensor text_input, torch::Tensor vision_input, torch::Tensor motor_input,
+        torch::Tensor h_prev, torch::Tensor u_t) {
+        auto dummy_audio = torch::zeros({text_input.size(0), text_input.size(1)}, text_input.options());
+        auto dummy_binary = torch::zeros({text_input.size(0), text_input.size(1)}, text_input.options());
+        auto dummy_telepathic = torch::zeros({text_input.size(0), text_input.size(1)}, text_input.options());
+        return forward(text_input, vision_input, dummy_audio, dummy_binary, dummy_telepathic, motor_input, h_prev, u_t);
+    }
 };
 
 // ============================================================================
@@ -219,12 +254,38 @@ public:
     torch::nn::Linear motor_action{nullptr};
     torch::nn::Linear cognitive_gating{nullptr};
     torch::nn::Linear text_generation{nullptr};
+    torch::nn::Sequential vision_generation{nullptr};
+    torch::nn::Sequential audio_generation{nullptr};
+    torch::nn::Sequential binary_generation{nullptr};
+    torch::nn::Sequential telepathic_generation{nullptr};
 
-    MotorGatewayImpl(int64_t hidden_dim = 512, int64_t action_dim = 3, int64_t cog_action_dim = 3, int64_t text_gen_dim = 258,
+    MotorGatewayImpl(int64_t hidden_dim = 768, int64_t action_dim = 3, int64_t cog_action_dim = 3, int64_t text_gen_dim = 258,
+                     int64_t vision_dim = 256, int64_t audio_dim = 256, int64_t binary_dim = 256, int64_t telepathic_dim = 256,
                      std::string device_str = "cpu") {
         motor_action = register_module("motor_action", torch::nn::Linear(hidden_dim, action_dim));
         cognitive_gating = register_module("cognitive_gating", torch::nn::Linear(hidden_dim, cog_action_dim));
         text_generation = register_module("text_generation", torch::nn::Linear(hidden_dim, text_gen_dim));
+
+        vision_generation = register_module("vision_generation", torch::nn::Sequential(
+            torch::nn::Linear(hidden_dim, vision_dim),
+            torch::nn::SiLU(),
+            torch::nn::Linear(vision_dim, vision_dim)
+        ));
+        audio_generation = register_module("audio_generation", torch::nn::Sequential(
+            torch::nn::Linear(hidden_dim, audio_dim),
+            torch::nn::SiLU(),
+            torch::nn::Linear(audio_dim, audio_dim)
+        ));
+        binary_generation = register_module("binary_generation", torch::nn::Sequential(
+            torch::nn::Linear(hidden_dim, binary_dim),
+            torch::nn::SiLU(),
+            torch::nn::Linear(binary_dim, binary_dim)
+        ));
+        telepathic_generation = register_module("telepathic_generation", torch::nn::Sequential(
+            torch::nn::Linear(hidden_dim, telepathic_dim),
+            torch::nn::SiLU(),
+            torch::nn::LayerNorm(torch::nn::LayerNormOptions({telepathic_dim}))
+        ));
 
         if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
             this->to(torch::kCUDA);
@@ -236,6 +297,10 @@ public:
         outputs["motor_action"] = motor_action->forward(h_t);
         outputs["cognitive_gating"] = cognitive_gating->forward(h_t);
         outputs["text_generation"] = text_generation->forward(h_t);
+        outputs["vision_generation"] = vision_generation->forward(h_t);
+        outputs["audio_generation"] = audio_generation->forward(h_t);
+        outputs["binary_generation"] = binary_generation->forward(h_t);
+        outputs["telepathic_generation"] = telepathic_generation->forward(h_t);
         return outputs;
     }
 };
@@ -973,18 +1038,30 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("compute_allostatic_regime", &HomeostaticUnit::compute_allostatic_regime, py::arg("prediction_error") = 0.0f);
 
     py::class_<SensoryGatewayImpl, torch::nn::Module, std::shared_ptr<SensoryGatewayImpl>>(m, "SensoryGateway")
-        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
-             py::arg("unified_dim") = 256, py::arg("hidden_dim") = 512, py::arg("homeo_dim") = 6,
-             py::arg("text_dim") = 256, py::arg("vision_dim") = 256, py::arg("action_dim") = 3,
+        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
+             py::arg("unified_dim") = 256, py::arg("hidden_dim") = 768, py::arg("homeo_dim") = 6,
+             py::arg("text_dim") = 256, py::arg("vision_dim") = 256, py::arg("audio_dim") = 256,
+             py::arg("binary_dim") = 256, py::arg("telepathic_dim") = 256, py::arg("action_dim") = 3,
              py::arg("device") = "cpu")
-        .def("forward", &SensoryGatewayImpl::forward)
+        .def("forward", [](SensoryGatewayImpl& self, torch::Tensor text_input, torch::Tensor vision_input, torch::Tensor motor_input, torch::Tensor h_prev, torch::Tensor u_t) {
+            return self.forward(text_input, vision_input, motor_input, h_prev, u_t);
+        })
+        .def("forward", [](SensoryGatewayImpl& self, torch::Tensor text_input, torch::Tensor vision_input, torch::Tensor audio_input, torch::Tensor binary_input, torch::Tensor telepathic_input, torch::Tensor motor_input, torch::Tensor h_prev, torch::Tensor u_t) {
+            return self.forward(text_input, vision_input, audio_input, binary_input, telepathic_input, motor_input, h_prev, u_t);
+        })
         .def("parameters", [](std::shared_ptr<SensoryGatewayImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<SensoryGatewayImpl> m) { return m->named_parameters(); })
-        .def("__call__", &SensoryGatewayImpl::forward);
+        .def("__call__", [](SensoryGatewayImpl& self, torch::Tensor text_input, torch::Tensor vision_input, torch::Tensor motor_input, torch::Tensor h_prev, torch::Tensor u_t) {
+            return self.forward(text_input, vision_input, motor_input, h_prev, u_t);
+        })
+        .def("__call__", [](SensoryGatewayImpl& self, torch::Tensor text_input, torch::Tensor vision_input, torch::Tensor audio_input, torch::Tensor binary_input, torch::Tensor telepathic_input, torch::Tensor motor_input, torch::Tensor h_prev, torch::Tensor u_t) {
+            return self.forward(text_input, vision_input, audio_input, binary_input, telepathic_input, motor_input, h_prev, u_t);
+        });
 
     py::class_<MotorGatewayImpl, torch::nn::Module, std::shared_ptr<MotorGatewayImpl>>(m, "MotorGateway")
-        .def(py::init<int64_t, int64_t, int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 512, py::arg("action_dim") = 3, py::arg("cog_action_dim") = 3, py::arg("text_gen_dim") = 258,
+        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
+             py::arg("hidden_dim") = 768, py::arg("action_dim") = 3, py::arg("cog_action_dim") = 3, py::arg("text_gen_dim") = 258,
+             py::arg("vision_dim") = 256, py::arg("audio_dim") = 256, py::arg("binary_dim") = 256, py::arg("telepathic_dim") = 256,
              py::arg("device") = "cpu")
         .def("forward", &MotorGatewayImpl::forward)
         .def("parameters", [](std::shared_ptr<MotorGatewayImpl> m) { return m->parameters(); })

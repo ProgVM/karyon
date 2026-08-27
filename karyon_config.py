@@ -59,6 +59,8 @@ class NetworkConfig:
     text_dim: int = 256
     vision_dim: int = 256
     audio_dim: int = 256
+    binary_dim: int = 256
+    telepathic_dim: int = 256
     action_dim: int = 3
     cog_action_dim: int = 3
     homeo_dim: int = 6

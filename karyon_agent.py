@@ -110,6 +110,9 @@ class CoREAgent(nn.Module):
             homeo_dim=config.net.homeo_dim, 
             text_dim=self.text_dim, 
             vision_dim=config.net.vision_dim, 
+            audio_dim=getattr(config.net, 'audio_dim', 256),
+            binary_dim=getattr(config.net, 'binary_dim', 256),
+            telepathic_dim=getattr(config.net, 'telepathic_dim', 256),
             action_dim=config.net.action_dim,
             device=self.device_str
         )
@@ -150,6 +153,10 @@ class CoREAgent(nn.Module):
             action_dim=config.net.action_dim, 
             cog_action_dim=config.net.cog_action_dim, 
             text_gen_dim=self.text_gen_dim,
+            vision_dim=config.net.vision_dim,
+            audio_dim=getattr(config.net, 'audio_dim', 256),
+            binary_dim=getattr(config.net, 'binary_dim', 256),
+            telepathic_dim=getattr(config.net, 'telepathic_dim', 256),
             device=self.device_str
         )
         
@@ -176,9 +183,14 @@ class CoREAgent(nn.Module):
     def forward(self, sensor_inputs: Dict[str, torch.Tensor], h_fast: torch.Tensor, h_slow: torch.Tensor, u_t: torch.Tensor, dt: float = 1.0):
         text_in = sensor_inputs.get('text', torch.zeros(h_fast.size(0), self.text_dim, device=self.device))
         vision_in = sensor_inputs.get('vision', torch.zeros(h_fast.size(0), self.config.net.vision_dim, device=self.device))
+        audio_in = sensor_inputs.get('audio', torch.zeros(h_fast.size(0), getattr(self.config.net, 'audio_dim', 256), device=self.device))
+        binary_in = sensor_inputs.get('binary', torch.zeros(h_fast.size(0), getattr(self.config.net, 'binary_dim', 256), device=self.device))
+        telepathic_in = sensor_inputs.get('telepathic', torch.zeros(h_fast.size(0), getattr(self.config.net, 'telepathic_dim', 256), device=self.device))
         motor_in = sensor_inputs.get('motor_efference', torch.zeros(h_fast.size(0), self.action_dim, device=self.device))
         
-        w_t, attn_weights, channel_names, epistemic_entropy = self.gateway(text_in, vision_in, motor_in, h_slow, u_t)
+        w_t, attn_weights, channel_names, epistemic_entropy = self.gateway(
+            text_in, vision_in, audio_in, binary_in, telepathic_in, motor_in, h_slow, u_t
+        )
         x_in = self.in_proj(w_t).unsqueeze(1)
         
         if h_fast.dim() == 2:
@@ -458,6 +470,42 @@ class CoREAgent(nn.Module):
 
         h_proxy = m_s2.view(batch_size, -1)[:, :self.hidden_dim]
         return total_loss_tensor, speech_loss_val, fe_loss_val, m_s2, h_proxy, curr_u_t, eff_dt
+
+    def forward_multimodal_step(self, sensor_dict: Dict[str, torch.Tensor], m_s1: torch.Tensor, m_s2: torch.Tensor, u_t: torch.Tensor):
+        """Processes a single multi-modal step (Text, Vision, Audio, Binary, Telepathic thoughts, Motor) in parallel."""
+        b_size = m_s1.size(0)
+        text_in = sensor_dict.get('text', torch.zeros(b_size, self.text_dim, device=self.device))
+        vision_in = sensor_dict.get('vision', torch.zeros(b_size, getattr(self.config.net, 'vision_dim', 256), device=self.device))
+        audio_in = sensor_dict.get('audio', torch.zeros(b_size, getattr(self.config.net, 'audio_dim', 256), device=self.device))
+        binary_in = sensor_dict.get('binary', torch.zeros(b_size, getattr(self.config.net, 'binary_dim', 256), device=self.device))
+        telepathic_in = sensor_dict.get('telepathic', torch.zeros(b_size, getattr(self.config.net, 'telepathic_dim', 256), device=self.device))
+        motor_in = sensor_dict.get('motor_efference', torch.zeros(b_size, self.action_dim, device=self.device))
+
+        h_prev_proxy = m_s1.view(b_size, -1)[:, :self.hidden_dim]
+
+        w_t, attn_weights, channel_names, epistemic_entropy = self.gateway(
+            text_in, vision_in, audio_in, binary_in, telepathic_in, motor_in, h_prev_proxy, u_t
+        )
+
+        x_in = self.in_proj(w_t).unsqueeze(1)
+
+        h_s1_out, m_s1_next, dt1 = self.stage1(x_in, m_s1, u_t, torch.Tensor(), 1.0)
+        dummy_ids = torch.zeros(x_in.size(0), 1, dtype=torch.long, device=self.device)
+        sal_gate = self.boundary_detector(h_s1_out, dummy_ids)
+
+        h1_prev_proxy = m_s1.view(b_size, -1)[:, :self.hidden_dim].unsqueeze(1)
+        e1_weighted, _, _ = self.pw_lper(h_s1_out, h1_prev_proxy, u_t)
+
+        h_s2_out, m_s2_next, dt2 = self.stage2(e1_weighted, m_s2, u_t, sal_gate, 1.0)
+
+        h_combined = h_s1_out + h_s2_out
+        h_flat = h_combined.view(-1, self.hidden_dim)
+        h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, u_t)
+
+        outs = self.output_gateway(h_relaxed)
+        w_pred, kl_div, fe, z_t = self.world_model(h_prev_proxy, h_relaxed, w_t)
+
+        return outs, fe, commit_loss, attn_weights, channel_names, m_s1_next.detach(), m_s2_next.detach(), z_t
 
     def generate_thought_and_speech(
         self, prompt: str, m_state: torch.Tensor, h_state: torch.Tensor, hu, episodic_memory, 

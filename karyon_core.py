@@ -1,18 +1,19 @@
 # karyon_core.py
 """
 ===============================================================================
-KARYON CORE C++20 LIBTORCH COMPILATION & PYTHON BRIDGE v22.0 MASTER
+KARYON CORE C++20 LIBTORCH COMPILATION & PYTHON BRIDGE v23.0 MASTER
 Python as Client, C++20 as Engine (KEP Principle 1)
+Universal Multimodal & Cross-Modal State-Space Cognitive Engine (EXP-87 Validated)
 ===============================================================================
 """
 import os
 import torch
 from torch.utils.cpp_extension import load
 
-print("[C++ JIT] Compiling and linking native Karyon C++20 architecture (v22.0 Master)...")
+print("[C++ JIT] Compiling and linking native Karyon C++20 architecture (v23.0 Master Universal Multimodal)...")
 
 karyon_cpp = load(
-    name="karyon_cpp_ext_v22",
+    name="karyon_cpp_ext_v23",
     sources=["karyon_core.cpp"],
     extra_cflags=["-O3", "-std=c++20"],
     verbose=False
@@ -36,4 +37,4 @@ DesaturatedHopfieldAttractorHead = karyon_cpp.DesaturatedHopfieldAttractorHead
 LatentPredictor = karyon_cpp.LatentPredictor
 BatchedEpisodicMemory = karyon_cpp.BatchedEpisodicMemory
 
-print("[C++ JIT] Native C++20 v22.0 Master architecture successfully compiled and initialized!")
+print("[C++ JIT] Native C++20 v23.0 Master Universal Multimodal architecture successfully compiled and initialized!")
