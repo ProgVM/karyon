@@ -400,93 +400,64 @@ class CoREAgent(nn.Module):
         full_emb = self.pos_embeddings(input_seq, start_pos=0, apply_rf=True)
         full_h_in = self.in_proj(full_emb)
         
-        num_chunks = max(1, seq_len // chunk_size)
-        chunk_losses = []
-        commit_losses = []
-        fe_losses = []
-        last_eff_dt = torch.tensor([[1.0]], device=self.device)
-
         da_level = curr_u_t[:, 5:6]
         motor_gain = (1.0 + 1.0 * da_level).unsqueeze(1)
 
-        for chunk_idx in range(num_chunks):
-            c_start = chunk_idx * chunk_size
-            c_end = min((chunk_idx + 1) * chunk_size, seq_len)
-            c_len = c_end - c_start
+        # 2. Stage 1: Fast Morpho-Syntactic Cortical Pass (Native C++ Parallel Scan)
+        h_s1, m_s1, dt1 = self.stage1(full_h_in, m_s1, curr_u_t, torch.Tensor(), 1.0)
 
-            chunk_in = input_seq[:, c_start:c_end]
-            chunk_tgt = target_seq[:, c_start:c_end]
-            h_in = full_h_in[:, c_start:c_end, :]
+        # 3. Dynamic Word / Morpheme Boundary Saliency (EABS Native C++)
+        saliency_gate = self.boundary_detector(h_s1, input_seq)
 
-            # Stage 1: Fast Morpho-Syntactic Cortical Pass (Native C++)
-            h_s1, m_s1, dt1 = self.stage1(h_in, m_s1, curr_u_t, torch.Tensor(), 1.0)
+        # 4. Precision-Weighted Laminar Error Routing (PW-LPER Native C++)
+        e1_weighted, _, _ = self.pw_lper(h_s1, h1_prev_last, curr_u_t)
 
-            # Detect Dynamic Word / Morpheme Boundary Saliency (EABS Native C++)
-            saliency_gate = self.boundary_detector(h_s1, chunk_in)
+        # 5. Stage 2: Slow Semantic-Discourse Pass on Precision-Weighted Error e1_weighted (Native C++ Parallel Scan)
+        h_s2, m_s2, dt2 = self.stage2(e1_weighted, m_s2, curr_u_t, saliency_gate, 1.0)
+        eff_dt = (dt1 + dt2) / 2.0
 
-            # --- PRECISION-WEIGHTED LAMINAR ERROR ROUTING (PW-LPER Native C++) ---
-            e1_weighted, h1_prev_last, _ = self.pw_lper(h_s1, h1_prev_last, curr_u_t)
+        # 6. Combined Laminar Representation (Stage 1 + Stage 2)
+        h_combined = h_s1 + h_s2
 
-            # Stage 2: Slow Semantic-Discourse Pass on Precision-Weighted Error e1_weighted (Native C++)
-            h_s2, m_s2, dt2 = self.stage2(e1_weighted, m_s2, curr_u_t, saliency_gate, 1.0)
-            last_eff_dt = (dt1 + dt2) / 2.0
+        # 7. Modern Hopfield Attractor Landscape with Native C++ Commitment Loss
+        h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
+        h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, curr_u_t)
+        
+        # 8. Dopaminergic Afferent-Efferent Motor Readout (768 -> 256 -> 258)
+        h_proj = self.motor_text_proj(h_relaxed).view(batch_size, seq_len, self.text_dim)
+        h_proj_gain = (h_proj * motor_gain).contiguous().view(-1, self.text_dim)
+        logits_flat = F.linear(h_proj_gain, self.pos_embeddings.byte_embed.weight)
 
-            # Combined Laminar Representation (Stage 1 + Stage 2)
-            h_combined = h_s1 + h_s2
+        targets_flat = target_seq.contiguous().view(-1)
+        speech_loss_tensor = criterion_speech(logits_flat, targets_flat)
 
-            # Modern Hopfield Attractor Landscape with Native C++ Commitment Loss
-            h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
-            h_relaxed, chunk_commit = self.attractor_head.relax_to_minima(h_flat, curr_u_t)
-            
-            # Dopaminergic Afferent-Efferent Motor Readout (768 -> 256 -> 258)
-            h_proj = self.motor_text_proj(h_relaxed).view(batch_size, c_len, self.text_dim)
-            h_proj_gain = (h_proj * motor_gain).contiguous().view(-1, self.text_dim)
-            logits_flat = F.linear(h_proj_gain, self.pos_embeddings.byte_embed.weight)
+        # 9. Active Inference World Model Predictor
+        w_current_slice = self.episodic_sensory_proj(full_emb[:, -1, :])
+        h_curr_fast = h_combined[:, -1, :]
+        w_pred, kl_div, fe, _ = self.world_model(h_prev_fast, h_curr_fast, w_current_slice)
 
-            targets_flat = chunk_tgt.contiguous().view(-1)
-            chunk_loss = criterion_speech(logits_flat, targets_flat)
-            chunk_losses.append(chunk_loss)
-            commit_losses.append(chunk_commit)
+        rec_loss = (1.0 - F.cosine_similarity(w_current_slice, w_pred, dim=-1, eps=1e-8)).mean()
+        fe_loss_tensor = (kl_div.mean() + rec_loss)
 
-            # Continuous Active Inference: World Model Predictor
-            w_current_slice = self.episodic_sensory_proj(full_emb[:, c_end - 1, :])
-            h_curr_fast = h_combined[:, -1, :]
-            w_pred, kl_div, _, _ = self.world_model(h_prev_fast, h_curr_fast, w_current_slice)
-            h_prev_fast = h_curr_fast.detach()
+        # High-Surprise Episodic Encoding
+        with torch.no_grad():
+            if fe_loss_tensor.item() > 0.20 and episodic_memory is not None:
+                episodic_memory.write(w_current_slice.detach().float(), w_pred.detach().float(), protected_slots=3)
 
-            rec_loss = (1.0 - F.cosine_similarity(w_current_slice, w_pred, dim=-1, eps=1e-8)).mean()
-            chunk_fe = (kl_div.mean() + rec_loss)
-            fe_losses.append(chunk_fe)
-
-            # High-Surprise Episodic Encoding
-            with torch.no_grad():
-                if chunk_fe.item() > 0.20 and episodic_memory is not None:
-                    episodic_memory.write(w_current_slice.detach().float(), w_pred.detach().float(), protected_slots=3)
-
-                has_eos = (chunk_in == 257).any(dim=-1).view(batch_size, 1, 1, 1).float()
-                m_s1 = m_s1 * (1.0 - has_eos)
-                m_s2 = m_s2 * (1.0 - has_eos)
-
-            m_s1 = m_s1.detach()
-            m_s2 = m_s2.detach()
-
-        avg_speech_loss_tensor = torch.stack(chunk_losses).mean()
-        avg_commit_loss_tensor = torch.stack(commit_losses).mean()
-        avg_fe_loss_tensor = torch.stack(fe_losses).mean()
         ortho_loss = self.attractor_head.compute_pattern_separation_loss()
         
-        avg_speech_loss_val = avg_speech_loss_tensor.item()
-        avg_fe_loss_val = avg_fe_loss_tensor.item()
+        speech_loss_val = speech_loss_tensor.item()
+        fe_loss_val = fe_loss_tensor.item()
         
         total_loss_tensor = (
-            avg_speech_loss_tensor + 
-            loss_free_energy_weight * avg_fe_loss_tensor + 
-            0.05 * avg_commit_loss_tensor + 
+            speech_loss_tensor + 
+            loss_free_energy_weight * fe_loss_tensor + 
+            0.05 * commit_loss + 
             0.01 * ortho_loss
         )
 
         h_proxy = m_s2.view(batch_size, -1)[:, :self.hidden_dim]
-        return total_loss_tensor, avg_speech_loss_val, avg_fe_loss_val, m_s2, h_proxy, curr_u_t, last_eff_dt
+        return total_loss_tensor, speech_loss_val, fe_loss_val, m_s2, h_proxy, curr_u_t, eff_dt
 
     def generate_thought_and_speech(
         self, prompt: str, m_state: torch.Tensor, h_state: torch.Tensor, hu, episodic_memory, 

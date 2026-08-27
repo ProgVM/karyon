@@ -466,15 +466,19 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
 
         auto delta_full = torch::softplus(delta_proj->forward(x_seq)).view({batch_size, num_chunks, Q, num_heads}).permute({0, 1, 3, 2});
         auto base_alpha = torch::sigmoid(decay_logits.view({1, 1, num_heads, 1}));
-        auto alpha = torch::pow(base_alpha, (delta_full * eff_dt.squeeze(-1)).clamp(0.1f, 10.0f));
+        
+        // Optimize base_alpha^exponent to exp(exponent * log(base_alpha))
+        auto log_base_alpha = torch::log(base_alpha);
+        auto exponent = (delta_full * eff_dt.squeeze(-1)).clamp(0.1f, 10.0f);
+        auto log_alpha = exponent * log_base_alpha;
 
         if (saliency_gate.defined() && saliency_gate.numel() > 0) {
             auto sal_chunk = saliency_gate.view({batch_size, num_chunks, 1, Q});
-            alpha = alpha * (1.0f - 0.80f * sal_chunk);
+            log_alpha = log_alpha + torch::log(1.0f - 0.80f * sal_chunk);
         }
 
-        alpha = torch::clamp(alpha, 1e-4f, 0.9999f);
-        auto log_alpha = torch::log(alpha);
+        log_alpha = torch::clamp(log_alpha, std::log(1e-4f), std::log(0.9999f));
+        auto alpha = torch::exp(log_alpha);
         auto beta = 1.0f - alpha;
 
         auto lambda_t = torch::cumsum(log_alpha, -1);
@@ -482,7 +486,7 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         auto decay_matrix = torch::exp(torch::clamp(log_decay_matrix, -20.0f, 0.0f));
 
         auto causal_mask = get_causal_mask(Q, x_seq.device(), x_seq.scalar_type());
-        auto decay_weights = decay_matrix * causal_mask;
+        auto decay_weights = (decay_matrix * causal_mask).to(x_seq.scalar_type());
 
         auto s_matrix = torch::matmul(q_full, k_full.transpose(-1, -2)) * decay_weights;
         auto y_intra = torch::matmul(s_matrix, v_full);
@@ -491,26 +495,30 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         auto lambda_end = lambda_t.slice(3, -1).unsqueeze(-1);
         auto decay_to_end = torch::exp(torch::clamp(lambda_end - lambda_t.unsqueeze(-1), -20.0f, 0.0f));
 
-        auto k_decayed = k_full.to(torch::kFloat32) * decay_to_end * beta.unsqueeze(-1).to(torch::kFloat32);
-        auto kv_chunk_updates = torch::matmul(k_decayed.transpose(-1, -2), v_full.to(torch::kFloat32));
+        auto k_decayed = (k_full.to(torch::kFloat32) * decay_to_end * beta.unsqueeze(-1)).to(v_full.scalar_type());
+        auto kv_chunk_updates = torch::matmul(k_decayed.transpose(-1, -2), v_full).to(torch::kFloat32);
         auto alpha_chunks = torch::exp(torch::clamp(lambda_t.slice(3, -1), -20.0f, 0.0f)).unsqueeze(-1);
 
         auto m_curr = m_prev.to(torch::kFloat32);
         std::vector<torch::Tensor> y_inter_list;
         y_inter_list.reserve(num_chunks);
 
+        auto q_full_f32 = q_full.to(torch::kFloat32);
+        auto dec_start_f32 = decay_to_start.to(torch::kFloat32);
+
         auto sigma_somatic = 1e-3f * (0.8f * curiosity.squeeze(1).to(torch::kFloat32) + 0.4f * na.squeeze(1).to(torch::kFloat32) + 0.1f);
+        auto dW_scale = torch::sqrt(eff_dt.squeeze(1).to(torch::kFloat32)) * sigma_somatic;
         auto dW_all = torch::randn({num_chunks, batch_size, num_heads, head_k, head_v}, m_curr.options());
 
         for (int64_t c = 0; c < num_chunks; ++c) {
-            auto q_c = q_full.select(1, c);
-            auto dec_start_c = decay_to_start.select(1, c);
-            auto y_inter_c = torch::matmul(q_c.to(torch::kFloat32) * dec_start_c, m_curr).to(q_full.scalar_type());
+            auto q_c = q_full_f32.select(1, c);
+            auto dec_start_c = dec_start_f32.select(1, c);
+            auto y_inter_c = torch::matmul(q_c * dec_start_c, m_curr).to(q_full.scalar_type());
             y_inter_list.push_back(y_inter_c);
 
             auto alpha_c = alpha_chunks.select(1, c);
             auto kv_c = kv_chunk_updates.select(1, c);
-            auto dW_c = dW_all.select(0, c) * torch::sqrt(eff_dt.squeeze(1).to(torch::kFloat32)) * sigma_somatic;
+            auto dW_c = dW_all.select(0, c) * dW_scale;
             m_curr = alpha_c * m_curr + kv_c + dW_c;
         }
 
@@ -726,6 +734,10 @@ public:
         torch::Tensor beta;
         if (u_t.defined() && u_t.numel() >= 6) {
             auto da_val = u_t.select(1, 5).view({-1, 1});
+            if (h_state.size(0) != u_t.size(0) && u_t.size(0) > 0 && h_state.size(0) % u_t.size(0) == 0) {
+                int64_t factor = h_state.size(0) / u_t.size(0);
+                da_val = da_val.unsqueeze(1).expand({u_t.size(0), factor, 1}).reshape({-1, 1});
+            }
             beta = 1.0f + 1.5f * da_val;
         } else {
             beta = torch::ones({1, 1}, h_state.options());
