@@ -225,8 +225,6 @@ public:
         auto stacked_masks = torch::cat(channel_masks, 1);
         sim = sim + stacked_masks;
 
-        sim.index_put_({torch::indexing::Slice(), 0}, sim.index({torch::indexing::Slice(), 0}) + 1.5f);
-
         auto attention_weights = torch::softmax(sim, -1);
         constexpr float eps = 1e-9f;
         auto epistemic_entropy = -torch::sum(attention_weights * torch::log(attention_weights + eps), -1, true);

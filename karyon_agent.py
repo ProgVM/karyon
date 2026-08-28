@@ -63,7 +63,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
     def forward(self, input_ids: torch.Tensor, start_pos: int = 0, apply_rf: bool = True) -> torch.Tensor:
         seq_len = input_ids.size(1)
-        tok_emb = self.byte_embed(input_ids)
+        tok_emb = self.byte_embed(input_ids) * math.sqrt(self.text_dim)
         pos_emb = self.pe[:, start_pos : start_pos + seq_len, :]
         embedded = tok_emb + pos_emb
         if apply_rf and seq_len > 1:
