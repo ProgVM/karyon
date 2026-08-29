@@ -289,6 +289,14 @@ for pass_idx in range(NUM_PASSES):
             )
         t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
+        # Check if loss or free energy is NaN
+        if math.isnan(speech_loss_val) or math.isnan(fe_val) or torch.isnan(total_loss_tensor).any():
+            logger.warning(f"⚠️ [Pass {pass_idx+1} Step {batch_idx+1}] Loss or Free Energy is NaN. Skipping backward step & resetting somatic state.")
+            optimizer.zero_grad()
+            if torch.isnan(hu.state).any():
+                hu.state = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], dtype=torch.float32, device=device).repeat((current_batch_size, 1))
+            continue
+
         # Update Persistent Somatic State
         action_cost_tensor = torch.full((current_batch_size, 1), 0.001, device=device)
         pred_err_tensor = torch.full((current_batch_size, 1), float(speech_loss_val * 0.1), device=device)

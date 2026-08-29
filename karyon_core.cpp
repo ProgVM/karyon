@@ -576,19 +576,21 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         for (int64_t c = 0; c < num_chunks; ++c) {
             auto q_c = q_full_f32.select(1, c);
             auto dec_start_c = dec_start_f32.select(1, c);
-            auto y_inter_c = torch::matmul(q_c * dec_start_c, m_curr).to(q_full.scalar_type());
+            auto y_inter_c = torch::matmul(q_c * dec_start_c, m_curr); // Keep in float32 to prevent FP16 overflow
             y_inter_list.push_back(y_inter_c);
 
             auto alpha_c = alpha_chunks.select(1, c);
             auto kv_c = kv_chunk_updates.select(1, c);
             auto dW_c = dW_all.select(0, c) * dW_scale;
             m_curr = alpha_c * m_curr + kv_c + dW_c;
+            m_curr = torch::clamp(m_curr, -10000.0f, 10000.0f); // Somatic recurrent state clamp boundary
         }
 
         auto y_inter = torch::stack(y_inter_list, 1);
-        auto y_total = (y_intra + y_inter).permute({0, 1, 3, 2, 4}).reshape({batch_size * seq_len, num_heads * head_v});
-        auto y_normed = head_norm->forward(y_total);
-        auto y_gated = y_normed * z_full;
+        auto y_intra_f32 = y_intra.to(torch::kFloat32);
+        auto y_total_f32 = (y_intra_f32 + y_inter).permute({0, 1, 3, 2, 4}).reshape({batch_size * seq_len, num_heads * head_v});
+        auto y_normed_f32 = head_norm->forward(y_total_f32); // Normalized in float32 for absolute numerical stability
+        auto y_gated = y_normed_f32.to(x_seq.scalar_type()) * z_full;
         auto h_seq = norm->forward(out_proj->forward(y_gated)).view({batch_size, seq_len, out_dim});
 
         if (pad_len > 0) {
