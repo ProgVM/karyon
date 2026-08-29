@@ -892,6 +892,25 @@ public:
 
         return std::make_tuple(w_pred, kl_div, free_energy, z_t);
     }
+
+    std::tuple<torch::Tensor, float> evaluate_counterfactual_rollout(
+        torch::Tensor h_prev, 
+        torch::Tensor w_curr, 
+        int64_t num_steps = 3) {
+        
+        auto h_sim = h_prev.clone();
+        auto w_sim = w_curr.clone();
+        float total_efe = 0.0f;
+
+        for (int64_t step = 0; step < num_steps; ++step) {
+            auto out = forward(h_sim, h_sim, w_sim);
+            auto w_pred = std::get<0>(out);
+            auto fe = std::get<2>(out);
+            total_efe += fe.mean().item<float>();
+            w_sim = w_pred;
+        }
+        return std::make_tuple(w_sim, total_efe);
+    }
 };
 
 // ============================================================================
@@ -1010,6 +1029,31 @@ public:
 
         auto dup_mask = (dup_count > 0).unsqueeze(-1);
         active_k.masked_fill_(dup_mask, 0.0f);
+    }
+};
+
+// ============================================================================
+// 16. TEMPORAL-DIFFERENCE FREE ENERGY VALUE CRITIC (EXP-89/EXP-90)
+// ============================================================================
+class TDFreeEnergyCriticImpl : public torch::nn::Module {
+public:
+    torch::nn::Sequential net{nullptr};
+
+    TDFreeEnergyCriticImpl(int64_t hidden_dim = 768, std::string device_str = "cpu") {
+        net = register_module("net", torch::nn::Sequential(
+            torch::nn::Linear(hidden_dim, 256),
+            torch::nn::SiLU(),
+            torch::nn::LayerNorm(torch::nn::LayerNormOptions({256})),
+            torch::nn::Linear(256, 1)
+        ));
+
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
+            this->to(torch::kCUDA);
+        }
+    }
+
+    torch::Tensor forward(torch::Tensor h) {
+        return net->forward(h);
     }
 };
 
@@ -1172,9 +1216,18 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
              py::arg("hidden_dim") = 512, py::arg("unified_dim") = 256, py::arg("latent_dim") = 128, py::arg("device") = "cpu")
         .def("forward", &LatentPredictorImpl::forward)
+        .def("evaluate_counterfactual_rollout", &LatentPredictorImpl::evaluate_counterfactual_rollout,
+             py::arg("h_prev"), py::arg("w_curr"), py::arg("num_steps") = 3)
         .def("parameters", [](std::shared_ptr<LatentPredictorImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<LatentPredictorImpl> m) { return m->named_parameters(); })
         .def("__call__", &LatentPredictorImpl::forward);
+
+    py::class_<TDFreeEnergyCriticImpl, torch::nn::Module, std::shared_ptr<TDFreeEnergyCriticImpl>>(m, "TDFreeEnergyCritic")
+        .def(py::init<int64_t, std::string>(), py::arg("hidden_dim") = 768, py::arg("device") = "cpu")
+        .def("forward", &TDFreeEnergyCriticImpl::forward)
+        .def("parameters", [](std::shared_ptr<TDFreeEnergyCriticImpl> m) { return m->parameters(); })
+        .def("named_parameters", [](std::shared_ptr<TDFreeEnergyCriticImpl> m) { return m->named_parameters(); })
+        .def("__call__", &TDFreeEnergyCriticImpl::forward);
 
     py::class_<BatchedEpisodicMemoryImpl, torch::nn::Module, std::shared_ptr<BatchedEpisodicMemoryImpl>>(m, "BatchedEpisodicMemory")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
