@@ -1,16 +1,18 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v24.0 MASTER (ACTIVE INFERENCE NATIVE C++20 CORTICAL ARCHITECTURE)
+KARYON AGENT CORE v25.0 MASTER (TRI-VECTOR BIOPHYSICAL SYNTHESIS)
 Grounded in Principle 1 (C++20 as Engine, Python as Client) & Principle 2 (Biological Realism):
 - 100% Native C++20 2-Stage Cascaded Cortical Stack (Fast Morpho-Syntactic + Slow Semantic)
+- Vector 3: Bastos-Friston Canonical 2-Way Laminar Microcircuit (Top-Down Prior + Ascending Error)
+- Vector 2: Active Hippocampal Episodic Fact Retrieval & Dynamic GWT Injection (NA > 0.10)
+- Vector 1: System 2 Active Inference Mental Sandbox / Counterfactual Rollout Search in Generation
 - Native Precision-Weighted Laminar Error Routing (PW-LPER - EXP-75 & EXP-81 Validated)
 - Native Multi-Scale Morphological Byte Pyramid Receptive Field (EXP-70 Validated)
 - Native Causal Depthwise ConvSwiGLU Channel-Mixing (EXP-73/EXP-74 Validated)
 - Native Exact Parallel Log-Space Cumulative Retention Decay Scan with RoPE & Mamba-2 Gating
 - Native Entropy-Adaptive Word/Morpheme Boundary Detector (EABS)
 - Native C++20 Temporal-Difference Variational Free Energy Value Critic (TD-FE Critic - EXP-89/EXP-90)
-- System 2 Active Inference Mental Sandbox / Counterfactual Latent Rollout (EXP-90)
 - Robust Autocast Activation Checkpointing cutting VRAM by ~35% (9.8 GB -> 6.3 GB)
 - Theta-Gamma PAC Entropy-Adaptive Decoding & Mamba-2 Head Equalization
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
@@ -76,7 +78,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v24.0 PROD MASTER)
+# MASTER CORE AGENT (v25.0 PROD MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -142,6 +144,24 @@ class CoREAgent(nn.Module):
             head_k=self.head_k, head_v=self.head_v, min_beta=0.0001, max_beta=0.05,
             swiglu_kernel_size=7, device=self.device_str
         )
+
+        # Vector 3: Top-Down Prior Feedback Generator (Stage 2 Semantic -> Stage 1 Morpho-Syntactic Prior)
+        self.topdown_prior_proj = nn.Sequential(
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.SiLU(),
+            nn.Linear(self.hidden_dim, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim)
+        ).to(self.device)
+        nn.init.zeros_(self.topdown_prior_proj[2].weight)
+        nn.init.zeros_(self.topdown_prior_proj[2].bias)
+
+        # Vector 2: Dynamic Hippocampal Fact Injection Gate
+        self.fact_gate = nn.Sequential(
+            nn.Linear(self.unified_dim + 1, 64),
+            nn.SiLU(),
+            nn.Linear(64, self.hidden_dim),
+            nn.Sigmoid()
+        ).to(self.device)
 
         # 3. Active Inference Latent World Model (Predictive Coding & System 2 Mental Sandbox)
         self.world_model = LatentPredictor(
@@ -218,7 +238,8 @@ class CoREAgent(nn.Module):
         h_s2_out, m_s2_next, dt2 = self.stage2(e1_weighted, m_s2, u_t, sal_gate, dt)
         eff_dt = (dt1 + dt2) / 2.0
 
-        h_combined = h_s1_out + h_s2_out
+        topdown_prior = self.topdown_prior_proj(h_s2_out)
+        h_combined = h_s1_out + h_s2_out + 0.15 * topdown_prior
         h_flat = h_combined.view(-1, self.hidden_dim)
         h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, u_t)
         
@@ -247,6 +268,8 @@ class CoREAgent(nn.Module):
             list(self.in_proj.parameters()) +
             list(self.boundary_detector.parameters()) +
             list(self.pw_lper.parameters()) +
+            list(self.topdown_prior_proj.parameters()) +
+            list(self.fact_gate.parameters()) +
             list(self.episodic_sensory_proj.parameters()) +
             list(self.motor_text_proj.parameters())
         )
@@ -270,6 +293,12 @@ class CoREAgent(nn.Module):
 
         for name, param in self.pw_lper.named_parameters():
             sd[f"pw_lper.{name}"] = param.detach().cpu()
+
+        for name, param in self.topdown_prior_proj.named_parameters():
+            sd[f"topdown_prior_proj.{name}"] = param.detach().cpu()
+
+        for name, param in self.fact_gate.named_parameters():
+            sd[f"fact_gate.{name}"] = param.detach().cpu()
 
         for name, param in self.motor_text_proj.named_parameters():
             sd[f"motor_text_proj.{name}"] = param.detach().cpu()
@@ -309,6 +338,16 @@ class CoREAgent(nn.Module):
                 clean_name = name.replace("topdown_pred_net.", "pw_lper.topdown_pred_net.")
                 p_name = clean_name.replace("pw_lper.", "")
                 for sub_p_name, sub_p in self.pw_lper.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("topdown_prior_proj."):
+                p_name = name.replace("topdown_prior_proj.", "")
+                for sub_p_name, sub_p in self.topdown_prior_proj.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("fact_gate."):
+                p_name = name.replace("fact_gate.", "")
+                for sub_p_name, sub_p in self.fact_gate.named_parameters():
                     if sub_p_name == p_name:
                         self._safe_copy_param(sub_p.data, tensor)
             elif name.startswith("in_proj."):
@@ -418,12 +457,26 @@ class CoREAgent(nn.Module):
         h_prev_fast = torch.zeros(batch_size, self.hidden_dim, device=self.device)
         h1_prev_last = torch.zeros(batch_size, 1, self.hidden_dim, device=self.device)
         
-        # 1. Vectorized full-sequence embedding, receptive field, and linear projection
+        # 1. Vectorized full-sequence embedding & Receptive Field
         full_emb = self.pos_embeddings(input_seq, start_pos=0, apply_rf=True)
         full_h_in = self.in_proj(full_emb)
         
         da_level = curr_u_t[:, 5:6]
+        na_level = curr_u_t[:, 4:5]
         motor_gain = (1.0 + 1.0 * da_level).unsqueeze(1)
+
+        # Vector 2: Active Hippocampal Episodic Fact Retrieval & GWT Injection during stream processing
+        active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
+        if episodic_memory is not None and active_slots > 2:
+            with torch.no_grad():
+                q_sensory = self.episodic_sensory_proj(full_emb[:, -1, :]).float()
+                ret_mem, max_sim = episodic_memory.read(q_sensory, temperature=0.05, threshold=0.70, sigmoid_beta=15.0)
+            
+            # Learnable Fact Gate
+            fact_feat = torch.cat([ret_mem, na_level], dim=-1)
+            g_fact = self.fact_gate(fact_feat).unsqueeze(1) # [B, 1, H]
+            ret_mem_h = self.in_proj(ret_mem).unsqueeze(1)
+            full_h_in = full_h_in + g_fact * ret_mem_h
 
         # 2. Stage 1: Fast Morpho-Syntactic Cortical Pass (With Robust Autocast Activation Checkpointing)
         if self.training and self.device_str == 'cuda':
@@ -436,7 +489,7 @@ class CoREAgent(nn.Module):
         # 3. Dynamic Word / Morpheme Boundary Saliency (EABS Native C++)
         saliency_gate = self.boundary_detector(h_s1, input_seq)
 
-        # 4. Precision-Weighted Laminar Error Routing (PW-LPER Native C++)
+        # 4. Vector 3: Bastos-Friston Precision-Weighted Laminar Error Routing
         e1_weighted, _, _ = self.pw_lper(h_s1, h1_prev_last, curr_u_t)
 
         # 5. Stage 2: Slow Semantic-Discourse Pass on Precision-Weighted Error e1_weighted (With Activation Checkpointing)
@@ -449,8 +502,11 @@ class CoREAgent(nn.Module):
 
         eff_dt = (dt1 + dt2) / 2.0
 
-        # 6. Combined Laminar Representation (Stage 1 + Stage 2)
-        h_combined = h_s1 + h_s2
+        # Vector 3: Top-Down Prior Feedback from Stage 2
+        topdown_prior = self.topdown_prior_proj(h_s2)
+
+        # 6. Combined Bi-Directional Laminar Representation
+        h_combined = h_s1 + h_s2 + 0.15 * topdown_prior
 
         # 7. Modern Hopfield Attractor Landscape with Native C++ Commitment Loss
         h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
@@ -536,7 +592,8 @@ class CoREAgent(nn.Module):
 
         h_s2_out, m_s2_next, dt2 = self.stage2(e1_weighted, m_s2, u_t, sal_gate, 1.0)
 
-        h_combined = h_s1_out + h_s2_out
+        topdown_prior = self.topdown_prior_proj(h_s2_out)
+        h_combined = h_s1_out + h_s2_out + 0.15 * topdown_prior
         h_flat = h_combined.view(-1, self.hidden_dim)
         h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, u_t)
 
@@ -594,22 +651,26 @@ class CoREAgent(nn.Module):
             t_emb = window_emb[:, -1:, :]
             
             h_in = self.in_proj(t_emb)
+
+            # Vector 2: Hippocampal Fact Injection during generation (NA > 0.10)
+            active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
+            if episodic_memory is not None and hu_st[0, 4].item() > 0.10 and active_slots > 2:
+                q_k = self.episodic_sensory_proj(t_emb.squeeze(1)).float()
+                ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.70, sigmoid_beta=15.0)
+                if (max_sim > 0.70).any():
+                    fact_feat = torch.cat([ret_mem, hu_st[0:1, 4:5]], dim=-1)
+                    g_fact = self.fact_gate(fact_feat).unsqueeze(1)
+                    ret_mem_h = self.in_proj(ret_mem.to(h_in.dtype)).unsqueeze(1)
+                    h_in = h_in + g_fact * ret_mem_h
+
             h_s1, m_s1, _ = self.stage1(h_in, m_s1, hu_st, torch.Tensor(), 1.0)
             sal_gate = self.boundary_detector(h_s1, window_t[:, -1:])
 
             e1_weighted, h1_prev_last, _ = self.pw_lper(h_s1, h1_prev_last, hu_st)
             h_s2, m_s2, _ = self.stage2(e1_weighted, m_s2, hu_st, sal_gate, 1.0)
-            h_combined = h_s1 + h_s2
-
-            # Volitional Memory Recall
-            active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
-            if episodic_memory is not None and hu_st[0, 4].item() > 0.12 and active_slots > 0:
-                q_k = self.episodic_sensory_proj(t_emb.squeeze(1)).float()
-                ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.75, sigmoid_beta=15.0)
-                if (max_sim > 0.75).any():
-                    ret_mem_cast = ret_mem.to(h_combined.dtype)
-                    ret_mem_proj = self.in_proj(ret_mem_cast).unsqueeze(1)
-                    h_combined = h_combined + ret_mem_proj * 0.20
+            
+            topdown_prior = self.topdown_prior_proj(h_s2)
+            h_combined = h_s1 + h_s2 + 0.15 * topdown_prior
 
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, hu_st)
@@ -630,32 +691,55 @@ class CoREAgent(nn.Module):
             entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1).item()
             is_boundary = (len(rolling_token_ids) > 0 and rolling_token_ids[-1] in [32, 10, 44, 46])
 
-            if is_boundary or entropy > 0.70:
-                temp = 0.45
-                top_p_val = 0.88
+            # Vector 1: System 2 Active Inference Mental Sandbox Rollout at high entropy
+            if (is_boundary or entropy > 0.75) and step > 2:
+                # Top-4 Candidate evaluation via counterfactual rollout
+                top4_vals, top4_indices = torch.topk(raw_logits, k=4, dim=-1)
+                best_token_id = top4_indices[0, 0].item()
+                lowest_efe = 1e9
+
+                for cand_idx in range(4):
+                    cand_id = top4_indices[0, cand_idx].item()
+                    cand_t = torch.tensor([[cand_id]], device=self.device)
+                    cand_emb = self.pos_embeddings.byte_embed(cand_t) * self.inv_sqrt_text_dim
+                    cand_w = self.episodic_sensory_proj(cand_emb.squeeze(1))
+                    
+                    # 3-step mental simulation in latent space
+                    _, cand_efe = self.world_model.evaluate_counterfactual_rollout(
+                        h_combined[:, -1, :], cand_w, num_steps=3
+                    )
+                    if cand_efe < lowest_efe:
+                        lowest_efe = cand_efe
+                        best_token_id = cand_id
+
+                next_token_id = best_token_id
             else:
-                temp = 0.08
-                top_p_val = 0.99
+                if is_boundary:
+                    temp = 0.40
+                    top_p_val = 0.88
+                else:
+                    temp = 0.08
+                    top_p_val = 0.99
 
-            logits = raw_logits / max(temp, 1e-4)
-            sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
-            cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
-            to_remove = cumulative_probs > top_p_val
-            to_remove[..., 1:] = to_remove[..., :-1].clone()
-            to_remove[..., 0] = False
-            indices_to_remove = to_remove.scatter(1, sorted_indices, to_remove)
-            logits[indices_to_remove] = -1e9
+                logits = raw_logits / max(temp, 1e-4)
+                sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
+                cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                to_remove = cumulative_probs > top_p_val
+                to_remove[..., 1:] = to_remove[..., :-1].clone()
+                to_remove[..., 0] = False
+                indices_to_remove = to_remove.scatter(1, sorted_indices, to_remove)
+                logits[indices_to_remove] = -1e9
 
-            probs = F.softmax(logits, dim=-1)
-            probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
-            prob_sum = probs.sum(dim=-1, keepdim=True)
-            if (prob_sum <= 0).any():
-                probs = torch.full_like(probs, 1.0 / 258)
-            else:
-                probs = probs / prob_sum
+                probs = F.softmax(logits, dim=-1)
+                probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
+                prob_sum = probs.sum(dim=-1, keepdim=True)
+                if (prob_sum <= 0).any():
+                    probs = torch.full_like(probs, 1.0 / 258)
+                else:
+                    probs = probs / prob_sum
 
-            next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
-            next_token_id = next_token.item()
+                next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
+                next_token_id = next_token.item()
 
             if step % 4 == 0:
                 hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)

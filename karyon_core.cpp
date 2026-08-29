@@ -175,37 +175,37 @@ public:
         auto text_act = (text_max > 1e-5f).to(torch::kFloat32);
         projected_channels.push_back(text_proj->forward(text_input));
         channel_names.push_back("text");
-        channel_masks.push_back((1.0f - text_act) * -1e9f);
+        channel_masks.push_back((1.0f - text_act) * -10000.0f);
 
         auto vis_max = std::get<0>(vision_input.abs().max(-1, true));
         auto vis_act = (vis_max > 1e-5f).to(torch::kFloat32);
         projected_channels.push_back(vision_proj->forward(vision_input));
         channel_names.push_back("vision");
-        channel_masks.push_back((1.0f - vis_act) * -1e9f);
+        channel_masks.push_back((1.0f - vis_act) * -10000.0f);
 
         auto aud_max = std::get<0>(audio_input.abs().max(-1, true));
         auto aud_act = (aud_max > 1e-5f).to(torch::kFloat32);
         projected_channels.push_back(audio_proj->forward(audio_input));
         channel_names.push_back("audio");
-        channel_masks.push_back((1.0f - aud_act) * -1e9f);
+        channel_masks.push_back((1.0f - aud_act) * -10000.0f);
 
         auto bin_max = std::get<0>(binary_input.abs().max(-1, true));
         auto bin_act = (bin_max > 1e-5f).to(torch::kFloat32);
         projected_channels.push_back(binary_proj->forward(binary_input));
         channel_names.push_back("binary");
-        channel_masks.push_back((1.0f - bin_act) * -1e9f);
+        channel_masks.push_back((1.0f - bin_act) * -10000.0f);
 
         auto tel_max = std::get<0>(telepathic_input.abs().max(-1, true));
         auto tel_act = (tel_max > 1e-5f).to(torch::kFloat32);
         projected_channels.push_back(telepathic_proj->forward(telepathic_input));
         channel_names.push_back("telepathic");
-        channel_masks.push_back((1.0f - tel_act) * -1e9f);
+        channel_masks.push_back((1.0f - tel_act) * -10000.0f);
 
         auto mot_max = std::get<0>(motor_input.abs().max(-1, true));
         auto mot_act = (mot_max > 1e-5f).to(torch::kFloat32);
         projected_channels.push_back(motor_proj->forward(motor_input));
         channel_names.push_back("motor");
-        channel_masks.push_back((1.0f - mot_act) * -1e9f);
+        channel_masks.push_back((1.0f - mot_act) * -10000.0f);
 
         projected_channels.push_back(homeo_proj->forward(u_t));
         channel_names.push_back("body");
@@ -962,6 +962,7 @@ public:
     }
 
     std::tuple<torch::Tensor, torch::Tensor> read(torch::Tensor query, float temperature = 0.05f, float threshold = 0.5f, float sigmoid_beta = 15.0f) {
+        auto orig_dtype = query.scalar_type();
         if (keys.device() != query.device() || keys.dtype() != query.dtype()) {
             query = query.to(keys.device(), keys.dtype());
         }
@@ -970,8 +971,8 @@ public:
         int64_t max_active = (max_active_cpu > 0) ? max_active_cpu : size.max().item<int64_t>();
 
         if (max_active == 0) {
-            auto empty_val = torch::zeros({q_b, memory_dim}, query.options());
-            auto empty_sim = torch::zeros({q_b, 1}, query.options());
+            auto empty_val = torch::zeros({q_b, memory_dim}, query.options()).to(orig_dtype);
+            auto empty_sim = torch::zeros({q_b, 1}, query.options()).to(orig_dtype);
             return std::make_tuple(empty_val, empty_sim);
         }
 
@@ -1000,7 +1001,7 @@ public:
         auto seq_range = torch::arange(max_active, query.options()).unsqueeze(0);
         auto invalid_mask = (seq_range >= active_size.unsqueeze(1)).unsqueeze(1);
 
-        auto sim_masked = sim.masked_fill(invalid_mask, -1e9f);
+        auto sim_masked = sim.masked_fill(invalid_mask, -10000.0f);
         auto max_sim = std::get<0>(sim_masked.max(-1));
         auto max_sim_valid = torch::where(active_size.unsqueeze(-1) > 0, max_sim, torch::zeros_like(max_sim));
 
@@ -1008,9 +1009,10 @@ public:
         auto attn_weights = torch::softmax(sim_masked / temperature, -1);
 
         auto retrieved_val = torch::bmm(attn_weights, active_values).squeeze(1);
-        auto gated_retrieved = retrieved_val * gate;
+        auto gated_retrieved = (retrieved_val * gate).to(orig_dtype);
+        auto max_sim_out = max_sim_valid.to(orig_dtype);
 
-        return std::make_tuple(gated_retrieved, max_sim_valid);
+        return std::make_tuple(gated_retrieved, max_sim_out);
     }
 
     void consolidate_and_prune(float similarity_threshold = 0.95f, int64_t protected_slots = 3) {
