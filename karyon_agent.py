@@ -1,7 +1,7 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v22.0 MASTER (ACTIVE INFERENCE NATIVE C++20 CORTICAL ARCHITECTURE)
+KARYON AGENT CORE v23.0 MASTER (ACTIVE INFERENCE NATIVE C++20 CORTICAL ARCHITECTURE)
 Grounded in Principle 1 (C++20 as Engine, Python as Client) & Principle 2 (Biological Realism):
 - 100% Native C++20 2-Stage Cascaded Cortical Stack (Fast Morpho-Syntactic + Slow Semantic)
 - Native Precision-Weighted Laminar Error Routing (PW-LPER - EXP-75 & EXP-81 Validated)
@@ -9,6 +9,7 @@ Grounded in Principle 1 (C++20 as Engine, Python as Client) & Principle 2 (Biolo
 - Native Causal Depthwise ConvSwiGLU Channel-Mixing (EXP-73/EXP-74 Validated)
 - Native Exact Parallel Log-Space Cumulative Retention Decay Scan with RoPE & Mamba-2 Gating
 - Native Entropy-Adaptive Word/Morpheme Boundary Detector (EABS)
+- Temporal-Difference Variational Free Energy Value Critic (TD-FE Critic - EXP-89 Validated)
 - Theta-Gamma PAC Entropy-Adaptive Decoding & Mamba-2 Head Equalization
 - Active Inference Latent World Model & Autocast-Safe Episodic Projections
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
@@ -72,7 +73,7 @@ class OffsetPositionalByteEmbedding(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v22.0 PROD MASTER)
+# MASTER CORE AGENT (v23.0 PROD MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -178,7 +179,13 @@ class CoREAgent(nn.Module):
             nn.LayerNorm(self.text_dim)
         ).to(self.device)
         
-        self.critic = nn.Linear(self.hidden_dim, 1).to(self.device)
+        # 8. Temporal-Difference Free Energy Active Inference Value Critic (EXP-89 Validated)
+        self.critic = nn.Sequential(
+            nn.Linear(self.hidden_dim, 256),
+            nn.SiLU(),
+            nn.LayerNorm(256),
+            nn.Linear(256, 1)
+        ).to(self.device)
 
     def forward(self, sensor_inputs: Dict[str, torch.Tensor], h_fast: torch.Tensor, h_slow: torch.Tensor, u_t: torch.Tensor, dt: float = 1.0):
         text_in = sensor_inputs.get('text', torch.zeros(h_fast.size(0), self.text_dim, device=self.device))
@@ -251,11 +258,12 @@ class CoREAgent(nn.Module):
         sd = {
             'in_proj.weight': self.in_proj.weight.detach().cpu(),
             'in_proj.bias': self.in_proj.bias.detach().cpu(),
-            'critic.weight': self.critic.weight.detach().cpu(),
-            'critic.bias': self.critic.bias.detach().cpu(),
             'episodic_sensory_proj.weight': self.episodic_sensory_proj.weight.detach().cpu(),
             'episodic_sensory_proj.bias': self.episodic_sensory_proj.bias.detach().cpu()
         }
+        for name, param in self.critic.named_parameters():
+            sd[f"critic.{name}"] = param.detach().cpu()
+
         for name, param in self.pos_embeddings.named_parameters():
             sd[f"pos_embeddings.{name}"] = param.detach().cpu()
 
@@ -313,10 +321,11 @@ class CoREAgent(nn.Module):
                 p_name = name.replace("episodic_sensory_proj.", "")
                 if hasattr(self.episodic_sensory_proj, p_name):
                     self._safe_copy_param(getattr(self.episodic_sensory_proj, p_name).data, tensor)
-            elif name.startswith("critic.weight"):
-                self._safe_copy_param(self.critic.weight.data, tensor)
-            elif name.startswith("critic.bias"):
-                self._safe_copy_param(self.critic.bias.data, tensor)
+            elif name.startswith("critic."):
+                p_name = name.replace("critic.", "")
+                for sub_p_name, sub_p in self.critic.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
             elif name.startswith("motor_text_proj."):
                 p_name = name.replace("motor_text_proj.", "")
                 for sub_p_name, sub_p in self.motor_text_proj.named_parameters():
@@ -451,6 +460,19 @@ class CoREAgent(nn.Module):
         rec_loss = (1.0 - F.cosine_similarity(w_current_slice, w_pred, dim=-1, eps=1e-8)).mean()
         fe_loss_tensor = (kl_div.mean() + rec_loss)
 
+        # 10. Temporal-Difference Free Energy Active Inference Critic (EXP-89)
+        num_chunks = seq_len // chunk_size
+        h_chunk_endpoints = h_combined.view(batch_size, num_chunks, chunk_size, self.hidden_dim)[:, :, -1, :]
+        v_preds = self.critic(h_chunk_endpoints).squeeze(-1)
+        
+        gamma_fe = 0.90
+        fe_per_batch = fe.squeeze(-1)
+        v_current = v_preds[:, :-1]
+        v_next = v_preds[:, 1:].detach()
+        r_step = -0.10 * fe_per_batch.unsqueeze(1).expand_as(v_current)
+        td_targets = r_step + gamma_fe * v_next
+        critic_loss = F.mse_loss(v_current, td_targets)
+
         # High-Surprise Episodic Encoding
         with torch.no_grad():
             if fe_loss_tensor.item() > 0.20 and episodic_memory is not None:
@@ -465,7 +487,8 @@ class CoREAgent(nn.Module):
             speech_loss_tensor + 
             loss_free_energy_weight * fe_loss_tensor + 
             0.05 * commit_loss + 
-            0.01 * ortho_loss
+            0.01 * ortho_loss + 
+            0.02 * critic_loss
         )
 
         h_proxy = m_s2.view(batch_size, -1)[:, :self.hidden_dim]
