@@ -2,12 +2,12 @@
 """
 ===============================================================================
 KARYON MASSIVE HIGH-VELOCITY STREAMING RUNTIME (52k DATASET, N=5)
-Allostatic Active Inference Architecture (v22.0 Master Native C++20 Engine):
+Allostatic Active Inference Architecture (v23.0 Master Native C++20 Engine):
 - Native PW-LPER 2-Stage Cascaded Cortical Stack
 - Native Log-Decay Parallel SSD Scan with RoPE & Mamba-2 GLU Output Gating
 - Native Multi-Scale Byte Pyramid Receptive Field & EABS Boundary Detector
-- Modern Hopfield Commitment Loss, Nocturnal Sleep Consolidation
-- Optimized RAM/VRAM Footprint & PCIe Sync-Free C++ Recurrence
+- TD-FE Variational Free Energy Value Critic (EXP-89 Validated)
+- Ultra-Low RAM Footprint Packing & PCIe Sync-Free C++ Recurrence
 Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
@@ -110,25 +110,29 @@ dataset = load_dataset("vicgalle/alpaca-gpt4", split="train")
 tokenizer = ByteTokenizer()
 
 # =============================================================================
-# 1. CONTINUOUS PACKED STREAM DATASET (0% PADDING, S=1024) - OPTIMIZED RAM
+# 1. CONTINUOUS PACKED STREAM DATASET (0% PADDING, S=1024) - ULTRA-LOW RAM FOOTPRINT
 # =============================================================================
 class ContinuousPackedDataset(Dataset):
-    """Zero-Padding Continuous Stream Packing with EOS Separators (S=1024) - Optimized RAM footprint."""
+    """Zero-Padding Continuous Stream Packing with EOS Separators (S=1024) - Ultra-Low RAM footprint."""
     def __init__(self, hf_data, tokenizer, seq_len=1024):
         self.seq_len = seq_len
         
-        # Build flat stream directly as a compact numpy uint16 array to save 1.5 GB RAM
-        temp_list = []
+        # Zero intermediate Python object list - convert directly from UTF-8 buffers
+        byte_chunks = []
+        eos_arr = np.array([257], dtype=np.uint16)
+        
         for item in hf_data:
             inst = item.get("instruction", "").strip()
             out = item.get("output", "").strip()
             if inst and out:
                 dialog = f"User: {inst}\nKaryon: {out}"
-                ids = tokenizer.encode(dialog)
-                temp_list.extend(ids)
+                raw_b = dialog.encode('utf-8')
+                arr = np.frombuffer(raw_b, dtype=np.uint8).astype(np.uint16)
+                byte_chunks.append(arr)
+                byte_chunks.append(eos_arr)
                 
-        self.flat_stream = np.array(temp_list, dtype=np.uint16)
-        del temp_list
+        self.flat_stream = np.concatenate(byte_chunks)
+        del byte_chunks
         gc.collect()
 
         self.num_blocks = len(self.flat_stream) // (seq_len + 1)
@@ -150,15 +154,18 @@ NUM_PASSES = 5
 CHUNK_SIZE = 64
 
 train_dataset = ContinuousPackedDataset(dataset, tokenizer, seq_len=SEQ_LEN)
+# Free the Hugging Face dataset from RAM completely
+del dataset
+gc.collect()
+
 stream_loader = DataLoader(
     train_dataset, 
     batch_size=BATCH_SIZE, 
     shuffle=True, 
     collate_fn=collate_packed_fn, 
     drop_last=True,
-    num_workers=2 if os.name != 'nt' else 0,
-    pin_memory=(device_str == 'cuda'),
-    persistent_workers=(os.name != 'nt')
+    num_workers=0, # 0 workers eliminates process-fork memory duplication
+    pin_memory=(device_str == 'cuda')
 )
 
 logger.info(f"High-Throughput Packed Dataset Ready. Total Blocks (S={SEQ_LEN}): {len(train_dataset)} | Batches: {len(stream_loader)} (B={BATCH_SIZE}) | Passes: {NUM_PASSES}")
