@@ -642,7 +642,7 @@ class CoREAgent(nn.Module):
 
             num_chunks = seq_len // chunk_size
             if num_chunks > 1:
-                h_chunk_endpoints = h_combined.view(batch_size, num_chunks, chunk_size, self.hidden_dim)[:, :, -1, :]
+                h_chunk_endpoints = h_combined.detach().view(batch_size, num_chunks, chunk_size, self.hidden_dim)[:, :, -1, :]
                 v_preds = self.critic(h_chunk_endpoints).squeeze(-1)
                 
                 gamma_fe = 0.90
