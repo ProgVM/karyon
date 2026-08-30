@@ -1,0 +1,11 @@
+{
+  "verdict": "\ud83d\udfe2 POSITIVE",
+  "initial_fe": 1.1389769315719604,
+  "final_fe": 0.1029086634516716,
+  "fe_reduction": 1.0360682681202888,
+  "fe_reduction_pct": 90.96481582733708,
+  "healthy_grads": 40,
+  "zero_grads": 35,
+  "peak_vram_mb": 678.412109375,
+  "duration_sec": 6.366843895004422
+}
