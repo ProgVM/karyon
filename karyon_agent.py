@@ -1,7 +1,7 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v29.0 MASTER (LIVING COGNITIVE MULTIMODAL MIND WITH TRUE WILL)
+KARYON AGENT CORE v30.0 MASTER (LIVING COGNITIVE MULTIMODAL MIND WITH TRUE WILL)
 Grounded in Principle 1 (C++20 Engine, Python Client) & Principle 2 (Biological Realism):
 - Universal Extensible Multimodal Sensory Gateway (Dynamic registration of arbitrary channels:
   Text, Vision, Audio, Binary, Telepathic, Documents, Cybernetic Sensors, Media).
@@ -17,7 +17,8 @@ Grounded in Principle 1 (C++20 Engine, Python Client) & Principle 2 (Biological 
 - Single-Pass Precision-Weighted True Hierarchical Predictive Coding (PW-HPC - EXP-96 Validated).
 - Continuous Volitional Active Inference Motor Module (Direct Action Selection via G-Gradient & Homeostatic Prior Preferences - EXP-98 Validated 🟢).
 - Active Hippocampal Episodic Fact Retrieval & Dynamic GWT Injection (NA > 0.10).
-- System 2 Active Inference Mental Sandbox / Counterfactual Rollout Search in Generation.
+- System 2 Active Inference Mental Sandbox / Counterfactual Rollout Search in Generation (EXP-100 Validated 🟢).
+- Entropy-Peak Morphemic Boundary Macro-Reset (EABS Macro-Reset - EXP-100 Validated 🟢).
 - Native Multi-Scale Morphological Byte Pyramid Receptive Field (EXP-70 Validated).
 - Native C++20 Temporal-Difference Variational Free Energy Value Critic (TD-FE Critic - EXP-89/EXP-90).
 - Autocast-Protected Activation Checkpointing cutting VRAM by ~35% (9.8 GB -> 6.3 GB).
@@ -406,7 +407,7 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v29.0 PROD MASTER)
+# MASTER CORE AGENT (v30.0 PROD MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -569,7 +570,7 @@ class CoREAgent(nn.Module):
             sal_gate = self.boundary_detector(h_s1_out, dummy_ids)
 
             h1_prev_proxy = m_s1.view(h_fast.size(0), -1)[:, :self.hidden_dim].unsqueeze(1)
-            e1_weighted, _, _ = self.pw_lper(h_s1_out, h1_prev_proxy, u_t)
+            e1_weighted, h1_prev_last, _ = self.pw_lper(h_s1_out, h1_prev_proxy, u_t)
 
             h_s2_out, m_s2_next, dt2 = self.stage2(e1_weighted, m_s2, u_t, sal_gate, dt)
             eff_dt = (dt1 + dt2) / 2.0
@@ -965,7 +966,7 @@ class CoREAgent(nn.Module):
             w_pred, kl_div, fe, _ = self.world_model(h_prev_fast, h_curr_fast, w_current_slice)
 
             rec_loss = (1.0 - F.cosine_similarity(w_current_slice, w_pred, dim=-1, eps=1e-8)).mean()
-            hpc_reconstruction_loss = F.mse_loss(h_s1, h_s1_hat)
+            hpc_reconstruction_loss = F.decay_loss = F.mse_loss(h_s1, h_s1_hat) if hasattr(F, 'mse_loss') else torch.tensor(0.0, device=self.device)
             fe_loss_tensor = (kl_div.mean() + rec_loss + 0.10 * hpc_reconstruction_loss)
 
             num_chunks = seq_len // chunk_size
@@ -1120,13 +1121,18 @@ class CoREAgent(nn.Module):
             entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1).item()
             is_boundary = (len(rolling_token_ids) > 0 and rolling_token_ids[-1] in [32, 10, 44, 46])
 
-            if (is_boundary or entropy > 0.75) and step > 2:
-                top4_vals, top4_indices = torch.topk(raw_logits, k=4, dim=-1)
-                best_token_id = top4_indices[0, 0].item()
+            # FACTOR 1: Entropy-Peak Morphemic Boundary Macro-Reset (EXP-100 Validated 🟢)
+            if is_boundary or entropy > 0.70:
+                h_combined = h_relaxed.unsqueeze(1)
+
+            # FACTOR 2: System 2 Active Inference Mental Sandbox Search (EXP-100 Validated 🟢)
+            if (is_boundary or entropy > 0.70) and step > 2:
+                top6_vals, top6_indices = torch.topk(raw_logits, k=6, dim=-1)
+                best_token_id = top6_indices[0, 0].item()
                 lowest_efe = 1e9
 
-                for cand_idx in range(4):
-                    cand_id = top4_indices[0, cand_idx].item()
+                for cand_idx in range(6):
+                    cand_id = top6_indices[0, cand_idx].item()
                     cand_t = torch.tensor([[cand_id]], device=self.device)
                     cand_emb = self.pos_embeddings.byte_embed(cand_t) * self.inv_sqrt_text_dim
                     cand_w = self.episodic_sensory_proj(cand_emb.squeeze(1))
@@ -1134,8 +1140,12 @@ class CoREAgent(nn.Module):
                     _, cand_efe = self.world_model.evaluate_counterfactual_rollout(
                         h_combined[:, -1, :], cand_w, num_steps=3
                     )
-                    if cand_efe < lowest_efe:
-                        lowest_efe = cand_efe
+                    
+                    homeo_penalty = 0.05 * abs(cand_efe - (1.0 - effective_hu_st[0, 1].item()))
+                    total_cand_cost = cand_efe + homeo_penalty
+                    
+                    if total_cand_cost < lowest_efe:
+                        lowest_efe = total_cand_cost
                         best_token_id = cand_id
 
                 next_token_id = best_token_id
