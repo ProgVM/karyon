@@ -168,6 +168,49 @@ class DynamicSensoryGateway(nn.Module):
 
 
 # =============================================================================
+# MODULE 3: PRECISION-WEIGHTED TOP-DOWN GENERATOR (PW-HPC)
+# =============================================================================
+
+class PrecisionWeightedTopDownGenerator(nn.Module):
+    """
+    Top-Down Generative Projection & Dynamic Precision Estimator (EXP-96 Validated):
+    1. Generates Stage 1 prediction from Stage 2: h_s1_hat = f_td(h_s2).
+    2. Computes prediction error: e1 = h_s1 - h_s1_hat.
+    3. Computes precision weight: pi_t = 2.0 * sigmoid(W_pi [h_s1, h_s1_hat, NA_t]).
+    4. Routes precision-weighted error: e1_weighted = pi_t * e1.
+    """
+    def __init__(self, hidden_dim=768, device_str='cpu'):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.device = torch.device(device_str)
+
+        self.topdown_gen = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, hidden_dim)
+        ).to(self.device)
+
+        self.precision_net = nn.Sequential(
+            nn.Linear(hidden_dim * 2 + 1, 128),
+            nn.SiLU(),
+            nn.Linear(128, hidden_dim),
+            nn.Sigmoid()
+        ).to(self.device)
+
+    def forward(self, h_s1: torch.Tensor, h_s2_prev: torch.Tensor, u_t: torch.Tensor):
+        batch_size, seq_len, _ = h_s1.size()
+        h_s1_hat = self.topdown_gen(h_s2_prev)
+        e1_raw = h_s1 - h_s1_hat
+
+        na_level = u_t[:, 4:5].unsqueeze(1).expand(batch_size, seq_len, 1)
+        prec_in = torch.cat([h_s1, h_s1_hat, na_level], dim=-1)
+        pi_t = 2.0 * self.precision_net(prec_in)
+
+        e1_weighted = pi_t * e1_raw
+        return e1_weighted, h_s1_hat, pi_t.mean()
+
+
+# =============================================================================
 # MASTER CORE AGENT (v26.0 PROD MASTER)
 # =============================================================================
 
@@ -217,6 +260,7 @@ class CoREAgent(nn.Module):
 
         self.boundary_detector = EntropyAdaptiveBoundaryDetector(hidden_dim=self.hidden_dim, device=self.device_str)
         self.pw_lper = PrecisionWeightedLPER(hidden_dim=self.hidden_dim, device=self.device_str)
+        self.pw_hpc_generator = PrecisionWeightedTopDownGenerator(hidden_dim=self.hidden_dim, device_str=self.device_str)
 
         # 2.1 Entropy Predictor for Dynamic dt Scaling (EXP-95 Validated)
         self.entropy_predictor = nn.Sequential(
@@ -345,11 +389,14 @@ class CoREAgent(nn.Module):
         return self.world_model.evaluate_counterfactual_rollout(h_prev, w_curr, num_steps)
 
     def get_all_parameters(self) -> List[nn.Parameter]:
-        params = (
+        seen = set()
+        params = []
+        raw_params = (
             list(self.pos_embeddings.parameters()) + 
             list(self.in_proj.parameters()) +
             list(self.boundary_detector.parameters()) +
             list(self.pw_lper.parameters()) +
+            list(self.pw_hpc_generator.parameters()) +
             list(self.entropy_predictor.parameters()) +
             list(self.topdown_prior_proj.parameters()) +
             list(self.fact_gate.parameters()) +
@@ -358,7 +405,11 @@ class CoREAgent(nn.Module):
         )
         for submodule in [self.gateway, self.stage1, self.stage2, self.world_model, self.output_gateway, self.attractor_head, self.critic]:
             if hasattr(submodule, 'parameters'):
-                params.extend(list(submodule.parameters()))
+                raw_params.extend(list(submodule.parameters()))
+        for p in raw_params:
+            if p not in seen:
+                seen.add(p)
+                params.append(p)
         return params
 
     def get_complete_state_dict(self) -> Dict[str, torch.Tensor]:
@@ -376,6 +427,9 @@ class CoREAgent(nn.Module):
 
         for name, param in self.pw_lper.named_parameters():
             sd[f"pw_lper.{name}"] = param.detach().cpu()
+
+        for name, param in self.pw_hpc_generator.named_parameters():
+            sd[f"pw_hpc_generator.{name}"] = param.detach().cpu()
 
         for name, param in self.entropy_predictor.named_parameters():
             sd[f"entropy_predictor.{name}"] = param.detach().cpu()
@@ -424,6 +478,11 @@ class CoREAgent(nn.Module):
                 clean_name = name.replace("topdown_pred_net.", "pw_lper.topdown_pred_net.")
                 p_name = clean_name.replace("pw_lper.", "")
                 for sub_p_name, sub_p in self.pw_lper.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("pw_hpc_generator."):
+                p_name = name.replace("pw_hpc_generator.", "")
+                for sub_p_name, sub_p in self.pw_hpc_generator.named_parameters():
                     if sub_p_name == p_name:
                         self._safe_copy_param(sub_p.data, tensor)
             elif name.startswith("entropy_predictor."):
@@ -627,7 +686,10 @@ class CoREAgent(nn.Module):
                 h_s1, m_s1, dt1 = self._stage1_forward(full_h_in, m_s1, curr_u_t)
 
             saliency_gate = self.boundary_detector(h_s1, text_seq)
-            e1_weighted, _, _ = self.pw_lper(h_s1, h1_prev_last, curr_u_t)
+
+            # PW-HPC: Top-down predictive feedback from previous Stage 2 state
+            h_s2_prev_shifted = torch.zeros_like(h_s1)
+            e1_weighted, h_s1_hat, mean_pi = self.pw_hpc_generator(h_s1, h_s2_prev_shifted, curr_u_t)
 
             predicted_entropy = self.entropy_predictor(h_s1)
             dynamic_dt_scale = 0.40 + 1.20 * predicted_entropy
@@ -660,7 +722,8 @@ class CoREAgent(nn.Module):
             w_pred, kl_div, fe, _ = self.world_model(h_prev_fast, h_curr_fast, w_current_slice)
 
             rec_loss = (1.0 - F.cosine_similarity(w_current_slice, w_pred, dim=-1, eps=1e-8)).mean()
-            fe_loss_tensor = (kl_div.mean() + rec_loss)
+            hpc_reconstruction_loss = F.mse_loss(h_s1, h_s1_hat)
+            fe_loss_tensor = (kl_div.mean() + rec_loss + 0.10 * hpc_reconstruction_loss)
 
             num_chunks = seq_len // chunk_size
             if num_chunks > 1:

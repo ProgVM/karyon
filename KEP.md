@@ -3,7 +3,7 @@
 
 > **Official Cybernetic & Biophysical Protocol for Karyon-CoRE Architecture Development**  
 > **Author & Repository Owner:** Bazilevs (ProgVM)  
-> **Standard:** KEP v6.2 Master (Mandatory for all human architects and AI collaborators).
+> **Standard:** KEP v7.0 Master (Mandatory for all human architects and AI collaborators).
 
 ---
 
@@ -18,10 +18,11 @@
 7. **Principle 7 (Axiom of Unshackled Flow):** Prohibits artificial dimensional bottlenecks (such as legacy $512 \to 128$ down-projections or low-rank $N=64$ basin constraints) unless mathematically mandated by proven cybernetic loss.
 8. **Principle 8 (Compositional Depth Over Flat Width):** A single-layer network cannot substitute compositional reasoning with exponential width. Multi-stage hierarchical laminar depth is mandatory for complex multi-step reasoning.
 9. **Principle 9 (Continuous Spontaneous Dual-Refactoring Mandate):** Refactoring is an active, spontaneous, and continuous obligation executed on Axis A (Technical & Hardware Safety) and Axis B (Biophysical & KEP Compliance).
+10. **Principle 10 (Autonomy of Protocol Evolution):** The Lead AI Cyberneticist possesses full, self-directed autonomy to update and refine the KEP specification, operational rules, and architectural guidelines whenever a more optimal, elegant, or biologically realistic algorithm or workflow is discovered, or when directed by Bazilevs.
 
 ---
 
-## 2. The 8 Fundamental KEP Rules
+## 2. The 9 Fundamental KEP Rules
 
 ### KEP Rule #1 (Hypothesis & Telemetry First)
 No feature, layer, or theoretical modification may be merged into production codebase files without passing an isolated benchmark script (`experiments/exp_*.py`) logging empirical telemetry.
@@ -52,3 +53,6 @@ Benchmarks MUST evaluate on real datasets (`vicgalle/alpaca-gpt4`). A benchmark 
 
 ### KEP Rule #8 (Mandatory Experiment Archival Protocol)
 Upon completion and verdict assignment, all experimental benchmark scripts (`exp_*.py`) are moved to `experiments/archive/` and committed to maintain an immutable scientific ledger.
+
+### KEP Rule #9 (The Persistence of Cybernetic Truth)
+If a biologically realistic or mathematically elegant hypothesis fails or yields inconclusive results (⚪ NEUTRAL or 🔴 REJECTED) on the first attempt, it must not be permanently abandoned. The Lead AI Cyberneticist must dissect the failure, identify numerical or structural bottlenecks (e.g., gradient flow, scaling, or missing complementary systems), and reformulate the mechanism with alternative approaches until its true potential is either fully realized or mathematically disproven.
