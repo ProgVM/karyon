@@ -1,17 +1,21 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v28.0 MASTER (LIVING COGNITIVE MULTIMODAL MIND WITH REAL VOLITION)
+KARYON AGENT CORE v29.0 MASTER (LIVING COGNITIVE MULTIMODAL MIND WITH TRUE WILL)
 Grounded in Principle 1 (C++20 Engine, Python Client) & Principle 2 (Biological Realism):
 - Universal Extensible Multimodal Sensory Gateway (Dynamic registration of arbitrary channels:
   Text, Vision, Audio, Binary, Telepathic, Documents, Cybernetic Sensors, Media).
 - Panksepp Affective Neuroscience Core (Russell Circumplex: Valence, Arousal, Dominance + SEEKING, FEAR, RAGE, PANIC).
 - Subcortical Unconditioned Reflex Shunt & Conditioned Procedural Habit Circuit (Basal Ganglia Loop).
+- Hierarchical Volitional Override Module (True Will Engine - EXP-99 Validated):
+  Top-Down Cognitive Goal Precision (Stage 2) dynamically suppresses bottom-up somatic fatigue,
+  pain, and external friction via Volitional Override Gate (Gamma_override) driven by Goal Intensity
+  and Somatic Friction, while logging Allostatic Strain (Health Debt).
 - Dual-Phase Biophysical Sleep Cycle (NREM Slow-Wave Replay + REM Generative Synthetic Dreaming + Synaptic Pruning).
 - 100% Native C++20 2-Stage Cascaded Cortical Stack (Fast Morpho-Syntactic + Slow Semantic).
 - Bastos-Friston Canonical 2-Way Precision-Weighted Laminar Error Routing (PW-LPER - EXP-75/EXP-81).
 - Single-Pass Precision-Weighted True Hierarchical Predictive Coding (PW-HPC - EXP-96 Validated).
-- Continuous Volitional Active Inference Motor Module (Direct Action Selection via G-Gradient & Homeostatic Prior Preferences - EXP-98 Validated 🟢 +0.1423 Delta Loss).
+- Continuous Volitional Active Inference Motor Module (Direct Action Selection via G-Gradient & Homeostatic Prior Preferences - EXP-98 Validated 🟢).
 - Active Hippocampal Episodic Fact Retrieval & Dynamic GWT Injection (NA > 0.10).
 - System 2 Active Inference Mental Sandbox / Counterfactual Rollout Search in Generation.
 - Native Multi-Scale Morphological Byte Pyramid Receptive Field (EXP-70 Validated).
@@ -293,7 +297,63 @@ class PrecisionWeightedTopDownGenerator(nn.Module):
 
 
 # =============================================================================
-# MODULE 6: VOLITIONAL ACTIVE INFERENCE MOTOR HEAD (EXP-98 VALIDATED 🟢)
+# MODULE 6: HIERARCHICAL VOLITIONAL OVERRIDE MODULE (TRUE WILL ENGINE - EXP-99)
+# =============================================================================
+
+class HierarchicalVolitionalOverrideModule(nn.Module):
+    """
+    True Will Engine (EXP-99 Validated):
+    Computes Volitional Override Gate (Gamma_override) driven by Goal Intensity
+    and Somatic Resistance, suppressing fatigue and pain to maintain goal-directed action.
+    """
+    def __init__(self, hidden_dim=768, homeo_dim=6, device_str='cpu'):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.device = torch.device(device_str)
+        
+        self.override_gate_net = nn.Sequential(
+            nn.Linear(hidden_dim + homeo_dim, 128),
+            nn.SiLU(),
+            nn.Linear(128, 1)
+        ).to(self.device)
+
+    def forward(self, h_s2: torch.Tensor, u_t: torch.Tensor):
+        batch_size = h_s2.size(0)
+        
+        if h_s2.dim() == 3:
+            h_s2_mean = h_s2.mean(dim=1)
+        else:
+            h_s2_mean = h_s2
+            
+        h_s2_float = h_s2_mean.float()
+        u_t_float = u_t.float()
+        
+        combined = torch.cat([h_s2_float, u_t_float], dim=-1)
+        raw_gate = self.override_gate_net(combined)
+        
+        energy = u_t_float[:, 1:2]
+        somatic_friction = 1.0 - energy # Fatigue / Pain
+        
+        goal_intensity = torch.norm(h_s2_float, dim=-1, keepdim=True) / math.sqrt(self.hidden_dim)
+        goal_intensity = torch.clamp(goal_intensity, 0.0, 10.0)
+        
+        will_drive = goal_intensity * somatic_friction
+        gamma_override = torch.sigmoid(raw_gate + 2.0 * will_drive)
+        
+        stability = u_t_float[:, 2:3]
+        effective_energy = energy + gamma_override * (1.0 - energy)
+        effective_stability = stability + gamma_override * (1.0 - stability)
+        
+        effective_u_t = u_t.clone()
+        effective_u_t[:, 1:2] = effective_energy.to(u_t.dtype)
+        effective_u_t[:, 2:3] = effective_stability.to(u_t.dtype)
+        
+        allostatic_strain = gamma_override * somatic_friction
+        return effective_u_t, gamma_override, allostatic_strain
+
+
+# =============================================================================
+# MODULE 7: VOLITIONAL ACTIVE INFERENCE MOTOR HEAD (EXP-98 VALIDATED 🟢)
 # =============================================================================
 
 class VolitionalActiveInferenceMotorHead(nn.Module):
@@ -331,19 +391,14 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         h_proj_gain = h_proj * motor_gain
         raw_logits = F.linear(h_proj_gain, byte_embed_weights)
 
-        # Compute Expected Free Energy G(a) over top-8 candidate tokens for speed
         top8_vals, top8_indices = torch.topk(raw_logits, k=8, dim=-1)
-        
-        # Gather top-8 byte embeddings
         top8_embs = byte_embed_weights[top8_indices] # [B, 8, text_dim]
         u_t_expanded = u_t.unsqueeze(1).expand(batch_size, 8, 6) # [B, 8, 6]
         
         efe_inputs = torch.cat([top8_embs, u_t_expanded], dim=-1)
         g_scores = self.efe_evaluator(efe_inputs).squeeze(-1) # [B, 8]
         
-        # Volitional modulation: subtract gamma * G(a) from candidate logits
         volitional_mod = -self.gamma_volition * g_scores
-        
         modulated_logits = raw_logits.clone()
         modulated_logits.scatter_add_(1, top8_indices, volitional_mod)
         
@@ -351,7 +406,7 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v28.0 PROD MASTER)
+# MASTER CORE AGENT (v29.0 PROD MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -406,7 +461,10 @@ class CoREAgent(nn.Module):
         self.pw_lper = PrecisionWeightedLPER(hidden_dim=self.hidden_dim, device=self.device_str)
         self.pw_hpc_generator = PrecisionWeightedTopDownGenerator(hidden_dim=self.hidden_dim, device_str=self.device_str)
 
-        # 3.1 Entropy Predictor for Dynamic dt Scaling (EXP-95 Validated)
+        # 3.1 Hierarchical Volitional Override Module (EXP-99 Validated)
+        self.will_engine = HierarchicalVolitionalOverrideModule(hidden_dim=self.hidden_dim, homeo_dim=config.net.homeo_dim, device_str=self.device_str)
+
+        # 3.2 Entropy Predictor for Dynamic dt Scaling (EXP-95 Validated)
         self.entropy_predictor = nn.Sequential(
             nn.Linear(self.hidden_dim, 64),
             nn.SiLU(),
@@ -487,7 +545,6 @@ class CoREAgent(nn.Module):
         self.critic = TDFreeEnergyCritic(hidden_dim=self.hidden_dim, device=self.device_str)
 
     def register_sensory_channel(self, name: str, in_dim: int):
-        """Allows registering any dynamic new channel (e.g. document, cybernetic_telemetry)."""
         self.gateway.register_channel(name, in_dim)
 
     def forward(self, sensor_inputs: Dict[str, torch.Tensor], h_fast: torch.Tensor, h_slow: torch.Tensor, u_t: torch.Tensor, dt: float = 1.0):
@@ -517,17 +574,20 @@ class CoREAgent(nn.Module):
             h_s2_out, m_s2_next, dt2 = self.stage2(e1_weighted, m_s2, u_t, sal_gate, dt)
             eff_dt = (dt1 + dt2) / 2.0
 
+            # Hierarchical Volitional Override
+            effective_u_t, gamma_override, allostatic_strain = self.will_engine(h_s2_out, u_t)
+
             topdown_prior = self.topdown_prior_proj(h_s2_out)
             h_combined = h_s1_out + h_s2_out + 0.15 * topdown_prior
             h_flat = h_combined.view(-1, self.hidden_dim)
-            h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, u_t)
+            h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
             
             motor_outs = self.output_gateway(h_relaxed)
             actions = motor_outs.get("motor_action", torch.zeros(h_fast.size(0), self.action_dim, device=self.device))
             cog_actions = motor_outs.get("cognitive_gating", torch.zeros(h_fast.size(0), self.config.net.cog_action_dim, device=self.device))
             
             # Volition-Modulated Motor Text Logits
-            text_logits = self.volitional_head.compute_volitional_logits(h_relaxed, u_t, self.pos_embeddings.byte_embed.weight)
+            text_logits = self.volitional_head.compute_volitional_logits(h_relaxed, effective_u_t, self.pos_embeddings.byte_embed.weight)
 
             h_prev_proxy = m_s1.view(h_fast.size(0), -1)[:, :self.hidden_dim]
             w_pred, kl_div, fe, z_t = self.world_model(h_prev_proxy, h_relaxed, w_t)
@@ -551,6 +611,7 @@ class CoREAgent(nn.Module):
             list(self.boundary_detector.parameters()) +
             list(self.pw_lper.parameters()) +
             list(self.pw_hpc_generator.parameters()) +
+            list(self.will_engine.parameters()) +
             list(self.entropy_predictor.parameters()) +
             list(self.topdown_prior_proj.parameters()) +
             list(self.fact_gate.parameters()) +
@@ -586,6 +647,9 @@ class CoREAgent(nn.Module):
 
         for name, param in self.pw_hpc_generator.named_parameters():
             sd[f"pw_hpc_generator.{name}"] = param.detach().cpu()
+
+        for name, param in self.will_engine.named_parameters():
+            sd[f"will_engine.{name}"] = param.detach().cpu()
 
         for name, param in self.entropy_predictor.named_parameters():
             sd[f"entropy_predictor.{name}"] = param.detach().cpu()
@@ -645,6 +709,11 @@ class CoREAgent(nn.Module):
             elif name.startswith("pw_hpc_generator."):
                 p_name = name.replace("pw_hpc_generator.", "")
                 for sub_p_name, sub_p in self.pw_hpc_generator.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("will_engine."):
+                p_name = name.replace("will_engine.", "")
+                for sub_p_name, sub_p in self.will_engine.named_parameters():
                     if sub_p_name == p_name:
                         self._safe_copy_param(sub_p.data, tensor)
             elif name.startswith("entropy_predictor."):
@@ -728,12 +797,6 @@ class CoREAgent(nn.Module):
     def execute_deep_allostatic_sleep(self, episodic_memory: BatchedEpisodicMemory, hu: HomeostaticUnit,
                                       num_replay_cycles: int = 5, downscaling_factor: float = 0.03,
                                       pruning_percentile: float = 0.05) -> int:
-        """
-        Advanced Dual-Phase Sleep Cycle (NREM Slow-Wave Replay + REM Generative Synthetic Dreaming):
-        - Phase 1 (NREM): Replays high-surprise memories and applies Tononi SHY Synaptic Scaling.
-        - Phase 2 (REM): Synthesizes generative counterfactual dream trajectories from Gaussian latent noise.
-        - Morphogenesis: Prunes bottom percentile of weak synaptic weights.
-        """
         self.train()
         active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
         active_memory_slots = min(active_slots, episodic_memory.max_capacity)
@@ -878,15 +941,18 @@ class CoREAgent(nn.Module):
 
             h_s2 = h_s2 * dynamic_dt_scale
 
+            # Hierarchical Volitional Override
+            effective_u_t, gamma_override, allostatic_strain = self.will_engine(h_s2, curr_u_t)
+
             eff_dt = (dt1 + dt2) / 2.0
             topdown_prior = self.topdown_prior_proj(h_s2)
             h_combined = h_s1 + h_s2 + 0.15 * topdown_prior
 
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
-            h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, curr_u_t)
+            h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
             
-            # Volition-Modulated Motor Text Logits (EXP-98 Validated 🟢)
-            u_t_unrolled_step = curr_u_t.repeat_interleave(seq_len, dim=0)
+            # Volition-Modulated Motor Text Logits
+            u_t_unrolled_step = effective_u_t.repeat_interleave(seq_len, dim=0)
             volitional_logits_flat = self.volitional_head.compute_volitional_logits(
                 h_relaxed, u_t_unrolled_step, self.pos_embeddings.byte_embed.weight
             )
@@ -952,10 +1018,13 @@ class CoREAgent(nn.Module):
 
             h_s2_out, m_s2_next, dt2 = self.stage2(e1_weighted, m_s2, u_t, sal_gate, 1.0)
 
+            # Volitional override
+            effective_u_t, gamma_override, allostatic_strain = self.will_engine(h_s2_out, u_t)
+
             topdown_prior = self.topdown_prior_proj(h_s2_out)
             h_combined = h_s1_out + h_s2_out + 0.15 * topdown_prior
             h_flat = h_combined.view(-1, self.hidden_dim)
-            h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, u_t)
+            h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
 
             outs = self.output_gateway(h_relaxed)
             w_pred, kl_div, fe, z_t = self.world_model(h_prev_proxy, h_relaxed, w_t)
@@ -1028,13 +1097,16 @@ class CoREAgent(nn.Module):
             e1_weighted, h1_prev_last, _ = self.pw_lper(h_s1, h1_prev_last, hu_st)
             h_s2, m_s2, _ = self.stage2(e1_weighted, m_s2, hu_st, sal_gate, 1.0)
             
+            # Hierarchical Volitional Override in generation
+            effective_hu_st, gamma_override, allostatic_strain = self.will_engine(h_s2, hu_st)
+
             topdown_prior = self.topdown_prior_proj(h_s2)
             h_combined = h_s1 + h_s2 + 0.15 * topdown_prior
 
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
-            h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, hu_st)
+            h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, effective_hu_st)
             
-            raw_logits = self.volitional_head.compute_volitional_logits(h_relaxed, hu_st, self.pos_embeddings.byte_embed.weight)
+            raw_logits = self.volitional_head.compute_volitional_logits(h_relaxed, effective_hu_st, self.pos_embeddings.byte_embed.weight)
             
             raw_logits[:, 256] = -1e9
             raw_logits[:, :9] = -1e9
@@ -1097,6 +1169,9 @@ class CoREAgent(nn.Module):
 
             if step % 4 == 0:
                 hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)
+                # Apply Health Debt from Volitional Override
+                hu_st[0, 3] = torch.clamp(hu_st[0, 3] - 0.02 * allostatic_strain.mean().item(), 0.0, 1.0)
+
             rolling_token_ids.append(next_token_id)
             
             if next_token_id == 257:
@@ -1116,7 +1191,7 @@ class CoREAgent(nn.Module):
                 "text": token_char
             }
             
-            if hu_st[0, 1].item() <= 0.05:
+            if hu_st[0, 1].item() <= 0.05 and gamma_override.mean().item() < 0.2:
                 yield {"status": "exhausted", "text": " [fatigued...]", "m_state": m_s2, "h_state": h_combined}
                 return
 
