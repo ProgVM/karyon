@@ -1,0 +1,13 @@
+{
+  "verdict": "\u26aa NEUTRAL / INCONCLUSIVE",
+  "base_loss": 1.6611781517664592,
+  "prop_loss": 1.6715121905008952,
+  "delta_loss": -0.010334038734435946,
+  "base_ppl": 5.26551076231359,
+  "prop_ppl": 5.320206883646391,
+  "base_tok_per_sec": 18895.890416087772,
+  "prop_tok_per_sec": 25575.178568298903,
+  "speed_retention_pct": 135.34783492671215,
+  "active_memory_slots": 23,
+  "peak_vram_mb": 3599.98046875
+}
