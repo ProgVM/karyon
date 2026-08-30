@@ -218,6 +218,14 @@ class CoREAgent(nn.Module):
         self.boundary_detector = EntropyAdaptiveBoundaryDetector(hidden_dim=self.hidden_dim, device=self.device_str)
         self.pw_lper = PrecisionWeightedLPER(hidden_dim=self.hidden_dim, device=self.device_str)
 
+        # 2.1 Entropy Predictor for Dynamic dt Scaling (EXP-95 Validated)
+        self.entropy_predictor = nn.Sequential(
+            nn.Linear(self.hidden_dim, 64),
+            nn.SiLU(),
+            nn.Linear(64, 1),
+            nn.Sigmoid()
+        ).to(self.device)
+
         self.stage2 = CorticalStage(
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
             head_k=self.head_k, head_v=self.head_v, min_beta=0.0001, max_beta=0.05,
@@ -342,6 +350,7 @@ class CoREAgent(nn.Module):
             list(self.in_proj.parameters()) +
             list(self.boundary_detector.parameters()) +
             list(self.pw_lper.parameters()) +
+            list(self.entropy_predictor.parameters()) +
             list(self.topdown_prior_proj.parameters()) +
             list(self.fact_gate.parameters()) +
             list(self.episodic_sensory_proj.parameters()) +
@@ -367,6 +376,9 @@ class CoREAgent(nn.Module):
 
         for name, param in self.pw_lper.named_parameters():
             sd[f"pw_lper.{name}"] = param.detach().cpu()
+
+        for name, param in self.entropy_predictor.named_parameters():
+            sd[f"entropy_predictor.{name}"] = param.detach().cpu()
 
         for name, param in self.topdown_prior_proj.named_parameters():
             sd[f"topdown_prior_proj.{name}"] = param.detach().cpu()
@@ -412,6 +424,11 @@ class CoREAgent(nn.Module):
                 clean_name = name.replace("topdown_pred_net.", "pw_lper.topdown_pred_net.")
                 p_name = clean_name.replace("pw_lper.", "")
                 for sub_p_name, sub_p in self.pw_lper.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("entropy_predictor."):
+                p_name = name.replace("entropy_predictor.", "")
+                for sub_p_name, sub_p in self.entropy_predictor.named_parameters():
                     if sub_p_name == p_name:
                         self._safe_copy_param(sub_p.data, tensor)
             elif name.startswith("topdown_prior_proj."):
@@ -532,13 +549,13 @@ class CoREAgent(nn.Module):
             hu.state[:, 3] = 1.00
             hu.state[:, 4] = 0.05
 
-    def _stage1_forward(self, h_in, m_s1, u_t):
+    def _stage1_forward(self, h_in, m_s1, u_t, dt=1.0):
         with torch.amp.autocast(device_type=self.device_str, dtype=torch.float16, enabled=self.device_str == 'cuda'):
-            return self.stage1(h_in, m_s1, u_t, torch.Tensor(), 1.0)
+            return self.stage1(h_in, m_s1, u_t, torch.Tensor(), dt)
 
-    def _stage2_forward(self, e1_weighted, m_s2, u_t, saliency_gate):
+    def _stage2_forward(self, e1_weighted, m_s2, u_t, saliency_gate, dt=1.0):
         with torch.amp.autocast(device_type=self.device_str, dtype=torch.float16, enabled=self.device_str == 'cuda'):
-            return self.stage2(e1_weighted, m_s2, u_t, saliency_gate, 1.0)
+            return self.stage2(e1_weighted, m_s2, u_t, saliency_gate, dt)
 
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, 
                          criterion_speech: nn.Module, episodic_memory=None, loss_free_energy_weight: float = 0.05, 
@@ -612,12 +629,17 @@ class CoREAgent(nn.Module):
             saliency_gate = self.boundary_detector(h_s1, text_seq)
             e1_weighted, _, _ = self.pw_lper(h_s1, h1_prev_last, curr_u_t)
 
+            predicted_entropy = self.entropy_predictor(h_s1)
+            dynamic_dt_scale = 0.40 + 1.20 * predicted_entropy
+
             if self.training and self.device_str == 'cuda':
                 h_s2, m_s2, dt2 = checkpoint.checkpoint(
-                    self._stage2_forward, e1_weighted, m_s2, curr_u_t, saliency_gate, use_reentrant=False
+                    self._stage2_forward, e1_weighted, m_s2, curr_u_t, saliency_gate, dynamic_dt_scale.mean().item(), use_reentrant=False
                 )
             else:
-                h_s2, m_s2, dt2 = self._stage2_forward(e1_weighted, m_s2, curr_u_t, saliency_gate)
+                h_s2, m_s2, dt2 = self._stage2_forward(e1_weighted, m_s2, curr_u_t, saliency_gate, dynamic_dt_scale.mean().item())
+
+            h_s2 = h_s2 * dynamic_dt_scale
 
             eff_dt = (dt1 + dt2) / 2.0
             topdown_prior = self.topdown_prior_proj(h_s2)
