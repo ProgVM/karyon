@@ -1,0 +1,12 @@
+{
+  "verdict": "\u26aa NEUTRAL / INCONCLUSIVE",
+  "base_loss": 1.450889378786087,
+  "prop_loss": 1.4216683566570283,
+  "delta_loss": 0.02922102212905875,
+  "base_vram": 3030.39306640625,
+  "prop_vram": 3118.3359375,
+  "vram_increase_pct": 2.9020285212717267,
+  "prop_tok_per_sec": 22924.490610441746,
+  "prop_ppl": 4.1440283935414355,
+  "avg_cos_phi": -0.717811046242714
+}
