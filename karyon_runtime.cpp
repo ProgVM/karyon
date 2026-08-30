@@ -69,9 +69,9 @@ KaryonEntity* karyon_load(const char* kcore_file_path, const char* device) {
     }
 
     auto opts = torch::TensorOptions().dtype(torch::kFloat32).device(entity->device);
-    // Synced with v17.0 Master Cortical dimension (512D)
-    entity->h_fast = torch::zeros({1, 512}, opts);
-    entity->h_slow = torch::zeros({1, 512}, opts);
+    // Synced with v31.0 Master Cortical dimension (768D)
+    entity->h_fast = torch::zeros({1, 768}, opts);
+    entity->h_slow = torch::zeros({1, 768}, opts);
     entity->u_t = torch::tensor({{0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f}}, opts);
 
     return entity;
