@@ -413,7 +413,7 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
 class CoREAgent(nn.Module):
     def __init__(self, config, device='cpu'):
         super().__init__()
-        self.device_str = 'cuda' if (str(device).find('cuda') != -1 and torch.cuda.is_available()) else 'cpu'
+        self.device_str = str(device) if ('cuda' in str(device) and torch.cuda.is_available()) else 'cpu'
         self.device = torch.device(self.device_str)
         self.config = config
         self.hidden_dim = config.net.hidden_dim
@@ -445,6 +445,7 @@ class CoREAgent(nn.Module):
             homeo_dim=config.net.homeo_dim, 
             device_str=self.device_str
         )
+        self.gateway.register_channel('episodic_recall', self.unified_dim)
         self.in_proj = nn.Linear(self.text_dim, self.hidden_dim).to(self.device)
 
         # 2. Affective Core & Reflex/Habit Circuits
@@ -890,7 +891,17 @@ class CoREAgent(nn.Module):
                     unrolled_inputs[name] = full_emb.contiguous().view(batch_size * seq_len, -1).float()
                 else:
                     unrolled_inputs[name] = seq_tensor.contiguous().view(batch_size * seq_len, -1).float()
-                    
+
+        # Vector 3: Hippocampal Retrieval directly into Gateway's 'episodic_recall' channel
+        active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
+        if episodic_memory is not None and active_slots > 2:
+            q_sensory = self.episodic_sensory_proj(full_emb.mean(dim=1)).float()
+            ret_mem, max_sim = episodic_memory.read(q_sensory, temperature=0.05, threshold=0.65, sigmoid_beta=15.0)
+            ret_mem_unrolled = ret_mem.unsqueeze(1).expand(batch_size, seq_len, -1).contiguous().view(batch_size * seq_len, -1).float()
+            unrolled_inputs['episodic_recall'] = ret_mem_unrolled
+        else:
+            unrolled_inputs['episodic_recall'] = torch.zeros(batch_size * seq_len, self.unified_dim, device=self.device).float()
+
         h_prev_unrolled = torch.zeros(batch_size * seq_len, self.hidden_dim, device=self.device).float()
         u_t_unrolled = curr_u_t.unsqueeze(1).expand(batch_size, seq_len, -1).contiguous().view(batch_size * seq_len, -1).float()
         
@@ -903,19 +914,6 @@ class CoREAgent(nn.Module):
         
         with torch.amp.autocast(device_type=self.device_str, dtype=torch.float16, enabled=(self.device_str == 'cuda')):
             full_h_in = self.in_proj(w_t_seq)
-            
-            da_level = curr_u_t[:, 5:6]
-            na_level = curr_u_t[:, 4:5]
-
-            active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
-            if episodic_memory is not None and active_slots > 2:
-                q_sensory = w_t_seq[:, -1, :].float()
-                ret_mem, max_sim = episodic_memory.read(q_sensory, temperature=0.05, threshold=0.70, sigmoid_beta=15.0)
-                
-                fact_feat = torch.cat([ret_mem, na_level], dim=-1)
-                g_fact = self.fact_gate(fact_feat).unsqueeze(1)
-                ret_mem_h = self.in_proj(ret_mem).unsqueeze(1)
-                full_h_in = full_h_in + g_fact * ret_mem_h
 
             if self.training and self.device_str == 'cuda':
                 h_s1, m_s1, dt1 = checkpoint.checkpoint(
@@ -1080,17 +1078,16 @@ class CoREAgent(nn.Module):
             window_emb = self.pos_embeddings(window_t, start_pos=window_start_pos, apply_rf=True)
             t_emb = window_emb[:, -1:, :]
             
-            h_in = self.in_proj(t_emb)
-
+            sensor_inputs = {'text': t_emb.squeeze(1)}
             active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
             if episodic_memory is not None and hu_st[0, 4].item() > 0.10 and active_slots > 2:
                 q_k = self.episodic_sensory_proj(t_emb.squeeze(1)).float()
-                ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.70, sigmoid_beta=15.0)
-                if (max_sim > 0.70).any():
-                    fact_feat = torch.cat([ret_mem, hu_st[0:1, 4:5]], dim=-1)
-                    g_fact = self.fact_gate(fact_feat).unsqueeze(1)
-                    ret_mem_h = self.in_proj(ret_mem.to(h_in.dtype)).unsqueeze(1)
-                    h_in = h_in + g_fact * ret_mem_h
+                ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.65, sigmoid_beta=15.0)
+                if (max_sim > 0.65).any():
+                    sensor_inputs['episodic_recall'] = ret_mem
+
+            w_t, _, _, _ = self.gateway(sensor_inputs, m_s2.view(1, -1)[:, :self.hidden_dim], hu_st)
+            h_in = self.in_proj(w_t).unsqueeze(1)
 
             h_s1, m_s1, _ = self.stage1(h_in, m_s1, hu_st, torch.Tensor(), 1.0)
             sal_gate = self.boundary_detector(h_s1, window_t[:, -1:])

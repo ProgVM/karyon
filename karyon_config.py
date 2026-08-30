@@ -80,7 +80,7 @@ class NetworkConfig:
 @dataclass
 class MemoryConfig:
     """Vectorized Episodic Memory & Volitional Read Gating Settings."""
-    max_capacity: int = 1000
+    max_capacity: int = 5000
     protected_slots: int = 3
     default_read_threshold: float = 0.70
     default_attention_temp: float = 0.05
