@@ -1,14 +1,16 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v26.0 MASTER (UNIVERSAL EXTENSIBLE MULTIMODAL & SLEEP MORPHOGENESIS)
-Grounded in Principle 1 (C++20 as Engine, Python as Client) & Principle 2 (Biological Realism):
+KARYON AGENT CORE v27.0 MASTER (LIVING COGNITIVE MULTIMODAL MIND)
+Grounded in Principle 1 (C++20 Engine, Python Client) & Principle 2 (Biological Realism):
 - Universal Extensible Multimodal Sensory Gateway (Dynamic registration of arbitrary channels:
   Text, Vision, Audio, Binary, Telepathic, Documents, Cybernetic Sensors, Media).
-- Sequence-Parallel Multimodal Stream Unrolling (forward_multimodal_sequence) at native GPU speed.
-- Biophysical Free-Energy Synaptic Pruning & Morphogenesis Sleep Cycle (execute_deep_allostatic_sleep_v2).
+- Panksepp Affective Neuroscience Core (Russell Circumplex: Valence, Arousal, Dominance + SEEKING, FEAR, RAGE, PANIC).
+- Subcortical Unconditioned Reflex Shunt & Conditioned Procedural Habit Circuit (Basal Ganglia Loop).
+- Dual-Phase Biophysical Sleep Cycle (NREM Slow-Wave Replay + REM Generative Synthetic Dreaming + Synaptic Pruning).
 - 100% Native C++20 2-Stage Cascaded Cortical Stack (Fast Morpho-Syntactic + Slow Semantic).
 - Bastos-Friston Canonical 2-Way Precision-Weighted Laminar Error Routing (PW-LPER - EXP-75/EXP-81).
+- Single-Pass Precision-Weighted True Hierarchical Predictive Coding (PW-HPC - EXP-96 Validated).
 - Active Hippocampal Episodic Fact Retrieval & Dynamic GWT Injection (NA > 0.10).
 - System 2 Active Inference Mental Sandbox / Counterfactual Rollout Search in Generation.
 - Native Multi-Scale Morphological Byte Pyramid Receptive Field (EXP-70 Validated).
@@ -168,7 +170,86 @@ class DynamicSensoryGateway(nn.Module):
 
 
 # =============================================================================
-# MODULE 3: PRECISION-WEIGHTED TOP-DOWN GENERATOR (PW-HPC)
+# MODULE 3: AFFECTIVE CORE & PANKSEPP PRIMARY DRIVES
+# =============================================================================
+
+class AffectiveCoreUnit(nn.Module):
+    """
+    Computes Russell's Affective Circumplex (Valence, Arousal, Dominance)
+    and Panksepp Primary Affective Drives (SEEKING, FEAR, RAGE, PANIC).
+    """
+    def __init__(self, device_str='cpu'):
+        super().__init__()
+        self.device = torch.device(device_str)
+
+    def compute_affective_state(self, u_t: torch.Tensor, free_energy: float = 0.0, value_est: float = 0.0) -> dict:
+        curiosity = u_t[:, 0].mean().item()
+        energy    = u_t[:, 1].mean().item()
+        stability = u_t[:, 2].mean().item()
+        health    = u_t[:, 3].mean().item()
+        na        = u_t[:, 4].mean().item()
+        da        = u_t[:, 5].mean().item()
+
+        # Russell Affective Coordinates
+        valence   = da - (1.0 - energy) - (1.0 - health)
+        arousal   = na + min(1.0, max(0.0, free_energy if not math.isnan(free_energy) else 0.0))
+        dominance = stability + max(-1.0, min(1.0, value_est))
+
+        # Panksepp Primary Affective Drives
+        seeking_drive = max(0.0, curiosity + da - max(0.0, free_energy if not math.isnan(free_energy) else 0.0))
+        fear_drive    = max(0.0, arousal * (1.0 - stability))
+        rage_drive    = max(0.0, (1.0 - energy) * (1.0 - dominance))
+        panic_drive   = max(0.0, (1.0 - health) * (1.0 - stability))
+
+        return {
+            "valence": valence,
+            "arousal": arousal,
+            "dominance": dominance,
+            "panksepp": {
+                "SEEKING": seeking_drive,
+                "FEAR": fear_drive,
+                "RAGE": rage_drive,
+                "PANIC": panic_drive
+            }
+        }
+
+
+# =============================================================================
+# MODULE 4: UNCONDITIONED & CONDITIONED REFLEX CIRCUITS (BASAL GANGLIA)
+# =============================================================================
+
+class ReflexAndHabitCircuit(nn.Module):
+    """
+    Biophysical Subcortical Reflex & Habit Module:
+    1. Unconditioned Emergency Reflex: Overrides motor output on somatic energy collapse or extreme surprise.
+    2. Conditioned Habit Circuit (Basal Ganglia): Direct fast associative mapping bypassing deep cortical layers when dopamine DA > 0.50.
+    """
+    def __init__(self, unified_dim=256, action_dim=3, device_str='cpu'):
+        super().__init__()
+        self.unified_dim = unified_dim
+        self.action_dim = action_dim
+        self.device = torch.device(device_str)
+
+        self.habit_policy = nn.Sequential(
+            nn.Linear(unified_dim, 64),
+            nn.SiLU(),
+            nn.Linear(64, action_dim)
+        ).to(self.device)
+
+    def check_unconditioned_reflex(self, u_t: torch.Tensor, free_energy: float) -> bool:
+        energy = u_t[:, 1].min().item()
+        health = u_t[:, 3].min().item()
+        fe_check = free_energy if not math.isnan(free_energy) else 0.0
+        return (energy < 0.15 or health < 0.20 or fe_check > 0.85)
+
+    def execute_conditioned_habit(self, w_t: torch.Tensor, da_level: float) -> torch.Tensor:
+        if da_level > 0.50:
+            return self.habit_policy(w_t)
+        return torch.zeros(w_t.size(0), self.action_dim, device=self.device)
+
+
+# =============================================================================
+# MODULE 5: PRECISION-WEIGHTED TOP-DOWN GENERATOR (PW-HPC)
 # =============================================================================
 
 class PrecisionWeightedTopDownGenerator(nn.Module):
@@ -211,7 +292,7 @@ class PrecisionWeightedTopDownGenerator(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v26.0 PROD MASTER)
+# MASTER CORE AGENT (v27.0 PROD MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -250,8 +331,12 @@ class CoREAgent(nn.Module):
             device_str=self.device_str
         )
         self.in_proj = nn.Linear(self.text_dim, self.hidden_dim).to(self.device)
+
+        # 2. Affective Core & Reflex/Habit Circuits
+        self.affective_core = AffectiveCoreUnit(device_str=self.device_str)
+        self.reflex_circuit = ReflexAndHabitCircuit(unified_dim=self.unified_dim, action_dim=self.action_dim, device_str=self.device_str)
         
-        # 2. Native C++20 2-Stage Cascaded Cortical Stack
+        # 3. Native C++20 2-Stage Cascaded Cortical Stack
         self.stage1 = CorticalStage(
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
             head_k=self.head_k, head_v=self.head_v, min_beta=0.005, max_beta=0.15,
@@ -262,7 +347,7 @@ class CoREAgent(nn.Module):
         self.pw_lper = PrecisionWeightedLPER(hidden_dim=self.hidden_dim, device=self.device_str)
         self.pw_hpc_generator = PrecisionWeightedTopDownGenerator(hidden_dim=self.hidden_dim, device_str=self.device_str)
 
-        # 2.1 Entropy Predictor for Dynamic dt Scaling (EXP-95 Validated)
+        # 3.1 Entropy Predictor for Dynamic dt Scaling (EXP-95 Validated)
         self.entropy_predictor = nn.Sequential(
             nn.Linear(self.hidden_dim, 64),
             nn.SiLU(),
@@ -292,7 +377,7 @@ class CoREAgent(nn.Module):
             nn.Sigmoid()
         ).to(self.device)
 
-        # 3. Active Inference Latent World Model
+        # 4. Active Inference Latent World Model
         self.world_model = LatentPredictor(
             hidden_dim=self.hidden_dim,
             unified_dim=self.unified_dim,
@@ -300,7 +385,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 4. Multi-Modal Motor Gateway
+        # 5. Multi-Modal Motor Gateway
         self.output_gateway = MotorGateway(
             hidden_dim=self.hidden_dim, 
             action_dim=config.net.action_dim, 
@@ -313,7 +398,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 5. Native C++ Modern Hopfield Attractor with Bounded Commitment Loss
+        # 6. Native C++ Modern Hopfield Attractor with Bounded Commitment Loss
         self.attractor_head = DesaturatedHopfieldAttractorHead(
             hidden_dim=self.hidden_dim, 
             vocab_size=self.text_gen_dim,
@@ -321,17 +406,17 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 6. Dedicated Episodic Projection
+        # 7. Dedicated Episodic Projection
         self.episodic_sensory_proj = nn.Linear(self.text_dim, self.unified_dim).to(self.device)
 
-        # 7. Afferent-Efferent Tied Motor Projection Head
+        # 8. Afferent-Efferent Tied Motor Projection Head
         self.motor_text_proj = nn.Sequential(
             nn.Linear(self.hidden_dim, self.text_dim),
             nn.SiLU(),
             nn.LayerNorm(self.text_dim)
         ).to(self.device)
         
-        # 8. Native C++20 Temporal-Difference Free Energy Value Critic
+        # 9. Native C++20 Temporal-Difference Free Energy Value Critic
         self.critic = TDFreeEnergyCritic(hidden_dim=self.hidden_dim, device=self.device_str)
 
     def register_sensory_channel(self, name: str, in_dim: int):
@@ -401,7 +486,8 @@ class CoREAgent(nn.Module):
             list(self.topdown_prior_proj.parameters()) +
             list(self.fact_gate.parameters()) +
             list(self.episodic_sensory_proj.parameters()) +
-            list(self.motor_text_proj.parameters())
+            list(self.motor_text_proj.parameters()) +
+            list(self.reflex_circuit.parameters())
         )
         for submodule in [self.gateway, self.stage1, self.stage2, self.world_model, self.output_gateway, self.attractor_head, self.critic]:
             if hasattr(submodule, 'parameters'):
@@ -442,6 +528,9 @@ class CoREAgent(nn.Module):
 
         for name, param in self.motor_text_proj.named_parameters():
             sd[f"motor_text_proj.{name}"] = param.detach().cpu()
+
+        for name, param in self.reflex_circuit.named_parameters():
+            sd[f"reflex_circuit.{name}"] = param.detach().cpu()
 
         for sub_name, sub in [('gateway', self.gateway), ('stage1', self.stage1), ('stage2', self.stage2), 
                               ('world_model', self.world_model), ('output_gateway', self.output_gateway), 
@@ -500,6 +589,11 @@ class CoREAgent(nn.Module):
                 for sub_p_name, sub_p in self.fact_gate.named_parameters():
                     if sub_p_name == p_name:
                         self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("reflex_circuit."):
+                p_name = name.replace("reflex_circuit.", "")
+                for sub_p_name, sub_p in self.reflex_circuit.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
             elif name.startswith("in_proj."):
                 p_name = name.replace("in_proj.", "")
                 if hasattr(self.in_proj, p_name):
@@ -554,23 +648,23 @@ class CoREAgent(nn.Module):
             self.world_model(h_dummy, h_dummy, k_samples)
 
     def execute_deep_allostatic_sleep(self, episodic_memory: BatchedEpisodicMemory, hu: HomeostaticUnit,
-                                      num_replay_cycles: int = 5, downscaling_factor: float = 0.03,
-                                      pruning_percentile: float = 0.05):
+                                      num_nrem_replays: int = 5, num_rem_dreams: int = 3,
+                                      downscaling_factor: float = 0.03, pruning_percentile: float = 0.05) -> int:
         """
-        Advanced Biophysical Sleep Synaptic Pruning & Morphogenesis (v26.0 Master):
-        1. Consolidates episodic memory via Hippocampal Replay.
-        2. Prunes (zeros out) weak connections below pruning_percentile to clear noise.
-        3. Applies Tononi SHY Synaptic Downscaling to preserve active pathways.
-        4. Fully restores metabolic energy and somatic homeostasis.
+        Advanced Dual-Phase Sleep Cycle (NREM Slow-Wave Replay + REM Generative Synthetic Dreaming):
+        - Phase 1 (NREM): Replays high-surprise memories and applies Tononi SHY Synaptic Scaling.
+        - Phase 2 (REM): Synthesizes generative counterfactual dream trajectories from Gaussian latent noise.
+        - Morphogenesis: Prunes bottom percentile of weak synaptic weights.
         """
         self.train()
         active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
         active_memory_slots = min(active_slots, episodic_memory.max_capacity)
-        
-        # 1. Hippocampal Replay
+        b_size = hu.state.size(0)
+
+        # 1. Phase 1: NREM Slow-Wave Sleep (Hippocampal Replay)
         if active_memory_slots > 3:
-            opt_replay = torch.optim.AdamW(self.get_all_parameters(), lr=5e-4, weight_decay=0.01)
-            for _ in range(num_replay_cycles):
+            opt_replay = torch.optim.AdamW(self.get_all_parameters(), lr=3e-4, weight_decay=0.01)
+            for _ in range(num_nrem_replays):
                 opt_replay.zero_grad()
                 rand_indices = torch.randint(0, active_memory_slots, (min(16, active_memory_slots),), device=self.device)
                 replayed_keys = episodic_memory.keys[0, rand_indices, :].float()
@@ -584,7 +678,16 @@ class CoREAgent(nn.Module):
                 torch.nn.utils.clip_grad_norm_(self.get_all_parameters(), max_norm=2.0)
                 opt_replay.step()
 
-        # 2. Synaptic Pruning (Morphogenesis)
+        # 2. Phase 2: REM Sleep (Generative Counterfactual Synthetic Dreaming)
+        with torch.no_grad():
+            for _ in range(num_rem_dreams):
+                w_dream_random = torch.randn(b_size, self.unified_dim, device=self.device) * 0.10
+                h_dummy = torch.zeros(b_size, self.hidden_dim, device=self.device)
+                w_pred_dream, _, _, _ = self.world_model(h_dummy, h_dummy, w_dream_random)
+                self.attractor_head.relax_to_minima(self.in_proj(w_pred_dream), hu.state)
+
+        # 3. Synaptic Pruning (Morphogenesis)
+        total_pruned_weights = 0
         with torch.no_grad():
             for name, param in self.named_parameters():
                 if param.dim() > 1 and "weight" in name and param.numel() > 100:
@@ -593,20 +696,21 @@ class CoREAgent(nn.Module):
                     if k > 0:
                         threshold = torch.kthvalue(flat_abs, k).values
                         prune_mask = param.abs() < threshold
+                        total_pruned_weights += prune_mask.sum().item()
                         param.masked_fill_(prune_mask, 0.0)
 
-        # 3. Tononi SHY Synaptic Downscaling
-        with torch.no_grad():
+            # 4. Tononi SHY Synaptic Scaling
             for param in self.get_all_parameters():
                 if param.dim() > 1:
                     param.mul_(1.0 - downscaling_factor)
 
-        # 4. Somatic Recovery
-        with torch.no_grad():
-            hu.state[:, 1] = 1.00
-            hu.state[:, 2] = 1.00
-            hu.state[:, 3] = 1.00
-            hu.state[:, 4] = 0.05
+            # 5. Full Somatic Allostatic Reset
+            hu.state[:, 1] = 1.00 # Energy
+            hu.state[:, 2] = 1.00 # Stability
+            hu.state[:, 3] = 1.00 # Health
+            hu.state[:, 4] = 0.05 # Noradrenaline
+
+        return total_pruned_weights
 
     def _stage1_forward(self, h_in, m_s1, u_t, dt=1.0):
         with torch.amp.autocast(device_type=self.device_str, dtype=torch.float16, enabled=self.device_str == 'cuda'):
@@ -625,11 +729,6 @@ class CoREAgent(nn.Module):
     def forward_multimodal_sequence(self, sensor_seq_dict: Dict[str, torch.Tensor], target_seq: torch.Tensor, hu_batch,
                                    criterion_speech: nn.Module, episodic_memory=None, loss_free_energy_weight: float = 0.05,
                                    chunk_size: int = 64) -> Tuple[torch.Tensor, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Sequence-Parallel Multimodal Stream Processing.
-        Unrolls arbitrary active channels (text, vision, audio, document, cybernetic)
-        in parallel across sequence steps at native GPU speed.
-        """
         text_seq = sensor_seq_dict.get('text')
         batch_size, seq_len = text_seq.size()
         
@@ -653,7 +752,6 @@ class CoREAgent(nn.Module):
         h_prev_unrolled = torch.zeros(batch_size * seq_len, self.hidden_dim, device=self.device).float()
         u_t_unrolled = curr_u_t.unsqueeze(1).expand(batch_size, seq_len, -1).contiguous().view(batch_size * seq_len, -1).float()
         
-        # Run Gateway in float32 explicitly to prevent FP16 gradient overflow during unrolling
         with torch.amp.autocast(device_type=self.device_str, enabled=False):
             w_t_unrolled, attn_weights_unrolled, channel_names, epistemic_entropy_unrolled = self.gateway(
                 unrolled_inputs, h_prev_unrolled, u_t_unrolled
