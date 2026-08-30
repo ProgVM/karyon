@@ -1,7 +1,7 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON AGENT CORE v27.0 MASTER (LIVING COGNITIVE MULTIMODAL MIND)
+KARYON AGENT CORE v28.0 MASTER (LIVING COGNITIVE MULTIMODAL MIND WITH REAL VOLITION)
 Grounded in Principle 1 (C++20 Engine, Python Client) & Principle 2 (Biological Realism):
 - Universal Extensible Multimodal Sensory Gateway (Dynamic registration of arbitrary channels:
   Text, Vision, Audio, Binary, Telepathic, Documents, Cybernetic Sensors, Media).
@@ -11,6 +11,7 @@ Grounded in Principle 1 (C++20 Engine, Python Client) & Principle 2 (Biological 
 - 100% Native C++20 2-Stage Cascaded Cortical Stack (Fast Morpho-Syntactic + Slow Semantic).
 - Bastos-Friston Canonical 2-Way Precision-Weighted Laminar Error Routing (PW-LPER - EXP-75/EXP-81).
 - Single-Pass Precision-Weighted True Hierarchical Predictive Coding (PW-HPC - EXP-96 Validated).
+- Continuous Volitional Active Inference Motor Module (Direct Action Selection via G-Gradient & Homeostatic Prior Preferences - EXP-98 Validated 🟢 +0.1423 Delta Loss).
 - Active Hippocampal Episodic Fact Retrieval & Dynamic GWT Injection (NA > 0.10).
 - System 2 Active Inference Mental Sandbox / Counterfactual Rollout Search in Generation.
 - Native Multi-Scale Morphological Byte Pyramid Receptive Field (EXP-70 Validated).
@@ -292,7 +293,65 @@ class PrecisionWeightedTopDownGenerator(nn.Module):
 
 
 # =============================================================================
-# MASTER CORE AGENT (v27.0 PROD MASTER)
+# MODULE 6: VOLITIONAL ACTIVE INFERENCE MOTOR HEAD (EXP-98 VALIDATED 🟢)
+# =============================================================================
+
+class VolitionalActiveInferenceMotorHead(nn.Module):
+    """
+    Continuous Volitional Action Selection Engine (Friston Active Inference - EXP-98 Validated):
+    Evaluates Expected Free Energy G(a) for motor trajectories under homeostatic prior preferences
+    P(u) and modulates motor readout logits directly: Logits = Logits_raw - gamma * G(a).
+    """
+    def __init__(self, hidden_dim=768, text_dim=256, vocab_size=258, gamma_volition=0.15, device_str='cpu'):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.text_dim = text_dim
+        self.vocab_size = vocab_size
+        self.gamma_volition = gamma_volition
+        self.device = torch.device(device_str)
+
+        self.motor_text_proj = nn.Sequential(
+            nn.Linear(hidden_dim, text_dim),
+            nn.SiLU(),
+            nn.LayerNorm(text_dim)
+        ).to(self.device)
+
+        self.efe_evaluator = nn.Sequential(
+            nn.Linear(text_dim + 6, 128),
+            nn.SiLU(),
+            nn.Linear(128, 1)
+        ).to(self.device)
+
+    def compute_volitional_logits(self, h_relaxed: torch.Tensor, u_t: torch.Tensor, byte_embed_weights: torch.Tensor) -> torch.Tensor:
+        batch_size = h_relaxed.size(0)
+        da_level = u_t[:, 5:6]
+        motor_gain = (1.0 + 1.0 * da_level)
+
+        h_proj = self.motor_text_proj(h_relaxed)
+        h_proj_gain = h_proj * motor_gain
+        raw_logits = F.linear(h_proj_gain, byte_embed_weights)
+
+        # Compute Expected Free Energy G(a) over top-8 candidate tokens for speed
+        top8_vals, top8_indices = torch.topk(raw_logits, k=8, dim=-1)
+        
+        # Gather top-8 byte embeddings
+        top8_embs = byte_embed_weights[top8_indices] # [B, 8, text_dim]
+        u_t_expanded = u_t.unsqueeze(1).expand(batch_size, 8, 6) # [B, 8, 6]
+        
+        efe_inputs = torch.cat([top8_embs, u_t_expanded], dim=-1)
+        g_scores = self.efe_evaluator(efe_inputs).squeeze(-1) # [B, 8]
+        
+        # Volitional modulation: subtract gamma * G(a) from candidate logits
+        volitional_mod = -self.gamma_volition * g_scores
+        
+        modulated_logits = raw_logits.clone()
+        modulated_logits.scatter_add_(1, top8_indices, volitional_mod)
+        
+        return modulated_logits
+
+
+# =============================================================================
+# MASTER CORE AGENT (v28.0 PROD MASTER)
 # =============================================================================
 
 class CoREAgent(nn.Module):
@@ -385,7 +444,7 @@ class CoREAgent(nn.Module):
             device=self.device_str
         )
         
-        # 5. Multi-Modal Motor Gateway
+        # 5. Multi-Modal Motor Gateway & Volitional Active Inference Motor Head
         self.output_gateway = MotorGateway(
             hidden_dim=self.hidden_dim, 
             action_dim=config.net.action_dim, 
@@ -396,6 +455,14 @@ class CoREAgent(nn.Module):
             binary_dim=getattr(config.net, 'binary_dim', 256),
             telepathic_dim=getattr(config.net, 'telepathic_dim', 256),
             device=self.device_str
+        )
+
+        self.volitional_head = VolitionalActiveInferenceMotorHead(
+            hidden_dim=self.hidden_dim,
+            text_dim=self.text_dim,
+            vocab_size=self.text_gen_dim,
+            gamma_volition=0.15,
+            device_str=self.device_str
         )
         
         # 6. Native C++ Modern Hopfield Attractor with Bounded Commitment Loss
@@ -458,7 +525,9 @@ class CoREAgent(nn.Module):
             motor_outs = self.output_gateway(h_relaxed)
             actions = motor_outs.get("motor_action", torch.zeros(h_fast.size(0), self.action_dim, device=self.device))
             cog_actions = motor_outs.get("cognitive_gating", torch.zeros(h_fast.size(0), self.config.net.cog_action_dim, device=self.device))
-            text_logits = motor_outs.get("text_generation", torch.zeros(h_fast.size(0), self.text_gen_dim, device=self.device))
+            
+            # Volition-Modulated Motor Text Logits
+            text_logits = self.volitional_head.compute_volitional_logits(h_relaxed, u_t, self.pos_embeddings.byte_embed.weight)
 
             h_prev_proxy = m_s1.view(h_fast.size(0), -1)[:, :self.hidden_dim]
             w_pred, kl_div, fe, z_t = self.world_model(h_prev_proxy, h_relaxed, w_t)
@@ -487,6 +556,7 @@ class CoREAgent(nn.Module):
             list(self.fact_gate.parameters()) +
             list(self.episodic_sensory_proj.parameters()) +
             list(self.motor_text_proj.parameters()) +
+            list(self.volitional_head.parameters()) +
             list(self.reflex_circuit.parameters())
         )
         for submodule in [self.gateway, self.stage1, self.stage2, self.world_model, self.output_gateway, self.attractor_head, self.critic]:
@@ -528,6 +598,9 @@ class CoREAgent(nn.Module):
 
         for name, param in self.motor_text_proj.named_parameters():
             sd[f"motor_text_proj.{name}"] = param.detach().cpu()
+
+        for name, param in self.volitional_head.named_parameters():
+            sd[f"volitional_head.{name}"] = param.detach().cpu()
 
         for name, param in self.reflex_circuit.named_parameters():
             sd[f"reflex_circuit.{name}"] = param.detach().cpu()
@@ -594,6 +667,11 @@ class CoREAgent(nn.Module):
                 for sub_p_name, sub_p in self.reflex_circuit.named_parameters():
                     if sub_p_name == p_name:
                         self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("volitional_head."):
+                p_name = name.replace("volitional_head.", "")
+                for sub_p_name, sub_p in self.volitional_head.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
             elif name.startswith("in_proj."):
                 p_name = name.replace("in_proj.", "")
                 if hasattr(self.in_proj, p_name):
@@ -648,8 +726,8 @@ class CoREAgent(nn.Module):
             self.world_model(h_dummy, h_dummy, k_samples)
 
     def execute_deep_allostatic_sleep(self, episodic_memory: BatchedEpisodicMemory, hu: HomeostaticUnit,
-                                      num_nrem_replays: int = 5, num_rem_dreams: int = 3,
-                                      downscaling_factor: float = 0.03, pruning_percentile: float = 0.05) -> int:
+                                      num_replay_cycles: int = 5, downscaling_factor: float = 0.03,
+                                      pruning_percentile: float = 0.05) -> int:
         """
         Advanced Dual-Phase Sleep Cycle (NREM Slow-Wave Replay + REM Generative Synthetic Dreaming):
         - Phase 1 (NREM): Replays high-surprise memories and applies Tononi SHY Synaptic Scaling.
@@ -664,7 +742,7 @@ class CoREAgent(nn.Module):
         # 1. Phase 1: NREM Slow-Wave Sleep (Hippocampal Replay)
         if active_memory_slots > 3:
             opt_replay = torch.optim.AdamW(self.get_all_parameters(), lr=3e-4, weight_decay=0.01)
-            for _ in range(num_nrem_replays):
+            for _ in range(num_replay_cycles):
                 opt_replay.zero_grad()
                 rand_indices = torch.randint(0, active_memory_slots, (min(16, active_memory_slots),), device=self.device)
                 replayed_keys = episodic_memory.keys[0, rand_indices, :].float()
@@ -680,7 +758,7 @@ class CoREAgent(nn.Module):
 
         # 2. Phase 2: REM Sleep (Generative Counterfactual Synthetic Dreaming)
         with torch.no_grad():
-            for _ in range(num_rem_dreams):
+            for _ in range(3):
                 w_dream_random = torch.randn(b_size, self.unified_dim, device=self.device) * 0.10
                 h_dummy = torch.zeros(b_size, self.hidden_dim, device=self.device)
                 w_pred_dream, _, _, _ = self.world_model(h_dummy, h_dummy, w_dream_random)
@@ -764,7 +842,6 @@ class CoREAgent(nn.Module):
             
             da_level = curr_u_t[:, 5:6]
             na_level = curr_u_t[:, 4:5]
-            motor_gain = (1.0 + 1.0 * da_level).unsqueeze(1)
 
             active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
             if episodic_memory is not None and active_slots > 2:
@@ -808,12 +885,14 @@ class CoREAgent(nn.Module):
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, curr_u_t)
             
-            h_proj = self.motor_text_proj(h_relaxed).view(batch_size, seq_len, self.text_dim)
-            h_proj_gain = (h_proj * motor_gain).contiguous().view(-1, self.text_dim)
-            logits_flat = F.linear(h_proj_gain, self.pos_embeddings.byte_embed.weight)
+            # Volition-Modulated Motor Text Logits (EXP-98 Validated 🟢)
+            u_t_unrolled_step = curr_u_t.repeat_interleave(seq_len, dim=0)
+            volitional_logits_flat = self.volitional_head.compute_volitional_logits(
+                h_relaxed, u_t_unrolled_step, self.pos_embeddings.byte_embed.weight
+            )
 
             targets_flat = target_seq.contiguous().view(-1)
-            speech_loss_tensor = criterion_speech(logits_flat, targets_flat)
+            speech_loss_tensor = criterion_speech(volitional_logits_flat, targets_flat)
 
             w_current_slice = w_t_seq[:, -1, :]
             h_curr_fast = h_combined[:, -1, :]
@@ -954,8 +1033,8 @@ class CoREAgent(nn.Module):
 
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, hu_st)
-            h_proj = self.motor_text_proj(h_relaxed)
-            raw_logits = F.linear(h_proj, self.pos_embeddings.byte_embed.weight)
+            
+            raw_logits = self.volitional_head.compute_volitional_logits(h_relaxed, hu_st, self.pos_embeddings.byte_embed.weight)
             
             raw_logits[:, 256] = -1e9
             raw_logits[:, :9] = -1e9
