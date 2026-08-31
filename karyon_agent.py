@@ -1035,8 +1035,8 @@ class CoREAgent(nn.Module):
             w_pred, kl_div, fe, _ = self.world_model(h_prev_fast, h_curr_fast, w_current_slice)
 
             rec_loss = (1.0 - F.cosine_similarity(w_current_slice, w_pred, dim=-1, eps=1e-8)).mean()
-            hpc_reconstruction_loss = F.decay_loss = F.mse_loss(h_s1, h_s1_hat) if hasattr(F, 'mse_loss') else torch.tensor(0.0, device=self.device)
-            fe_loss_tensor = (kl_div.mean() + rec_loss + 0.10 * hpc_reconstruction_loss)
+            hpc_reconstruction_loss = F.mse_loss(h_s1, h_s1_hat)
+            fe_loss_tensor = torch.clamp(kl_div.mean() + rec_loss + 0.10 * hpc_reconstruction_loss, 0.0, 10.0)
 
             num_chunks = seq_len // chunk_size
             if num_chunks > 1:

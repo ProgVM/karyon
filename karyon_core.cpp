@@ -869,12 +869,12 @@ public:
         auto prior_out = prior_net->forward(h_fast_prev);
         auto prior_chunks = prior_out.chunk(2, -1);
         auto mu_prior = prior_chunks[0];
-        auto logvar_prior = torch::clamp(prior_chunks[1], -10.0f, 10.0f);
+        auto logvar_prior = torch::clamp(prior_chunks[1], -4.0f, 4.0f);
 
         auto post_out = posterior_net->forward(torch::cat({h_fast_prev, w_t}, -1));
         auto post_chunks = post_out.chunk(2, -1);
         auto mu_post = post_chunks[0];
-        auto logvar_post = torch::clamp(post_chunks[1], -10.0f, 10.0f);
+        auto logvar_post = torch::clamp(post_chunks[1], -4.0f, 4.0f);
 
         auto std_post = torch::exp(0.5f * logvar_post);
         auto eps = torch::randn_like(std_post);
@@ -882,18 +882,25 @@ public:
 
         auto w_pred = decoder_net->forward(torch::cat({z_t, h_slow_curr}, -1));
 
-        auto var_prior = torch::exp(logvar_prior) + 1e-7f;
-        auto var_post = torch::exp(logvar_post) + 1e-7f;
+        // Compute KL Divergence in float32 explicitly to prevent FP16 overflow under AMP
+        auto mu_prior_f32 = mu_prior.to(torch::kFloat32);
+        auto logvar_prior_f32 = logvar_prior.to(torch::kFloat32);
+        auto mu_post_f32 = mu_post.to(torch::kFloat32);
+        auto logvar_post_f32 = logvar_post.to(torch::kFloat32);
 
-        auto kl_div = 0.5f * torch::mean(
-            logvar_prior - logvar_post + (var_post + torch::pow(mu_post - mu_prior, 2)) / var_prior - 1.0f,
+        auto var_prior_f32 = torch::exp(logvar_prior_f32) + 1e-6f;
+        auto var_post_f32 = torch::exp(logvar_post_f32) + 1e-6f;
+
+        auto kl_div_f32 = 0.5f * torch::mean(
+            logvar_prior_f32 - logvar_post_f32 + (var_post_f32 + torch::pow(mu_post_f32 - mu_prior_f32, 2)) / var_prior_f32 - 1.0f,
             -1, true
         );
+        auto kl_div_clamped = torch::clamp(kl_div_f32, 0.0f, 10.0f).to(w_t.scalar_type());
 
         auto rec_loss = torch::mean(torch::pow(w_t - w_pred, 2), -1, true);
-        auto free_energy = kl_div + rec_loss;
+        auto free_energy = kl_div_clamped + rec_loss;
 
-        return std::make_tuple(w_pred, kl_div, free_energy, z_t);
+        return std::make_tuple(w_pred, kl_div_clamped, free_energy, z_t);
     }
 
     std::tuple<torch::Tensor, float> evaluate_counterfactual_rollout(
