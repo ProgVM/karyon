@@ -375,6 +375,13 @@ def run_continuous_web_training_pipeline():
                 gc.collect()
                 if device_str == 'cuda': torch.cuda.empty_cache()
 
+            # EXP-109 Validated Feature: Interleaved Autonomous Self-Learning Cycle every 100 steps
+            if (batch_idx + 1) % 100 == 0:
+                sl_res = agent_brain.execute_autonomous_self_learning_cycle(
+                    hu, episodic_mem, optimizer, criterion_speech, num_self_sequences=3, seq_len=64
+                )
+                logger.info(f"🧠 [Autonomous Self-Learning @ Step {batch_idx+1}] Inner Monologue FE: {sl_res['final_free_energy']:.4f} | SEEKING Drive: {sl_res['seeking_drive']:.3f}\n")
+
             # Intermediate Checkpoint Auto-Sync to HF Hub every 150 batches
             if (batch_idx + 1) % 150 == 0:
                 save_karyon(agent_brain, episodic_mem, hu, h_proxy[0:1], h_proxy[0:1], epoch=current_epoch_num, story_idx=global_step, filepath=kcore_path)

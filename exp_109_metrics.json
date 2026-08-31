@@ -1,0 +1,11 @@
+{
+  "verdict": "\ud83d\udfe2 POSITIVE",
+  "base_loss": 3.7812527656555175,
+  "prop_loss": 2.5876227378845216,
+  "delta_loss": 1.193630027770996,
+  "base_vram": 827.55810546875,
+  "prop_vram": 1304.384765625,
+  "prop_tok_per_sec": 5078.57925778662,
+  "prop_ppl": 13.298120878096212,
+  "mean_self_learning_fe": 0.59693277594116
+}
