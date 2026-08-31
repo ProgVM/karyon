@@ -71,15 +71,16 @@ def profile_master_karyon_pipeline():
     config.net.num_attractors = 256
     config.train.chunk_size = 64
 
+    b_size, seq_len = 24, 1024
+    chunk_size = 64
+
     agent = CoREAgent(config=config, device=device_str).to(device)
-    hu = HomeostaticUnit(batch_size=32, device=device_str)
-    episodic_mem = BatchedEpisodicMemory(batch_size=32, memory_dim=256, max_capacity=200, device=device_str)
+    hu = HomeostaticUnit(batch_size=b_size, device=device_str)
+    episodic_mem = BatchedEpisodicMemory(batch_size=b_size, memory_dim=256, max_capacity=200, device=device_str)
     
     optimizer = torch.optim.AdamW(agent.get_all_parameters(), lr=3e-3, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss(ignore_index=256)
 
-    b_size, seq_len = 32, 512
-    chunk_size = 64
     dummy_tokens = torch.randint(32, 126, (b_size, seq_len), dtype=torch.long, device=device)
     target_tokens = torch.randint(32, 126, (b_size, seq_len), dtype=torch.long, device=device)
 

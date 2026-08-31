@@ -568,20 +568,21 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
 
         auto q_full_f32 = q_full.to(torch::kFloat32);
         auto dec_start_f32 = decay_to_start.to(torch::kFloat32);
+        auto q_decay_f32 = q_full_f32 * dec_start_f32; // Precomputed outside the loop to avoid redundant element-wise multiplications
 
         auto sigma_somatic = 1e-3f * (0.8f * curiosity.squeeze(1).to(torch::kFloat32) + 0.4f * na.squeeze(1).to(torch::kFloat32) + 0.1f);
         auto dW_scale = torch::sqrt(eff_dt.squeeze(1).to(torch::kFloat32)) * sigma_somatic;
         auto dW_all = torch::randn({num_chunks, batch_size, num_heads, head_k, head_v}, m_curr.options());
+        auto dW_all_scaled = dW_all * dW_scale.view({1, batch_size, 1, 1, 1}); // Precomputed outside the loop to avoid redundant element-wise multiplications
 
         for (int64_t c = 0; c < num_chunks; ++c) {
-            auto q_c = q_full_f32.select(1, c);
-            auto dec_start_c = dec_start_f32.select(1, c);
-            auto y_inter_c = torch::matmul(q_c * dec_start_c, m_curr); // Keep in float32 to prevent FP16 overflow
+            auto q_c_decayed = q_decay_f32.select(1, c);
+            auto y_inter_c = torch::matmul(q_c_decayed, m_curr); // Keep in float32 to prevent FP16 overflow
             y_inter_list.push_back(y_inter_c);
 
             auto alpha_c = alpha_chunks.select(1, c);
             auto kv_c = kv_chunk_updates.select(1, c);
-            auto dW_c = dW_all.select(0, c) * dW_scale;
+            auto dW_c = dW_all_scaled.select(0, c);
             m_curr = alpha_c * m_curr + kv_c + dW_c;
             m_curr = torch::clamp(m_curr, -10000.0f, 10000.0f); // Somatic recurrent state clamp boundary
         }

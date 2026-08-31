@@ -133,28 +133,30 @@ class DynamicSensoryGateway(nn.Module):
         channel_names = []
         channel_masks = []
         
+        # Pre-allocate zero representations for inactive channels to avoid redundant GEMMs and allocations
+        zero_chan = torch.zeros(batch_size, self.unified_dim, dtype=torch.float32, device=self.device)
+        zero_mask = torch.full((batch_size, 1), -10000.0, dtype=torch.float32, device=self.device)
+        active_mask = torch.zeros(batch_size, 1, dtype=torch.float32, device=self.device)
+        
         for name, proj in self.projections.items():
             if name in sensor_inputs:
                 x_in = sensor_inputs[name]
+                proj_x = proj(x_in.float())
+                projected_channels.append(proj_x)
+                channel_names.append(name)
+                channel_masks.append(active_mask)
             else:
-                in_dim = proj.in_features
-                x_in = torch.zeros(batch_size, in_dim, dtype=torch.float32, device=self.device)
-                
-            x_max = x_in.abs().max(dim=-1, keepdim=True)[0]
-            x_act = (x_max > 1e-5).float()
-            
-            proj_x = proj(x_in.float())
-            projected_channels.append(proj_x)
-            channel_names.append(name)
-            channel_masks.append((1.0 - x_act) * -10000.0)
+                projected_channels.append(zero_chan)
+                channel_names.append(name)
+                channel_masks.append(zero_mask)
             
         projected_channels.append(self.homeo_proj(u_t.float()))
         channel_names.append('body')
-        channel_masks.append(torch.zeros(batch_size, 1, dtype=torch.float32, device=self.device))
+        channel_masks.append(active_mask)
         
         projected_channels.append(self.mind_proj(h_prev.float()))
         channel_names.append('mind')
-        channel_masks.append(torch.zeros(batch_size, 1, dtype=torch.float32, device=self.device))
+        channel_masks.append(active_mask)
         
         stacked_channels = torch.stack(projected_channels, dim=1)
         norm_stacked = self.channel_norm(stacked_channels)
@@ -936,13 +938,13 @@ class CoREAgent(nn.Module):
 
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, 
                          criterion_speech: nn.Module, episodic_memory=None, loss_free_energy_weight: float = 0.05, 
-                         chunk_size: int = 64) -> Tuple[torch.Tensor, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                         chunk_size: int = 64, use_checkpointing: bool = False) -> Tuple[torch.Tensor, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         sensor_seq_dict = {'text': input_seq}
-        return self.forward_multimodal_sequence(sensor_seq_dict, target_seq, hu_batch, criterion_speech, episodic_memory, loss_free_energy_weight, chunk_size)
+        return self.forward_multimodal_sequence(sensor_seq_dict, target_seq, hu_batch, criterion_speech, episodic_memory, loss_free_energy_weight, chunk_size, use_checkpointing)
 
     def forward_multimodal_sequence(self, sensor_seq_dict: Dict[str, torch.Tensor], target_seq: torch.Tensor, hu_batch,
                                    criterion_speech: nn.Module, episodic_memory=None, loss_free_energy_weight: float = 0.05,
-                                   chunk_size: int = 64) -> Tuple[torch.Tensor, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+                                   chunk_size: int = 64, use_checkpointing: bool = False) -> Tuple[torch.Tensor, float, float, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         text_seq = sensor_seq_dict.get('text')
         batch_size, seq_len = text_seq.size()
         
@@ -970,8 +972,6 @@ class CoREAgent(nn.Module):
             ret_mem, max_sim = episodic_memory.read(q_sensory, temperature=0.05, threshold=0.65, sigmoid_beta=15.0)
             ret_mem_unrolled = ret_mem.unsqueeze(1).expand(batch_size, seq_len, -1).contiguous().view(batch_size * seq_len, -1).float()
             unrolled_inputs['episodic_recall'] = ret_mem_unrolled
-        else:
-            unrolled_inputs['episodic_recall'] = torch.zeros(batch_size * seq_len, self.unified_dim, device=self.device).float()
 
         h_prev_unrolled = torch.zeros(batch_size * seq_len, self.hidden_dim, device=self.device).float()
         u_t_unrolled = curr_u_t.unsqueeze(1).expand(batch_size, seq_len, -1).contiguous().view(batch_size * seq_len, -1).float()
@@ -986,7 +986,7 @@ class CoREAgent(nn.Module):
         with torch.amp.autocast(device_type=self.device_str, dtype=torch.float16, enabled=(self.device_str == 'cuda')):
             full_h_in = self.in_proj(w_t_seq)
 
-            if self.training and self.device_str == 'cuda':
+            if use_checkpointing and self.training and self.device_str == 'cuda':
                 h_s1, m_s1, dt1 = checkpoint.checkpoint(
                     self._stage1_forward, full_h_in, m_s1, curr_u_t, use_reentrant=False
                 )
@@ -1002,7 +1002,7 @@ class CoREAgent(nn.Module):
             predicted_entropy = self.entropy_predictor(h_s1)
             dynamic_dt_scale = 0.40 + 1.20 * predicted_entropy
 
-            if self.training and self.device_str == 'cuda':
+            if use_checkpointing and self.training and self.device_str == 'cuda':
                 h_s2, m_s2, dt2 = checkpoint.checkpoint(
                     self._stage2_forward, e1_weighted, m_s2, curr_u_t, saliency_gate, dynamic_dt_scale.mean().item(), use_reentrant=False
                 )

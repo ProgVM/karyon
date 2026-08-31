@@ -166,7 +166,7 @@ class ContinuousPackedDataset(Dataset):
 def collate_packed_fn(batch):
     return torch.stack(batch, dim=0)
 
-BATCH_SIZE = 32
+BATCH_SIZE = 24
 SEQ_LEN = 1024
 NUM_PASSES = 5
 CHUNK_SIZE = 64
@@ -181,7 +181,8 @@ stream_loader = DataLoader(
     shuffle=True, 
     collate_fn=collate_packed_fn, 
     drop_last=True,
-    num_workers=0,
+    num_workers=2,
+    persistent_workers=True,
     pin_memory=(device_str == 'cuda')
 )
 
@@ -302,7 +303,7 @@ def run_multi_pass_training():
             with torch.amp.autocast(device_type=device_str, dtype=torch.float16, enabled=use_amp):
                 total_loss_tensor, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
                     input_seq, target_seq, hu, criterion_speech, episodic_memory=episodic_mem,
-                    loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE
+                    loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE, use_checkpointing=False
                 )
             t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
