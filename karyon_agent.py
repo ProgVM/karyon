@@ -864,7 +864,8 @@ class CoREAgent(nn.Module):
         optimizer: torch.optim.Optimizer,
         criterion_speech: nn.Module,
         num_self_sequences: int = 8,
-        seq_len: int = 128
+        seq_len: int = 128,
+        scaler: torch.amp.GradScaler = None
     ) -> dict:
         """
         Executes a self-contained autonomous self-learning cycle (EXP-107 Validated):
@@ -902,14 +903,24 @@ class CoREAgent(nn.Module):
                 # Modulate total loss by intrinsic SEEKING drive
                 modulated_self_loss = total_loss * (0.8 + 0.4 * seeking_drive)
 
+            if math.isnan(speech_loss) or math.isnan(fe_val) or torch.isnan(modulated_self_loss).any():
+                continue
+
             if seq_idx == 0:
                 initial_fe_list.append(fe_val)
             if seq_idx == num_self_sequences - 1:
                 final_fe_list.append(fe_val)
 
-            modulated_self_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.get_all_parameters(), max_norm=2.0)
-            optimizer.step()
+            if scaler is not None:
+                scaler.scale(modulated_self_loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(self.get_all_parameters(), max_norm=2.0)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                modulated_self_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.get_all_parameters(), max_norm=2.0)
+                optimizer.step()
             
             self_training_losses.append(modulated_self_loss.item())
             
@@ -922,9 +933,9 @@ class CoREAgent(nn.Module):
         self.execute_wake_swr_micro_replay(episodic_memory, num_samples=6)
 
         return {
-            "initial_free_energy": sum(initial_fe_list) / max(len(initial_fe_list), 1),
-            "final_free_energy": sum(final_fe_list) / max(len(final_fe_list), 1),
-            "mean_self_training_loss": sum(self_training_losses) / max(len(self_training_losses), 1),
+            "initial_free_energy": sum(initial_fe_list) / max(len(initial_fe_list), 1) if initial_fe_list else 0.0,
+            "final_free_energy": sum(final_fe_list) / max(len(final_fe_list), 1) if final_fe_list else 0.0,
+            "mean_self_training_loss": sum(self_training_losses) / max(len(self_training_losses), 1) if self_training_losses else 0.0,
             "seeking_drive": seeking_drive
         }
 
