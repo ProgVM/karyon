@@ -166,7 +166,7 @@ class ContinuousPackedDataset(Dataset):
 def collate_packed_fn(batch):
     return torch.stack(batch, dim=0)
 
-BATCH_SIZE = 24
+BATCH_SIZE = 16
 SEQ_LEN = 1024
 NUM_PASSES = 5
 CHUNK_SIZE = 64
@@ -389,6 +389,9 @@ def run_multi_pass_training():
             if (batch_idx + 1) % 50 == 0:
                 diag_sample = run_diagnostic_text_sample(agent_brain, episodic_mem, hu.state, core_config)
                 logger.info(f"💬 [KEP Rule #4 Diagnostic Speech Sample @ Pass {pass_idx+1} Step {batch_idx+1}] -> \"{diag_sample}\"\n")
+                gc.collect()
+                if device_str == 'cuda':
+                    torch.cuda.empty_cache()
 
         # Sleep Consolidation
         logger.info(f"🌙 [Pass {pass_idx+1} Complete] Karyon is entering Sleep Phase for Hippocampal Replay & SHY Synaptic Scaling...")
