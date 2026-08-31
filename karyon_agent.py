@@ -1105,6 +1105,9 @@ class CoREAgent(nn.Module):
         self, prompt: str, m_state: torch.Tensor, h_state: torch.Tensor, hu, episodic_memory, 
         config, max_generated_tokens: int = 120, temperature: float = 0.45, top_p: float = 0.90
     ) -> Generator[Dict[str, Any], None, None]:
+        import codecs
+        utf8_decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+
         prompt_ids = [t for t in self.tokenizer.encode(prompt) if t != 257]
         prompt_tokens = torch.tensor([prompt_ids], dtype=torch.long, device=self.device)
         prompt_embs = self.pos_embeddings(prompt_tokens, start_pos=0, apply_rf=True)
@@ -1181,7 +1184,7 @@ class CoREAgent(nn.Module):
             raw_logits[:, :9] = -1e9
             raw_logits[:, 11:13] = -1e9
             raw_logits[:, 14:32] = -1e9
-            raw_logits[:, 127:256] = -1e9
+            raw_logits[:, 127] = -1e9
             if step < 10:
                 raw_logits[:, 257] = -1e9
 
@@ -1261,7 +1264,13 @@ class CoREAgent(nn.Module):
             else:
                 consecutive_newlines = 0
                 
-            token_char = chr(next_token_id) if 32 <= next_token_id <= 126 or next_token_id in [9, 10, 13] else ' '
+            # Incremental UTF-8 byte decoding
+            if 32 <= next_token_id <= 126 or next_token_id in [9, 10, 13]:
+                token_char = utf8_decoder.decode(bytes([next_token_id]))
+            elif 128 <= next_token_id <= 255:
+                token_char = utf8_decoder.decode(bytes([next_token_id]))
+            else:
+                token_char = ' '
             
             yield {
                 "status": "token",
@@ -1272,5 +1281,17 @@ class CoREAgent(nn.Module):
             if hu_st[0, 1].item() <= 0.05 and gamma_override.mean().item() < 0.2:
                 yield {"status": "exhausted", "text": " [fatigued...]", "m_state": m_s2, "h_state": h_combined}
                 return
+
+        # Flush any remaining bytes in the decoder
+        try:
+            final_char = utf8_decoder.decode(b'', final=True)
+            if final_char:
+                yield {
+                    "status": "token",
+                    "token_id": 257,
+                    "text": final_char
+                }
+        except Exception:
+            pass
 
         yield {"status": "speech_end", "m_state": m_s2, "h_state": h_combined}
