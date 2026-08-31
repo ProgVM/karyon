@@ -1,6 +1,7 @@
 // karyon_core.cpp - Native C++20 Master Architecture Engine for Karyon-CoRE
 // GROUNDED IN KEP PRINCIPLE 1 (C++20 as Engine, Python as Client) & PRINCIPLE 2 (Biological Realism)
 #include <torch/extension.h>
+#include <ATen/autocast_mode.h>
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -490,6 +491,19 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         torch::Tensor x_seq, torch::Tensor m_prev, torch::Tensor u_t,
         torch::Tensor saliency_gate = torch::Tensor(), float dt = 1.0f) {
 
+        bool was_autocast_enabled = at::autocast::is_autocast_enabled(at::kCUDA);
+        if (was_autocast_enabled) {
+            at::autocast::set_autocast_enabled(at::kCUDA, false);
+        }
+
+        auto orig_dtype = x_seq.scalar_type();
+        x_seq = x_seq.to(torch::kFloat32);
+        m_prev = m_prev.to(torch::kFloat32);
+        u_t = u_t.to(torch::kFloat32);
+        if (saliency_gate.defined() && saliency_gate.numel() > 0) {
+            saliency_gate = saliency_gate.to(torch::kFloat32);
+        }
+
         int64_t batch_size = x_seq.size(0);
         int64_t seq_len = x_seq.size(1);
         int64_t Q = chunk_size;
@@ -591,14 +605,18 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         auto y_intra_f32 = y_intra.to(torch::kFloat32);
         auto y_total_f32 = (y_intra_f32 + y_inter).permute({0, 1, 3, 2, 4}).reshape({batch_size * seq_len, num_heads * head_v});
         auto y_normed_f32 = head_norm->forward(y_total_f32); // Normalized in float32 for absolute numerical stability
-        auto y_gated = y_normed_f32.to(x_seq.scalar_type()) * z_full;
+        auto y_gated = y_normed_f32 * z_full.to(torch::kFloat32);
         auto h_seq = norm->forward(out_proj->forward(y_gated)).view({batch_size, seq_len, out_dim});
+
+        if (was_autocast_enabled) {
+            at::autocast::set_autocast_enabled(at::kCUDA, true);
+        }
 
         if (pad_len > 0) {
             h_seq = h_seq.slice(1, pad_len);
         }
 
-        return std::make_tuple(h_seq, m_curr, eff_dt.mean());
+        return std::make_tuple(h_seq.to(orig_dtype), m_curr.to(orig_dtype), eff_dt.mean());
     }
 };
 
