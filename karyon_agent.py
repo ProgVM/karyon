@@ -101,7 +101,8 @@ class DynamicSensoryGateway(nn.Module):
         self.hidden_dim = hidden_dim
         self.homeo_dim = homeo_dim
         self.device_str = device_str
-        self.device = torch.device(device_str)
+        dev_clean = 'xla' if str(device_str).startswith('tpu') or str(device_str) == 'xla:0' else device_str
+        self.device = torch.device(dev_clean)
         
         self.projections = nn.ModuleDict()
         
@@ -189,7 +190,8 @@ class AffectiveCoreUnit(nn.Module):
     """
     def __init__(self, device_str='cpu'):
         super().__init__()
-        self.device = torch.device(device_str)
+        dev_clean = 'xla' if str(device_str).startswith('tpu') or str(device_str) == 'xla:0' else device_str
+        self.device = torch.device(dev_clean)
 
     def compute_affective_state(self, u_t: torch.Tensor, free_energy: float = 0.0, value_est: float = 0.0) -> dict:
         curiosity = u_t[:, 0].mean().item()
@@ -237,7 +239,8 @@ class ReflexAndHabitCircuit(nn.Module):
         super().__init__()
         self.unified_dim = unified_dim
         self.action_dim = action_dim
-        self.device = torch.device(device_str)
+        dev_clean = 'xla' if str(device_str).startswith('tpu') or str(device_str) == 'xla:0' else device_str
+        self.device = torch.device(dev_clean)
 
         self.habit_policy = nn.Sequential(
             nn.Linear(unified_dim, 64),
@@ -272,7 +275,8 @@ class PrecisionWeightedTopDownGenerator(nn.Module):
     def __init__(self, hidden_dim=768, device_str='cpu'):
         super().__init__()
         self.hidden_dim = hidden_dim
-        self.device = torch.device(device_str)
+        dev_clean = 'xla' if str(device_str).startswith('tpu') or str(device_str) == 'xla:0' else device_str
+        self.device = torch.device(dev_clean)
 
         self.topdown_gen = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
@@ -313,7 +317,8 @@ class HierarchicalVolitionalOverrideModule(nn.Module):
     def __init__(self, hidden_dim=768, homeo_dim=6, device_str='cpu'):
         super().__init__()
         self.hidden_dim = hidden_dim
-        self.device = torch.device(device_str)
+        dev_clean = 'xla' if str(device_str).startswith('tpu') or str(device_str) == 'xla:0' else device_str
+        self.device = torch.device(dev_clean)
         
         self.override_gate_net = nn.Sequential(
             nn.Linear(hidden_dim + homeo_dim, 128),
@@ -372,7 +377,8 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         self.text_dim = text_dim
         self.vocab_size = vocab_size
         self.gamma_volition = gamma_volition
-        self.device = torch.device(device_str)
+        dev_clean = 'xla' if str(device_str).startswith('tpu') or str(device_str) == 'xla:0' else device_str
+        self.device = torch.device(dev_clean)
 
         self.motor_text_proj = nn.Sequential(
             nn.Linear(hidden_dim, text_dim),
@@ -418,7 +424,7 @@ class CoREAgent(nn.Module):
         super().__init__()
         self.hardware = get_hardware_engine()
         self.device = self.hardware.device
-        self.device_str = self.hardware.device_type
+        self.device_str = 'xla' if self.hardware.is_tpu else ('cuda' if self.hardware.is_cuda else 'cpu')
         self.config = config
         self.hidden_dim = config.net.hidden_dim
         self.unified_dim = config.net.unified_dim

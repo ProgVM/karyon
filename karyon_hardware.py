@@ -72,6 +72,10 @@ class HardwareEngine:
         return torch.device("cpu"), "cpu"
 
     @property
+    def device_str(self) -> str:
+        return "xla" if self.is_tpu else self.device_type
+
+    @property
     def is_tpu(self) -> bool:
         return self.device_type == "tpu"
 
