@@ -5,7 +5,7 @@ KARYON EXPERIMENTAL BENCHMARK: EXP-110 (RE-RUN DEBUGGED & FULLY VERIFIED ON DUAL
 Hypothesis:
 1. Vector A (Parallel Associative Chunk Scan): Replacing sequential chunk loops
    in SSD inter-chunk state recurrence M_c with an associative lower-triangular
-   log-space chunk decay scan eliminates inter-chunk GPU dispatch stalls,
+   log-space chunk decay scan eliminates inter-chunk GPU/TPU dispatch stalls,
    boosting sequence processing throughput beyond 50,000 tok/s.
 2. Vector B (Hierarchical Multi-Timescale Precision Routing): Step-by-step
    entropy PPL peaks H(p_t) at morphemic word boundaries dynamically modulate
@@ -81,7 +81,7 @@ device = hw.device
 device_str = str(device)
 use_amp = hw.config.enable_amp
 
-logger.info(f"=== EXP-110 INITIATED ON HARDWARE: {hw.get_telemetry_summary()} ===")
+logger.info(f"=== EXP-110 INITIATED ON HARDWARE: {hw.get_telemetry()} ===")
 
 # Rich Corpus Samples (Multilingual, Code, Formatted Math/Markdown)
 RICH_CORPUS_SAMPLES = [
@@ -313,7 +313,7 @@ def run_benchmark():
             )
         hw.backward(total_loss)
         hw.optimizer_step(opt_base)
-        base_losses.append(speech_loss)
+        base_losses.append(speech_loss.item())
         base_tok_count += input_seq.size(1)
         
     t1_base = time.perf_counter()
@@ -321,7 +321,7 @@ def run_benchmark():
     base_loss_mean = float(np.mean(base_losses))
     base_ppl = math.exp(min(base_loss_mean, 20.0))
     base_tok_per_sec = base_tok_count / base_duration
-    base_vram = hw.get_memory_info()["used_mb"] if device_str == 'cuda' else 0.0
+    base_vram = hw.get_telemetry().get("allocated_mb", 0.0) if device_str == 'cuda' else 0.0
     
     logger.info(f"Baseline Telemetry: Loss = {base_loss_mean:.4f}, PPL = {base_ppl:.2f}, Speed = {base_tok_per_sec:.1f} tok/s, VRAM = {base_vram:.1f} MB")
     
@@ -371,7 +371,7 @@ def run_benchmark():
             
         hw.backward(total_loss)
         hw.optimizer_step(opt_prop)
-        prop_losses.append(speech_loss)
+        prop_losses.append(speech_loss.item())
         prop_tok_count += input_seq.size(1)
         
     t1_prop = time.perf_counter()
@@ -379,7 +379,7 @@ def run_benchmark():
     prop_loss_mean = float(np.mean(prop_losses))
     prop_ppl = math.exp(min(prop_loss_mean, 20.0))
     prop_tok_per_sec = prop_tok_count / prop_duration
-    prop_vram = hw.get_memory_info()["used_mb"] if device_str == 'cuda' else 0.0
+    prop_vram = hw.get_telemetry().get("allocated_mb", 0.0) if device_str == 'cuda' else 0.0
     
     # Gradient Health Check
     total_params = 0
