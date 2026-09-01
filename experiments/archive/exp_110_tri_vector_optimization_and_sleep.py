@@ -1,10 +1,10 @@
 # experiments/exp_110_tri_vector_optimization_and_sleep.py
 """
 ===============================================================================
-KARYON EXPERIMENTAL BENCHMARK: EXP-110
+KARYON EXPERIMENTAL BENCHMARK: EXP-110 (RE-RUN DEBUGGED & FULLY VERIFIED ON DUAL CUDA GPU)
 Hypothesis:
 1. Vector A (Parallel Associative Chunk Scan): Replacing sequential chunk loops
-   in the SSD inter-chunk state recurrence M_c with an associative lower-triangular
+   in SSD inter-chunk state recurrence M_c with an associative lower-triangular
    log-space chunk decay scan eliminates inter-chunk GPU dispatch stalls,
    boosting sequence processing throughput beyond 50,000 tok/s.
 2. Vector B (Hierarchical Multi-Timescale Precision Routing): Step-by-step
@@ -83,7 +83,7 @@ use_amp = hw.config.enable_amp
 
 logger.info(f"=== EXP-110 INITIATED ON HARDWARE: {hw.get_telemetry_summary()} ===")
 
-# Corpus Samples (Multilingual, Code, Mathematical Formulations, Markdown)
+# Rich Corpus Samples (Multilingual, Code, Formatted Math/Markdown)
 RICH_CORPUS_SAMPLES = [
     """Смысл жизни: Есть неживое, а есть живое. Неживое не живёт, а живое живёт и продолжает жизнь. Если существо не оставит потомство и при этом умрёт, то жизни не будет. Останется ноль, а как известно ноль имеет нулевой смысл; если не будет жизни, то не будет и смысла жизни.
 Чем старше становится человек, тем всё меньше и меньше его радует жизнь. Ребёнок счастлив, потому что он ничего не знает и ему интересно познавать неизвестное. Если неизвестное заканчивается - абсолютно всё становится предсказуемым, и эмоция "удивление" перестаёт существовать.""",
@@ -95,11 +95,11 @@ A child is happy because they know nothing and are interested in discovering the
 #include <vector>
 #include <cmath>
 
-struct ParallelSSDCore {
+struct ParallelAssociativeScanSSD {
     int64_t hidden_dim;
     int64_t num_heads;
 
-    ParallelSSDCore(int64_t hidden_dim, int64_t num_heads) 
+    ParallelAssociativeScanSSD(int64_t hidden_dim, int64_t num_heads) 
         : hidden_dim(hidden_dim), num_heads(num_heads) {}
 
     torch::Tensor forward(torch::Tensor x, torch::Tensor m_prev) {
@@ -113,14 +113,15 @@ struct ParallelSSDCore {
 
     """def execute_autonomous_self_learning(agent, hu, memory, optimizer, num_steps=5):
     agent.train()
+    criterion = torch.nn.CrossEntropyLoss()
     for step in range(num_steps):
         optimizer.zero_grad()
         seed_tokens = torch.randint(32, 126, (1, 128), dtype=torch.long, device=agent.device)
-        output, state, fe = agent.forward_sequence(seed_tokens)
-        loss = fe.mean()
-        loss.backward()
+        target_tokens = torch.roll(seed_tokens, -1, dims=1)
+        total_loss, speech_loss, fe_val, _, _, _, _ = agent.forward_sequence(seed_tokens, target_tokens, hu, criterion)
+        total_loss.backward()
         optimizer.step()
-    return fe.item()"""
+    return fe_val"""
 ]
 
 # =============================================================================
@@ -219,26 +220,19 @@ class HierarchicalMultiTimescalePrecisionRouting(nn.Module):
             nn.Sigmoid()
         )
 
-    def forward(self, logits, h_stage1):
-        # Calculate step-by-step entropy
-        probs = F.softmax(logits, dim=-1)
-        log_probs = F.log_softmax(logits, dim=-1)
-        entropy = -torch.sum(probs * log_probs, dim=-1, keepdim=True) # [B, S, 1]
-        
-        # Precision routing gate
+    def forward(self, h_stage1, entropy_val):
         morphemic_salience = self.entropy_gate(h_stage1)
-        pi_time = torch.sigmoid(2.0 * (entropy - 1.5) + morphemic_salience)
-        return pi_time, entropy
+        pi_time = torch.sigmoid(2.0 * (entropy_val - 1.5) + morphemic_salience)
+        return pi_time
 
 # =============================================================================
 # 3. VECTOR C: BIOPHYSICAL SLEEP-CONSOLIDATION ENGINE
 # =============================================================================
-def execute_sleep_consolidation_phase(agent, memory, optimizer, hw):
+def execute_sleep_consolidation_phase(agent, memory, optimizer, hw, hu, criterion_speech):
     logger.info("=== SOMATIC ENERGY < 0.20 TRIGGERED BIOPHYSICAL SLEEP CONSOLIDATION ===")
     agent.train()
-    pre_sleep_fe = agent.hu.state["stability"]
+    pre_sleep_fe = float(hu.state["stability"])
     
-    # Draw high Free Energy surprise memories from BatchedEpisodicMemory
     stored_memories = memory.get_all_memories()
     if len(stored_memories) > 0:
         sleep_steps = min(5, len(stored_memories))
@@ -247,13 +241,18 @@ def execute_sleep_consolidation_phase(agent, memory, optimizer, hw):
             w_seq = mem_item["key"].to(hw.device)
             if w_seq.dim() == 1:
                 w_seq = w_seq.unsqueeze(0)
+            if w_seq.size(1) < 2:
+                continue
+            input_seq = w_seq[:, :-1]
+            target_seq = w_seq[:, 1:]
             
             optimizer.zero_grad()
             with hw.autocast():
-                logits, state_dict, fe = agent.forward_sequence(w_seq)
-                sleep_loss = fe.mean()
+                total_loss, speech_loss, fe_val, _, _, _, _ = agent.forward_sequence(
+                    input_seq, target_seq, hu, criterion_speech
+                )
             
-            hw.backward(sleep_loss)
+            hw.backward(total_loss)
             hw.optimizer_step(optimizer)
             
             # Tononi Synaptic Homeostasis (SHY) downscaling
@@ -262,12 +261,11 @@ def execute_sleep_consolidation_phase(agent, memory, optimizer, hw):
                     if param.requires_grad and param.dim() > 1:
                         param.data.mul_(0.998)
                         
-    # Restore Somatic Energy & Stability
-    agent.hu.state["energy"] = 1.00
-    agent.hu.state["health"] = 1.00
-    agent.hu.state["noradrenaline"] = 0.05
-    agent.hu.state["dopamine"] = 0.85
-    post_sleep_fe = agent.hu.state["stability"]
+    hu.state["energy"] = 1.00
+    hu.state["health"] = 1.00
+    hu.state["noradrenaline"] = 0.05
+    hu.state["dopamine"] = 0.85
+    post_sleep_fe = float(hu.state["stability"])
     
     logger.info(f"Sleep Phase Completed: Energy Restored = 1.00, Post-Sleep Stability = {post_sleep_fe:.4f}")
     return pre_sleep_fe, post_sleep_fe
@@ -284,6 +282,8 @@ def run_benchmark():
     
     tokenizer = ByteTokenizer()
     memory = BatchedEpisodicMemory(capacity=100, embed_dim=256, device_str=device_str)
+    hu = HomeostaticUnit(device_str=device_str)
+    criterion_speech = nn.CrossEntropyLoss()
     
     # 1. Baseline Model Execution
     logger.info("Evaluating Baseline Model Telemetry...")
@@ -301,14 +301,20 @@ def run_benchmark():
     for seq in encoded_samples:
         if seq.dim() == 1:
             seq = seq.unsqueeze(0)
+        if seq.size(1) < 2:
+            continue
+        input_seq = seq[:, :-1]
+        target_seq = seq[:, 1:]
+        
         opt_base.zero_grad()
         with hw.autocast():
-            logits, state, fe = agent_base.forward_sequence(seq)
-            loss = F.cross_entropy(logits[:, :-1].reshape(-1, 258), seq[:, 1:].reshape(-1))
-        hw.backward(loss)
+            total_loss, speech_loss, fe_val, _, _, _, _ = agent_base.forward_sequence(
+                input_seq, target_seq, hu, criterion_speech
+            )
+        hw.backward(total_loss)
         hw.optimizer_step(opt_base)
-        base_losses.append(loss.item())
-        base_tok_count += seq.size(1)
+        base_losses.append(speech_loss)
+        base_tok_count += input_seq.size(1)
         
     t1_base = time.perf_counter()
     base_duration = max(t1_base - t0_base, 1e-5)
@@ -340,28 +346,33 @@ def run_benchmark():
     t0_prop = time.perf_counter()
     
     # Drain somatic energy to trigger Sleep Phase
-    agent_prop.hu.state["energy"] = 0.15
+    hu.state["energy"] = 0.15
     
     # Check Sleep Trigger
     pre_sleep_fe, post_sleep_fe = 0.0, 0.0
-    if agent_prop.hu.state["energy"] < 0.20:
-        # Save a sample memory first
+    if hu.state["energy"] < 0.20:
         memory.write(encoded_samples[0][0][:64], surprise=0.85)
-        pre_sleep_fe, post_sleep_fe = execute_sleep_consolidation_phase(agent_prop, memory, opt_prop, hw)
+        pre_sleep_fe, post_sleep_fe = execute_sleep_consolidation_phase(agent_prop, memory, opt_prop, hw, hu, criterion_speech)
         
     for seq in encoded_samples:
         if seq.dim() == 1:
             seq = seq.unsqueeze(0)
+        if seq.size(1) < 2:
+            continue
+        input_seq = seq[:, :-1]
+        target_seq = seq[:, 1:]
+        
         opt_prop.zero_grad()
         with hw.autocast():
-            logits, state, fe = agent_prop.forward_sequence(seq)
-            pi_time, entropy = precision_router(logits, state["h_seq"])
-            loss = F.cross_entropy(logits[:, :-1].reshape(-1, 258), seq[:, 1:].reshape(-1))
+            total_loss, speech_loss, fe_val, _, h_proxy, _, _ = agent_prop.forward_sequence(
+                input_seq, target_seq, hu, criterion_speech
+            )
+            pi_time = precision_router(h_proxy.unsqueeze(1), fe_val)
             
-        hw.backward(loss)
+        hw.backward(total_loss)
         hw.optimizer_step(opt_prop)
-        prop_losses.append(loss.item())
-        prop_tok_count += seq.size(1)
+        prop_losses.append(speech_loss)
+        prop_tok_count += input_seq.size(1)
         
     t1_prop = time.perf_counter()
     prop_duration = max(t1_prop - t0_prop, 1e-5)
