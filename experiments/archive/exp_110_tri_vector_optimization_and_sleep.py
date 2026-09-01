@@ -290,7 +290,7 @@ def run_benchmark():
     agent_base = CoREAgent(config, device=device_str).to(device)
     opt_base = torch.optim.AdamW(agent_base.parameters(), lr=1e-4)
     
-    encoded_samples = [tokenizer.encode(s, add_special_tokens=True).to(device) for s in RICH_CORPUS_SAMPLES]
+    encoded_samples = [torch.tensor(tokenizer.encode(s), dtype=torch.long, device=device) for s in RICH_CORPUS_SAMPLES]
     
     # Baseline timing & loss
     agent_base.train()
