@@ -491,11 +491,17 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         torch::Tensor x_seq, torch::Tensor m_prev, torch::Tensor u_t,
         torch::Tensor saliency_gate = torch::Tensor(), float dt = 1.0f) {
 
+        bool was_autocast_enabled = at::autocast::is_autocast_enabled(at::kCUDA);
+        if (was_autocast_enabled) {
+            at::autocast::set_autocast_enabled(at::kCUDA, false);
+        }
+
         auto orig_dtype = x_seq.scalar_type();
-        m_prev = m_prev.to(orig_dtype);
-        u_t = u_t.to(orig_dtype);
+        x_seq = x_seq.to(torch::kFloat32);
+        m_prev = m_prev.to(torch::kFloat32);
+        u_t = u_t.to(torch::kFloat32);
         if (saliency_gate.defined() && saliency_gate.numel() > 0) {
-            saliency_gate = saliency_gate.to(orig_dtype);
+            saliency_gate = saliency_gate.to(torch::kFloat32);
         }
 
         int64_t batch_size = x_seq.size(0);
@@ -566,7 +572,7 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         auto lambda_end = lambda_t.slice(3, -1).unsqueeze(-1);
         auto decay_to_end = torch::exp(torch::clamp(lambda_end - lambda_t.unsqueeze(-1), -20.0f, 0.0f));
 
-        auto k_decayed = k_full * decay_to_end * beta.unsqueeze(-1);
+        auto k_decayed = (k_full.to(torch::kFloat32) * decay_to_end * beta.unsqueeze(-1)).to(v_full.scalar_type());
         auto kv_chunk_updates = torch::matmul(k_decayed.transpose(-1, -2), v_full).to(torch::kFloat32);
         auto alpha_chunks = torch::exp(torch::clamp(lambda_t.slice(3, -1), -20.0f, 0.0f)).unsqueeze(-1);
 
@@ -586,7 +592,7 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         for (int64_t c = 0; c < num_chunks; ++c) {
             auto q_c_decayed = q_decay_f32.select(1, c);
             auto y_inter_c = torch::matmul(q_c_decayed, m_curr); // Keep in float32 to prevent FP16 overflow
-            y_inter_list.push_back(y_inter_c.to(orig_dtype));
+            y_inter_list.push_back(y_inter_c);
 
             auto alpha_c = alpha_chunks.select(1, c);
             auto kv_c = kv_chunk_updates.select(1, c);
@@ -596,10 +602,15 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         }
 
         auto y_inter = torch::stack(y_inter_list, 1);
-        auto y_total = (y_intra + y_inter).permute({0, 1, 3, 2, 4}).reshape({batch_size * seq_len, num_heads * head_v});
-        auto y_normed = head_norm->forward(y_total.to(torch::kFloat32)).to(orig_dtype); // Normalized in float32 for absolute numerical stability
-        auto y_gated = y_normed * z_full;
+        auto y_intra_f32 = y_intra.to(torch::kFloat32);
+        auto y_total_f32 = (y_intra_f32 + y_inter).permute({0, 1, 3, 2, 4}).reshape({batch_size * seq_len, num_heads * head_v});
+        auto y_normed_f32 = head_norm->forward(y_total_f32); // Normalized in float32 for absolute numerical stability
+        auto y_gated = y_normed_f32 * z_full.to(torch::kFloat32);
         auto h_seq = norm->forward(out_proj->forward(y_gated)).view({batch_size, seq_len, out_dim});
+
+        if (was_autocast_enabled) {
+            at::autocast::set_autocast_enabled(at::kCUDA, true);
+        }
 
         if (pad_len > 0) {
             h_seq = h_seq.slice(1, pad_len);
