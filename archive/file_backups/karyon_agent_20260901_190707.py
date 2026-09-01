@@ -1047,8 +1047,9 @@ class CoREAgent(nn.Module):
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
             
             # Volition-Modulated Motor Text Logits
+            u_t_unrolled_step = effective_u_t.repeat_interleave(seq_len, dim=0)
             volitional_logits_flat = self.volitional_head.compute_volitional_logits(
-                h_relaxed, effective_u_t, self.pos_embeddings.byte_embed.weight
+                h_relaxed, u_t_unrolled_step, self.pos_embeddings.byte_embed.weight
             )
 
             targets_flat = target_seq.contiguous().view(-1)

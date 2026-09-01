@@ -393,15 +393,8 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         ).to(self.device)
 
     def compute_volitional_logits(self, h_relaxed: torch.Tensor, u_t: torch.Tensor, byte_embed_weights: torch.Tensor) -> torch.Tensor:
-        total_tokens = h_relaxed.size(0)
-        if u_t.dim() == 2 and u_t.size(0) != total_tokens:
-            batch_size = u_t.size(0)
-            seq_len = total_tokens // batch_size
-            u_t_exp = u_t.unsqueeze(1).expand(batch_size, seq_len, 6).reshape(total_tokens, 6)
-        else:
-            u_t_exp = u_t
-
-        da_level = u_t_exp[:, 5:6]
+        batch_size = h_relaxed.size(0)
+        da_level = u_t[:, 5:6]
         motor_gain = (1.0 + 1.0 * da_level)
 
         h_proj = self.motor_text_proj(h_relaxed)
@@ -409,14 +402,15 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         raw_logits = F.linear(h_proj_gain, byte_embed_weights)
 
         top8_vals, top8_indices = torch.topk(raw_logits, k=8, dim=-1)
-        top8_embs = byte_embed_weights[top8_indices] # [total_tokens, 8, text_dim]
-        u_t_expanded = u_t_exp.unsqueeze(1).expand(total_tokens, 8, 6) # [total_tokens, 8, 6]
+        top8_embs = byte_embed_weights[top8_indices] # [B, 8, text_dim]
+        u_t_expanded = u_t.unsqueeze(1).expand(batch_size, 8, 6) # [B, 8, 6]
         
         efe_inputs = torch.cat([top8_embs, u_t_expanded], dim=-1)
-        g_scores = self.efe_evaluator(efe_inputs).squeeze(-1) # [total_tokens, 8]
+        g_scores = self.efe_evaluator(efe_inputs).squeeze(-1) # [B, 8]
         
         volitional_mod = -self.gamma_volition * g_scores
-        modulated_logits = raw_logits.scatter_add(1, top8_indices, volitional_mod)
+        modulated_logits = raw_logits.clone()
+        modulated_logits.scatter_add_(1, top8_indices, volitional_mod)
         
         return modulated_logits
 
@@ -1047,8 +1041,9 @@ class CoREAgent(nn.Module):
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
             
             # Volition-Modulated Motor Text Logits
+            u_t_unrolled_step = effective_u_t.repeat_interleave(seq_len, dim=0)
             volitional_logits_flat = self.volitional_head.compute_volitional_logits(
-                h_relaxed, effective_u_t, self.pos_embeddings.byte_embed.weight
+                h_relaxed, u_t_unrolled_step, self.pos_embeddings.byte_embed.weight
             )
 
             targets_flat = target_seq.contiguous().view(-1)
