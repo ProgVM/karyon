@@ -81,6 +81,13 @@ device = hw.device
 device_str = str(device)
 use_amp = hw.config.enable_amp
 
+def get_autocast_ctx():
+    return torch.amp.autocast(
+        device_type=('cuda' if hw.is_cuda else ('xla' if hw.is_tpu else 'cpu')),
+        dtype=hw.get_autocast_dtype(),
+        enabled=use_amp and not hw.is_cpu
+    )
+
 logger.info(f"=== EXP-110 INITIATED ON HARDWARE: {hw.get_telemetry()} ===")
 
 # Rich Corpus Samples (Multilingual, Code, Formatted Math/Markdown)
@@ -197,7 +204,7 @@ class ParallelAssociativeChunkScanSSD(nn.Module):
         # Project inter-chunk state to output
         decay_to_start = torch.exp(lambda_t.clamp(-20.0, 0.0)).unsqueeze(-1)
         q_decayed = q_full * decay_to_start
-        y_inter = torch.einsum('bchqk,bchkv->bchqv', q_decayed, m_all_chunks)
+        y_inter = torch.einsum('bchqk,bchqv->bchqv', q_decayed, m_all_chunks)
         
         y_total = (y_intra + y_inter).permute(0, 1, 3, 2, 4).reshape(B * S, self.num_heads * self.head_v)
         y_normed = self.head_norm(y_total)
@@ -247,7 +254,7 @@ def execute_sleep_consolidation_phase(agent, memory, optimizer, hw, hu, criterio
             target_seq = w_seq[:, 1:]
             
             optimizer.zero_grad()
-            with hw.autocast():
+            with get_autocast_ctx():
                 total_loss, speech_loss, fe_val, _, _, _, _ = agent.forward_sequence(
                     input_seq, target_seq, hu, criterion_speech
                 )
@@ -307,7 +314,7 @@ def run_benchmark():
         target_seq = seq[:, 1:]
         
         opt_base.zero_grad()
-        with hw.autocast():
+        with get_autocast_ctx():
             total_loss, speech_loss, fe_val, _, _, _, _ = agent_base.forward_sequence(
                 input_seq, target_seq, hu, criterion_speech
             )
@@ -363,7 +370,7 @@ def run_benchmark():
         target_seq = seq[:, 1:]
         
         opt_prop.zero_grad()
-        with hw.autocast():
+        with get_autocast_ctx():
             total_loss, speech_loss, fe_val, _, h_proxy, _, _ = agent_prop.forward_sequence(
                 input_seq, target_seq, hu, criterion_speech
             )
