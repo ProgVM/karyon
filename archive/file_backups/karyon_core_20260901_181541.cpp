@@ -570,51 +570,32 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         auto kv_chunk_updates = torch::matmul(k_decayed.transpose(-1, -2), v_full).to(torch::kFloat32);
         auto alpha_chunks = torch::exp(torch::clamp(lambda_t.slice(3, -1), -20.0f, 0.0f)).unsqueeze(-1);
 
-        // =============================================================================
-        // FUSED PARALLEL CHUNK ASSOCIATIVE SCAN (EXP-112)
-        // =============================================================================
-        auto log_alpha_chunks = lambda_t.slice(3, -1).clamp(-20.0f, 0.0f).unsqueeze(-1); // (B, num_chunks, num_heads, 1, 1)
-        auto lambda_chunks = torch::cumsum(log_alpha_chunks, 1); // (B, num_chunks, num_heads, 1, 1)
+        auto m_curr = m_prev.to(torch::kFloat32);
+        std::vector<torch::Tensor> y_inter_list;
+        y_inter_list.reserve(num_chunks);
 
-        auto lambda_chunks_flat = lambda_chunks.squeeze(-1).squeeze(-1).permute({0, 2, 1}); // (B, num_heads, num_chunks)
-        auto log_decay_matrix_chunks = lambda_chunks_flat.unsqueeze(-1) - lambda_chunks_flat.unsqueeze(-2);
-        auto decay_matrix_chunks = torch::exp(torch::clamp(log_decay_matrix_chunks, -20.0f, 0.0f));
-
-        auto causal_mask_chunks = torch::tril(torch::ones({num_chunks, num_chunks}, x_seq.options()), -1).view({1, 1, num_chunks, num_chunks});
-        auto decay_weights_chunks = (decay_matrix_chunks * causal_mask_chunks).to(x_seq.scalar_type());
-
-        auto kv_flat = kv_chunk_updates.permute({0, 2, 1, 3, 4}); // (B, num_heads, num_chunks, head_k, head_v)
+        auto q_full_f32 = q_full.to(torch::kFloat32);
+        auto dec_start_f32 = decay_to_start.to(torch::kFloat32);
+        auto q_decay_f32 = q_full_f32 * dec_start_f32; // Precomputed outside the loop to avoid redundant element-wise multiplications
 
         auto sigma_somatic = 1e-3f * (0.8f * curiosity.squeeze(1).to(torch::kFloat32) + 0.4f * na.squeeze(1).to(torch::kFloat32) + 0.1f);
         auto dW_scale = torch::sqrt(eff_dt.squeeze(1).to(torch::kFloat32)) * sigma_somatic;
-        auto dW_all = torch::randn({num_chunks, batch_size, num_heads, head_k, head_v}, m_prev.options());
-        auto dW_all_scaled = dW_all * dW_scale.view({1, batch_size, 1, 1, 1});
+        auto dW_all = torch::randn({num_chunks, batch_size, num_heads, head_k, head_v}, m_curr.options());
+        auto dW_all_scaled = dW_all * dW_scale.view({1, batch_size, 1, 1, 1}); // Precomputed outside the loop to avoid redundant element-wise multiplications
 
-        auto dW_flat = dW_all_scaled.permute({1, 2, 0, 3, 4}); // (B, num_heads, num_chunks, head_k, head_v)
-        auto U = (kv_flat + dW_flat).to(x_seq.scalar_type());
+        for (int64_t c = 0; c < num_chunks; ++c) {
+            auto q_c_decayed = q_decay_f32.select(1, c);
+            auto y_inter_c = torch::matmul(q_c_decayed, m_curr); // Keep in float32 to prevent FP16 overflow
+            y_inter_list.push_back(y_inter_c.to(orig_dtype));
 
-        auto U_reshaped = U.reshape({batch_size, num_heads, num_chunks, head_k * head_v});
-        auto M_inter_all = torch::matmul(decay_weights_chunks, U_reshaped).reshape({batch_size, num_heads, num_chunks, head_k, head_v});
+            auto alpha_c = alpha_chunks.select(1, c);
+            auto kv_c = kv_chunk_updates.select(1, c);
+            auto dW_c = dW_all_scaled.select(0, c);
+            m_curr = alpha_c * m_curr + kv_c + dW_c;
+            m_curr = torch::clamp(m_curr, -10000.0f, 10000.0f); // Somatic recurrent state clamp boundary
+        }
 
-        // Initial State Decay
-        auto ones_initial = torch::ones({batch_size, num_heads, 1}, x_seq.options());
-        auto decay_initial_list = (num_chunks > 1) ? torch::cat({ones_initial, torch::exp(lambda_chunks_flat.slice(2, 0, -1))}, 2) : ones_initial;
-        auto decay_initial = decay_initial_list.unsqueeze(-1).unsqueeze(-1); // (B, num_heads, num_chunks, 1, 1)
-
-        auto M_initial_decayed = decay_initial * m_prev.unsqueeze(2);
-        auto M_all = M_inter_all + M_initial_decayed;
-
-        // Compute y_inter in parallel across all chunks
-        auto q_decay = (q_full * decay_to_start).to(x_seq.scalar_type());
-        auto q_decay_flat = q_decay.permute({0, 2, 1, 3, 4}); // (B, num_heads, num_chunks, Q, head_k)
-
-        auto y_inter_all = torch::matmul(q_decay_flat, M_all); // (B, num_heads, num_chunks, Q, head_v)
-        auto y_inter = y_inter_all.permute({0, 2, 1, 3, 4}); // (B, num_chunks, num_heads, Q, head_v)
-
-        // Final state update for next sequence
-        auto alpha_last = torch::exp(lambda_chunks_flat.slice(2, -1)).unsqueeze(-1).unsqueeze(-1);
-        auto m_next = alpha_last * m_prev.unsqueeze(2) + M_inter_all.slice(2, -1);
-        auto m_curr = torch::clamp(m_next.squeeze(2), -10000.0f, 10000.0f);
+        auto y_inter = torch::stack(y_inter_list, 1);
         auto y_total = (y_intra + y_inter).permute({0, 1, 3, 2, 4}).reshape({batch_size * seq_len, num_heads * head_v});
         auto y_normed = head_norm->forward(y_total.to(torch::kFloat32)).to(orig_dtype); // Normalized in float32 for absolute numerical stability
         auto y_gated = y_normed * z_full;

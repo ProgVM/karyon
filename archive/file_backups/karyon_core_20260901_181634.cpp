@@ -584,12 +584,6 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         auto decay_weights_chunks = (decay_matrix_chunks * causal_mask_chunks).to(x_seq.scalar_type());
 
         auto kv_flat = kv_chunk_updates.permute({0, 2, 1, 3, 4}); // (B, num_heads, num_chunks, head_k, head_v)
-
-        auto sigma_somatic = 1e-3f * (0.8f * curiosity.squeeze(1).to(torch::kFloat32) + 0.4f * na.squeeze(1).to(torch::kFloat32) + 0.1f);
-        auto dW_scale = torch::sqrt(eff_dt.squeeze(1).to(torch::kFloat32)) * sigma_somatic;
-        auto dW_all = torch::randn({num_chunks, batch_size, num_heads, head_k, head_v}, m_prev.options());
-        auto dW_all_scaled = dW_all * dW_scale.view({1, batch_size, 1, 1, 1});
-
         auto dW_flat = dW_all_scaled.permute({1, 2, 0, 3, 4}); // (B, num_heads, num_chunks, head_k, head_v)
         auto U = (kv_flat + dW_flat).to(x_seq.scalar_type());
 
