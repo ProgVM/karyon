@@ -70,15 +70,17 @@ from karyon_agent import CoREAgent
 from karyon_core import ByteTokenizer, HomeostaticUnit, BatchedEpisodicMemory
 from karyon_checkpoint import load_karyon, save_karyon
 from karyon_logger import get_logger
+from karyon_hardware import get_hardware_engine
 from karyon_crawler import KaryonWebCrawler, KaryonDatasetBuilder, KaryonSieve
 from init_priors import initialize_priors
 
 logger = get_logger()
 torch.set_grad_enabled(True)
 
-device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
-device = torch.device(device_str)
-use_amp = (device_str == 'cuda')
+hw_engine = get_hardware_engine()
+device = hw_engine.device
+device_str = str(device)
+use_amp = hw_engine.config.enable_amp and not hw_engine.is_cpu
 
 kcore_path = "karyon_soul.kcore"
 hf_repo_id = "progvmoff/karyon-v31-core"
@@ -243,7 +245,7 @@ def run_continuous_web_training_pipeline():
         collate_fn=collate_packed_fn,
         drop_last=True,
         num_workers=2,
-        pin_memory=(device_str == 'cuda')
+        pin_memory=hw_engine.is_cuda
     )
 
     logger.info(f"Web Dataset Loaded. Blocks: {len(dataset)} | Batches/Epoch: {len(loader)} | Batch Size: {BATCH_SIZE} | Epochs: {NUM_EPOCHS}")
@@ -272,7 +274,7 @@ def run_continuous_web_training_pipeline():
 
     optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.01)
     criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
-    scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
+    scaler = torch.amp.GradScaler(hw_engine.device_type, enabled=use_amp)
 
     TOTAL_STEPS = len(loader) * NUM_EPOCHS
     WARMUP_STEPS = 50
@@ -353,7 +355,7 @@ def run_continuous_web_training_pipeline():
             if (batch_idx + 1) % 20 == 0 or batch_idx == len(loader) - 1:
                 ppl = math.exp(min(s_loss, 20.0))
                 curiosity, energy, stability, health, na, da = hu.state[0].tolist()
-                vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device_str == 'cuda' else 0.0
+                vram_mb = hw_engine.get_telemetry().get('max_allocated_mb', 0.0)
                 grad_emb = agent_brain.pos_embeddings.byte_embed.weight.grad.norm().item() if agent_brain.pos_embeddings.byte_embed.weight.grad is not None else 0.0
                 grad_attractor = agent_brain.attractor_head.attractor_basins.grad.norm().item() if hasattr(agent_brain.attractor_head, 'attractor_basins') and agent_brain.attractor_head.attractor_basins.grad is not None else 0.0
 
@@ -373,7 +375,7 @@ def run_continuous_web_training_pipeline():
                 diag_sample = run_diagnostic_speech(agent_brain, episodic_mem, hu.state, core_config)
                 logger.info(f"💬 [KEP Rule #4 Diagnostic Speech Sample @ Web Epoch {epoch+1} Step {batch_idx+1}] -> \"{diag_sample}\"\n")
                 gc.collect()
-                if device_str == 'cuda': torch.cuda.empty_cache()
+                hw_engine.empty_cache()
 
             # EXP-109 Validated Feature: Interleaved Autonomous Self-Learning Cycle every 100 steps
             if (batch_idx + 1) % 100 == 0:
@@ -399,7 +401,7 @@ def run_continuous_web_training_pipeline():
         sync_checkpoint_to_hf(kcore_path, hf_repo_id, commit_msg)
 
         gc.collect()
-        if device_str == 'cuda': torch.cuda.empty_cache()
+        hw_engine.empty_cache()
 
     logger.info("🎉 [Continuous Web Pre-Training Complete] All epochs successfully finished and persisted to HF Hub!")
 

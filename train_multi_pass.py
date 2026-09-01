@@ -70,14 +70,16 @@ from karyon_agent import CoREAgent
 from karyon_core import ByteTokenizer, HomeostaticUnit, BatchedEpisodicMemory
 from karyon_checkpoint import load_karyon, save_karyon
 from karyon_logger import get_logger
+from karyon_hardware import get_hardware_engine
 from init_priors import initialize_priors
 
 logger = get_logger()
 torch.set_grad_enabled(True)
 
-device_str = 'cuda' if torch.cuda.is_available() else 'cpu'
-device = torch.device(device_str)
-use_amp = (device_str == 'cuda')
+hw_engine = get_hardware_engine()
+device = hw_engine.device
+device_str = str(device)
+use_amp = hw_engine.config.enable_amp and not hw_engine.is_cpu
 logger.info(f"Execution context: {device_str.upper()} (AMP FP16 Enabled: {use_amp})")
 
 kcore_path = "karyon_soul.kcore"
@@ -183,7 +185,7 @@ stream_loader = DataLoader(
     drop_last=True,
     num_workers=2,
     persistent_workers=True,
-    pin_memory=(device_str == 'cuda')
+    pin_memory=hw_engine.is_cuda
 )
 
 logger.info(f"High-Throughput Multi-Pass Dataset Ready. Total Blocks (S={SEQ_LEN}): {len(train_dataset)} | Batches: {len(stream_loader)} (B={BATCH_SIZE}) | Passes: {NUM_PASSES}")
@@ -215,7 +217,7 @@ h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, file
 optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
-scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
+scaler = torch.amp.GradScaler(hw_engine.device_type, enabled=use_amp)
 
 TOTAL_TRAINING_STEPS = len(stream_loader) * NUM_PASSES
 WARMUP_STEPS = 50
@@ -368,7 +370,7 @@ def run_multi_pass_training():
             if (batch_idx + 1) % 25 == 0 or batch_idx == len(stream_loader) - 1:
                 perplexity = math.exp(min(speech_loss_val, 20.0))
                 curiosity, energy, stability, health, na, da = hu.state[0].tolist()
-                peak_vram_mb = (torch.cuda.max_memory_allocated() / (1024 * 1024)) if device_str == 'cuda' else 0.0
+                peak_vram_mb = hw_engine.get_telemetry().get('max_allocated_mb', 0.0)
 
                 grad_embed = agent_brain.pos_embeddings.byte_embed.weight.grad.norm().item() if agent_brain.pos_embeddings.byte_embed.weight.grad is not None else 0.0
                 grad_head = 0.0

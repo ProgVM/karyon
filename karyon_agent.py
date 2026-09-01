@@ -32,6 +32,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
+from karyon_hardware import get_hardware_engine
 
 from karyon_core import (
     ByteTokenizer,
@@ -415,8 +416,9 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
 class CoREAgent(nn.Module):
     def __init__(self, config, device='cpu'):
         super().__init__()
-        self.device_str = str(device) if ('cuda' in str(device) and torch.cuda.is_available()) else 'cpu'
-        self.device = torch.device(self.device_str)
+        self.hardware = get_hardware_engine()
+        self.device = self.hardware.device
+        self.device_str = self.hardware.device_type
         self.config = config
         self.hidden_dim = config.net.hidden_dim
         self.unified_dim = config.net.unified_dim
@@ -552,10 +554,10 @@ class CoREAgent(nn.Module):
         self.gateway.register_channel(name, in_dim)
 
     def forward(self, sensor_inputs: Dict[str, torch.Tensor], h_fast: torch.Tensor, h_slow: torch.Tensor, u_t: torch.Tensor, dt: float = 1.0):
-        with torch.amp.autocast(device_type=self.device_str, enabled=False):
+        with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), enabled=False):
             w_t, attn_weights, channel_names, epistemic_entropy = self.gateway(sensor_inputs, h_slow, u_t)
             
-        with torch.amp.autocast(device_type=self.device_str, dtype=torch.float16, enabled=(self.device_str == 'cuda')):
+        with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), dtype=self.hardware.get_autocast_dtype(), enabled=self.hardware.config.enable_amp and not self.hardware.is_cpu):
             x_in = self.in_proj(w_t).unsqueeze(1)
             
             if h_fast.dim() == 2:
@@ -894,7 +896,7 @@ class CoREAgent(nn.Module):
             tgt_self = seed_tokens[:, 1:]
             
             # Full sequence unroll with Free Energy & Volitional Readout
-            with torch.amp.autocast(device_type=self.device_str, dtype=torch.float16, enabled=(self.device_str == 'cuda')):
+            with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), dtype=self.hardware.get_autocast_dtype(), enabled=self.hardware.config.enable_amp and not self.hardware.is_cpu):
                 total_loss, speech_loss, fe_val, m_s2, h_p, u_t, eff_dt = self.forward_sequence(
                     inp_self, tgt_self, hu, criterion_speech, episodic_memory=episodic_memory,
                     loss_free_energy_weight=0.08, chunk_size=64
@@ -940,11 +942,11 @@ class CoREAgent(nn.Module):
         }
 
     def _stage1_forward(self, h_in, m_s1, u_t, dt=1.0):
-        with torch.amp.autocast(device_type=self.device_str, dtype=torch.float16, enabled=self.device_str == 'cuda'):
+        with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), dtype=self.hardware.get_autocast_dtype(), enabled=self.hardware.config.enable_amp and not self.hardware.is_cpu):
             return self.stage1(h_in, m_s1, u_t, torch.Tensor(), dt)
 
     def _stage2_forward(self, e1_weighted, m_s2, u_t, saliency_gate, dt=1.0):
-        with torch.amp.autocast(device_type=self.device_str, dtype=torch.float16, enabled=self.device_str == 'cuda'):
+        with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), dtype=self.hardware.get_autocast_dtype(), enabled=self.hardware.config.enable_amp and not self.hardware.is_cpu):
             return self.stage2(e1_weighted, m_s2, u_t, saliency_gate, dt)
 
     def forward_sequence(self, input_seq: torch.Tensor, target_seq: torch.Tensor, hu_batch, 
@@ -987,17 +989,17 @@ class CoREAgent(nn.Module):
         h_prev_unrolled = torch.zeros(batch_size * seq_len, self.hidden_dim, device=self.device).float()
         u_t_unrolled = curr_u_t.unsqueeze(1).expand(batch_size, seq_len, -1).contiguous().view(batch_size * seq_len, -1).float()
         
-        with torch.amp.autocast(device_type=self.device_str, enabled=False):
+        with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), enabled=False):
             w_t_unrolled, attn_weights_unrolled, channel_names, epistemic_entropy_unrolled = self.gateway(
                 unrolled_inputs, h_prev_unrolled, u_t_unrolled
             )
         
         w_t_seq = w_t_unrolled.view(batch_size, seq_len, self.unified_dim)
         
-        with torch.amp.autocast(device_type=self.device_str, dtype=torch.float16, enabled=(self.device_str == 'cuda')):
+        with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), dtype=self.hardware.get_autocast_dtype(), enabled=self.hardware.config.enable_amp and not self.hardware.is_cpu):
             full_h_in = self.in_proj(w_t_seq)
 
-            if use_checkpointing and self.training and self.device_str == 'cuda':
+            if use_checkpointing and self.training and self.hardware.is_cuda:
                 h_s1, m_s1, dt1 = checkpoint.checkpoint(
                     self._stage1_forward, full_h_in, m_s1, curr_u_t, use_reentrant=False
                 )
@@ -1013,12 +1015,12 @@ class CoREAgent(nn.Module):
             predicted_entropy = self.entropy_predictor(h_s1)
             dynamic_dt_scale = 0.40 + 1.20 * predicted_entropy
 
-            if use_checkpointing and self.training and self.device_str == 'cuda':
+            if use_checkpointing and self.training and self.hardware.is_cuda:
                 h_s2, m_s2, dt2 = checkpoint.checkpoint(
-                    self._stage2_forward, e1_weighted, m_s2, curr_u_t, saliency_gate, dynamic_dt_scale.mean().item(), use_reentrant=False
+                    self._stage2_forward, e1_weighted, m_s2, curr_u_t, saliency_gate, dynamic_dt_scale.mean(), use_reentrant=False
                 )
             else:
-                h_s2, m_s2, dt2 = self._stage2_forward(e1_weighted, m_s2, curr_u_t, saliency_gate, dynamic_dt_scale.mean().item())
+                h_s2, m_s2, dt2 = self._stage2_forward(e1_weighted, m_s2, curr_u_t, saliency_gate, dynamic_dt_scale.mean())
 
             h_s2 = h_s2 * dynamic_dt_scale
 
@@ -1084,10 +1086,10 @@ class CoREAgent(nn.Module):
         b_size = m_s1.size(0)
         h_prev_proxy = m_s1.view(b_size, -1)[:, :self.hidden_dim]
 
-        with torch.amp.autocast(device_type=self.device_str, enabled=False):
+        with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), enabled=False):
             w_t, attn_weights, channel_names, epistemic_entropy = self.gateway(sensor_dict, h_prev_proxy, u_t)
 
-        with torch.amp.autocast(device_type=self.device_str, dtype=torch.float16, enabled=(self.device_str == 'cuda')):
+        with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), dtype=self.hardware.get_autocast_dtype(), enabled=self.hardware.config.enable_amp and not self.hardware.is_cpu):
             x_in = self.in_proj(w_t).unsqueeze(1)
 
             h_s1_out, m_s1_next, dt1 = self.stage1(x_in, m_s1, u_t, torch.Tensor(), 1.0)

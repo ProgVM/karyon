@@ -17,6 +17,7 @@ from karyon_agent import CoREAgent
 from karyon_core import ByteTokenizer, HomeostaticUnit, BatchedEpisodicMemory
 from karyon_checkpoint import save_karyon, load_karyon
 from karyon_logger import get_logger
+from karyon_hardware import get_hardware_engine
 
 logger = get_logger()
 
@@ -37,8 +38,8 @@ identity_priors = [
 
 def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore", device: str = None):
     """Initializes or restores Karyon agent, projects identity priors into latent space, and persists to .kcore."""
-    if device is None:
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    hw_engine = get_hardware_engine()
+    device = hw_engine.device_type if device is None else device
 
     logger.info(f"Initializing Karyon Identity Priors (recreate={recreate}) on device: {device.upper()}")
 
@@ -54,6 +55,7 @@ def initialize_priors(recreate: bool = False, filepath: str = "karyon_soul.kcore
     core_config.train.batch_size = 1
 
     dev_obj = torch.device(device)
+    # KEP Rule #10: Dynamic configuration loading
     agent_brain = CoREAgent(config=core_config, device=device).to(dev_obj)
     hu = HomeostaticUnit(batch_size=1, device=device)
     episodic_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=core_config.net.unified_dim, max_capacity=1000, device=device)
