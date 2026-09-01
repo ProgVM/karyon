@@ -281,8 +281,8 @@ def run_benchmark():
     config.net.num_heads = 12
     
     tokenizer = ByteTokenizer()
-    memory = BatchedEpisodicMemory(capacity=100, embed_dim=256, device_str=device_str)
-    hu = HomeostaticUnit(device_str=device_str)
+    memory = BatchedEpisodicMemory(batch_size=1, memory_dim=256, max_capacity=100, device=device_str)
+    hu = HomeostaticUnit(batch_size=1, device=device_str)
     criterion_speech = nn.CrossEntropyLoss()
     
     # 1. Baseline Model Execution
