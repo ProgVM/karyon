@@ -1196,23 +1196,15 @@ class CoREAgent(nn.Module):
             
             raw_logits = self.volitional_head.compute_volitional_logits(h_relaxed, effective_hu_st, self.pos_embeddings.byte_embed.weight)
             
-            # Continuous Dirichlet/Biophysical Prior Modulation (Eradicating hard -1e9 masks)
-            # Service and non-printable bytes receive a continuous somatic inhibition penalty
-            somatic_byte_penalty = getattr(self, 'somatic_byte_penalty', None)
-            if somatic_byte_penalty is None:
-                somatic_byte_penalty = torch.zeros(1, 258, device=self.device)
-                somatic_byte_penalty[0, 256] = 12.0
-                somatic_byte_penalty[0, :9] = 10.0
-                somatic_byte_penalty[0, 11:13] = 10.0
-                somatic_byte_penalty[0, 14:32] = 10.0
-                somatic_byte_penalty[0, 127] = 8.0
-                self.somatic_byte_penalty = somatic_byte_penalty
-
-            logits = raw_logits - self.somatic_byte_penalty
+            raw_logits[:, 256] = -1e9
+            raw_logits[:, :9] = -1e9
+            raw_logits[:, 11:13] = -1e9
+            raw_logits[:, 14:32] = -1e9
+            raw_logits[:, 127] = -1e9
             if step < 10:
-                logits[:, 257] = logits[:, 257] - 15.0
+                raw_logits[:, 257] = -1e9
 
-            p_dist = F.softmax(logits, dim=-1)
+            p_dist = F.softmax(raw_logits, dim=-1)
             entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1)
             entropy_val = entropy.item()
             is_boundary = (len(rolling_token_ids) > 0 and rolling_token_ids[-1] in [32, 10, 44, 46])
@@ -1222,23 +1214,25 @@ class CoREAgent(nn.Module):
                 h_combined = h_relaxed.unsqueeze(1)
 
             # Continuous Active Inference PAC Decoding (Buzsáki & Friston Theta-Gamma PAC)
+            # Dynamic continuous temperature and nucleus bounds based on information entropy
             if is_boundary:
                 temp = 0.40
                 top_p_val = 0.88
             else:
+                # Inside continuous morphemic stream: precision phase locking (MAP attractor)
                 temp = max(0.08, 0.40 * (1.0 - torch.sigmoid((0.70 - entropy) * 5.0).item()))
                 top_p_val = 0.99
 
-            scaled_logits = logits / max(temp, 1e-4)
-            sorted_logits, sorted_indices = torch.sort(scaled_logits, descending=True, dim=-1)
+            logits = raw_logits / max(temp, 1e-4)
+            sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
             cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
             to_remove = cumulative_probs > top_p_val
             to_remove[..., 1:] = to_remove[..., :-1].clone()
             to_remove[..., 0] = False
             indices_to_remove = to_remove.scatter(1, sorted_indices, to_remove)
-            scaled_logits[indices_to_remove] = -1e9
+            logits[indices_to_remove] = -1e9
 
-            probs = F.softmax(scaled_logits, dim=-1)
+            probs = F.softmax(logits, dim=-1)
             probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
             prob_sum = probs.sum(dim=-1, keepdim=True)
             if (prob_sum <= 0).any():

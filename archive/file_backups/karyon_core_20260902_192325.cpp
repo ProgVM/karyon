@@ -795,65 +795,6 @@ struct PrecisionWeightedLPERImpl : torch::nn::Module {
 };
 
 // ============================================================================
-// 12.1 FUSED CASCADED LAMINAR CORTICAL STACK (ZERO-PYTHON PING-PONG - EXP-113)
-// ============================================================================
-struct FusedCascadedLaminarStackImpl : torch::nn::Module {
-    int64_t hidden_dim;
-    std::shared_ptr<CorticalStageImpl> stage1{nullptr};
-    std::shared_ptr<EntropyAdaptiveBoundaryDetectorImpl> boundary_detector{nullptr};
-    std::shared_ptr<PrecisionWeightedLPERImpl> pw_lper{nullptr};
-    std::shared_ptr<CorticalStageImpl> stage2{nullptr};
-
-    FusedCascadedLaminarStackImpl(int64_t hidden_dim = 768, int64_t expand_dim = 3072, int64_t num_heads = 12,
-                                  int64_t head_k = 64, int64_t head_v = 128, int64_t chunk_size = 64,
-                                  std::string device_str = "cpu") : hidden_dim(hidden_dim) {
-        
-        stage1 = register_module("stage1", std::make_shared<CorticalStageImpl>(
-            hidden_dim, expand_dim, num_heads, head_k, head_v, 0.005f, 0.15f, 3, chunk_size, device_str
-        ));
-        boundary_detector = register_module("boundary_detector", std::make_shared<EntropyAdaptiveBoundaryDetectorImpl>(
-            hidden_dim, device_str
-        ));
-        pw_lper = register_module("pw_lper", std::make_shared<PrecisionWeightedLPERImpl>(
-            hidden_dim, device_str
-        ));
-        stage2 = register_module("stage2", std::make_shared<CorticalStageImpl>(
-            hidden_dim, expand_dim, num_heads, head_k, head_v, 0.0001f, 0.05f, 7, chunk_size, device_str
-        ));
-
-        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
-            this->to(torch::kCUDA);
-        }
-    }
-
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward(
-        torch::Tensor h_in, torch::Tensor m_s1_prev, torch::Tensor m_s2_prev, torch::Tensor u_t, torch::Tensor text_ids) {
-
-        int64_t batch_size = h_in.size(0);
-
-        // Stage 1 Morpho-Syntactic Execution
-        auto s1_out = stage1->forward(h_in, m_s1_prev, u_t, torch::Tensor(), 1.0f);
-        auto h_s1 = std::get<0>(s1_out);
-        auto m_s1_next = std::get<1>(s1_out);
-
-        // Dynamic Saliency & Entropy Boundary Detection
-        auto sal_gate = boundary_detector->forward(h_s1, text_ids);
-
-        // Precision-Weighted Laminar Error Routing
-        auto h1_prev_proxy = m_s1_prev.view({batch_size, -1}).slice(1, 0, hidden_dim).unsqueeze(1);
-        auto lper_out = pw_lper->forward(h_s1, h1_prev_proxy, u_t);
-        auto e1_weighted = std::get<0>(lper_out);
-
-        // Stage 2 Semantic-Discourse Execution
-        auto s2_out = stage2->forward(e1_weighted, m_s2_prev, u_t, sal_gate, 1.0f);
-        auto h_s2 = std::get<0>(s2_out);
-        auto m_s2_next = std::get<1>(s2_out);
-
-        return std::make_tuple(h_s1, h_s2, m_s1_next, m_s2_next, sal_gate);
-    }
-};
-
-// ============================================================================
 // 13. DENSE MODERN HOPFIELD ATTRACTOR HEAD (COMMITMENT LOSS)
 // ============================================================================
 class DesaturatedHopfieldAttractorHeadImpl : public torch::nn::Module {
@@ -1296,17 +1237,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("parameters", [](std::shared_ptr<PrecisionWeightedLPERImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<PrecisionWeightedLPERImpl> m) { return m->named_parameters(); })
         .def("__call__", &PrecisionWeightedLPERImpl::forward);
-
-    py::class_<FusedCascadedLaminarStackImpl, torch::nn::Module, std::shared_ptr<FusedCascadedLaminarStackImpl>>(m, "FusedCascadedLaminarStack")
-        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 768, py::arg("expand_dim") = 3072, py::arg("num_heads") = 12,
-             py::arg("head_k") = 64, py::arg("head_v") = 128, py::arg("chunk_size") = 64, py::arg("device") = "cpu")
-        .def("forward", &FusedCascadedLaminarStackImpl::forward,
-             py::arg("h_in"), py::arg("m_s1_prev"), py::arg("m_s2_prev"), py::arg("u_t"), py::arg("text_ids"))
-        .def("parameters", [](std::shared_ptr<FusedCascadedLaminarStackImpl> m) { return m->parameters(); })
-        .def("named_parameters", [](std::shared_ptr<FusedCascadedLaminarStackImpl> m) { return m->named_parameters(); })
-        .def("__call__", &FusedCascadedLaminarStackImpl::forward,
-             py::arg("h_in"), py::arg("m_s1_prev"), py::arg("m_s2_prev"), py::arg("u_t"), py::arg("text_ids"));
 
     py::class_<DesaturatedHopfieldAttractorHeadImpl, torch::nn::Module, std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl>>(m, "DesaturatedHopfieldAttractorHead")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),

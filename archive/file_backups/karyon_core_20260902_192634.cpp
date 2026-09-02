@@ -1297,17 +1297,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("named_parameters", [](std::shared_ptr<PrecisionWeightedLPERImpl> m) { return m->named_parameters(); })
         .def("__call__", &PrecisionWeightedLPERImpl::forward);
 
-    py::class_<FusedCascadedLaminarStackImpl, torch::nn::Module, std::shared_ptr<FusedCascadedLaminarStackImpl>>(m, "FusedCascadedLaminarStack")
-        .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 768, py::arg("expand_dim") = 3072, py::arg("num_heads") = 12,
-             py::arg("head_k") = 64, py::arg("head_v") = 128, py::arg("chunk_size") = 64, py::arg("device") = "cpu")
-        .def("forward", &FusedCascadedLaminarStackImpl::forward,
-             py::arg("h_in"), py::arg("m_s1_prev"), py::arg("m_s2_prev"), py::arg("u_t"), py::arg("text_ids"))
-        .def("parameters", [](std::shared_ptr<FusedCascadedLaminarStackImpl> m) { return m->parameters(); })
-        .def("named_parameters", [](std::shared_ptr<FusedCascadedLaminarStackImpl> m) { return m->named_parameters(); })
-        .def("__call__", &FusedCascadedLaminarStackImpl::forward,
-             py::arg("h_in"), py::arg("m_s1_prev"), py::arg("m_s2_prev"), py::arg("u_t"), py::arg("text_ids"));
-
     py::class_<DesaturatedHopfieldAttractorHeadImpl, torch::nn::Module, std::shared_ptr<DesaturatedHopfieldAttractorHeadImpl>>(m, "DesaturatedHopfieldAttractorHead")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
              py::arg("hidden_dim") = 512, py::arg("vocab_size") = 258, py::arg("num_attractors") = 256, py::arg("device") = "cpu")

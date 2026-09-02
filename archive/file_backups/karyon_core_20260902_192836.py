@@ -33,7 +33,6 @@ ParallelSwiGLUBlock = karyon_cpp.CausalConvSwiGLUBlock # Alias for backward comp
 EntropyAdaptiveBoundaryDetector = karyon_cpp.EntropyAdaptiveBoundaryDetector
 CorticalStage = karyon_cpp.CorticalStage
 PrecisionWeightedLPER = karyon_cpp.PrecisionWeightedLPER
-FusedCascadedLaminarStack = karyon_cpp.FusedCascadedLaminarStack
 DesaturatedHopfieldAttractorHead = karyon_cpp.DesaturatedHopfieldAttractorHead
 LatentPredictor = karyon_cpp.LatentPredictor
 TDFreeEnergyCritic = karyon_cpp.TDFreeEnergyCritic
