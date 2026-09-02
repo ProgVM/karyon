@@ -48,7 +48,6 @@ from karyon_core import (
     EntropyAdaptiveBoundaryDetector,
     CorticalStage,
     PrecisionWeightedLPER,
-    FusedCascadedLaminarStack,
     DesaturatedHopfieldAttractorHead,
     LatentPredictor,
     TDFreeEnergyCritic,

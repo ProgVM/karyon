@@ -48,7 +48,6 @@ from karyon_core import (
     EntropyAdaptiveBoundaryDetector,
     CorticalStage,
     PrecisionWeightedLPER,
-    FusedCascadedLaminarStack,
     DesaturatedHopfieldAttractorHead,
     LatentPredictor,
     TDFreeEnergyCritic,
@@ -476,18 +475,6 @@ class CoREAgent(nn.Module):
         self.boundary_detector = EntropyAdaptiveBoundaryDetector(hidden_dim=self.hidden_dim, device=self.device_str)
         self.pw_lper = PrecisionWeightedLPER(hidden_dim=self.hidden_dim, device=self.device_str)
         self.pw_hpc_generator = PrecisionWeightedTopDownGenerator(hidden_dim=self.hidden_dim, device_str=self.device_str)
-
-        # 3.1 Hierarchical Volitional Override Module (EXP-99 Validated)
-        self.will_engine = HierarchicalVolitionalOverrideModule(hidden_dim=self.hidden_dim, homeo_dim=config.net.homeo_dim, device_str=self.device_str)
-
-        # 3.2 Entropy Predictor for Dynamic dt Scaling (EXP-95 Validated)
-        self.entropy_predictor = nn.Sequential(
-            nn.Linear(self.hidden_dim, 64),
-            nn.SiLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
-        ).to(self.device)
-
         self.stage2 = CorticalStage(
             hidden_dim=self.hidden_dim, expand_dim=self.expand_dim, num_heads=self.num_heads,
             head_k=self.head_k, head_v=self.head_v, min_beta=0.0001, max_beta=0.05,
@@ -636,7 +623,7 @@ class CoREAgent(nn.Module):
             list(self.volitional_head.parameters()) +
             list(self.reflex_circuit.parameters())
         )
-        for submodule in [self.fused_stack, self.gateway, self.stage1, self.stage2, self.world_model, self.output_gateway, self.attractor_head, self.critic]:
+        for submodule in [self.gateway, self.stage1, self.stage2, self.world_model, self.output_gateway, self.attractor_head, self.critic]:
             if hasattr(submodule, 'parameters'):
                 raw_params.extend(list(submodule.parameters()))
         for p in raw_params:
@@ -1009,15 +996,14 @@ class CoREAgent(nn.Module):
         with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), dtype=self.hardware.get_autocast_dtype(), enabled=self.hardware.config.enable_amp and not self.hardware.is_cpu):
             full_h_in = self.in_proj(w_t_seq)
 
-            # --- Fused C++20 Cascaded Execution ---
-            # Single C++20 call executes Stage 1, Boundary Detector, PW-LPER, and Stage 2
-            h_s1, h_s2, m_s1_next, m_s2_next, saliency_gate = self.fused_stack(
-                full_h_in, m_s1, m_s2, curr_u_t, text_seq
-            )
-            
-            # Update sequence states
-            m_s1 = m_s1_next
-            m_s2 = m_s2_next
+            if use_checkpointing and self.training and self.hardware.is_cuda:
+                h_s1, m_s1, dt1 = checkpoint.checkpoint(
+                    self._stage1_forward, full_h_in, m_s1, curr_u_t, use_reentrant=False
+                )
+            else:
+                h_s1, m_s1, dt1 = self._stage1_forward(full_h_in, m_s1, curr_u_t)
+
+            saliency_gate = self.boundary_detector(h_s1, text_seq)
 
             # PW-HPC: Top-down predictive feedback from previous Stage 2 state
             h_s2_prev_shifted = torch.zeros_like(h_s1)
@@ -1026,12 +1012,19 @@ class CoREAgent(nn.Module):
             predicted_entropy = self.entropy_predictor(h_s1)
             dynamic_dt_scale = 0.40 + 1.20 * predicted_entropy
 
+            if use_checkpointing and self.training and self.hardware.is_cuda:
+                h_s2, m_s2, dt2 = checkpoint.checkpoint(
+                    self._stage2_forward, e1_weighted, m_s2, curr_u_t, saliency_gate, float(dynamic_dt_scale.detach().mean().item()), use_reentrant=False
+                )
+            else:
+                h_s2, m_s2, dt2 = self._stage2_forward(e1_weighted, m_s2, curr_u_t, saliency_gate, float(dynamic_dt_scale.detach().mean().item()))
+
             h_s2 = h_s2 * dynamic_dt_scale
 
             # Hierarchical Volitional Override
             effective_u_t, gamma_override, allostatic_strain = self.will_engine(h_s2, curr_u_t)
 
-            eff_dt = torch.tensor(1.0, device=self.device)
+            eff_dt = (dt1 + dt2) / 2.0
             topdown_prior = self.topdown_prior_proj(h_s2)
             h_combined = h_s1 + h_s2 + 0.15 * topdown_prior
 
