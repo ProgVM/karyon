@@ -257,37 +257,6 @@ class PrecisionWeightedTopDownGenerator(nn.Module):
     2. Computes prediction error: e1 = h_s1 - h_s1_hat.
     3. Computes precision weight: pi_t = 2.0 * sigmoid(W_pi [h_s1, h_s1_hat, NA_t]).
     4. Routes precision-weighted error: e1_weighted = pi_t * e1.
-    """
-    def __init__(self, hidden_dim=512, device_str='cpu'):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.device = torch.device(device_str)
-
-        self.topdown_net = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim)
-        ).to(self.device)
-
-        self.precision_estimator = nn.Sequential(
-            nn.Linear(hidden_dim * 2 + 1, 64),
-            nn.SiLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
-        ).to(self.device)
-
-    def forward(self, h_s1: torch.Tensor, h_s2: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        batch_size, seq_len, _ = h_s1.size()
-        h_s1_hat = self.topdown_net(h_s2)
-        e1 = h_s1 - h_s1_hat
-
-        na_t = u_t[:, 4].view(batch_size, 1, 1).expand(batch_size, seq_len, 1)
-        prec_input = torch.cat([h_s1, h_s1_hat, na_t], dim=-1)
-        pi_t = 2.0 * self.precision_estimator(prec_input)
-
-        e1_weighted = pi_t * e1
-        return e1_weighted, h_s1_hat, pi_t.mean()
-
 # =============================================================================
 # BIOPHYSICAL LOCUS COERULEUS PHASIC NEURAL GAIN CONTROLLER (EXP-114 VALIDATED 🟢)
 # =============================================================================
@@ -327,8 +296,7 @@ class LocusCoeruleusGainController(nn.Module):
         return phasic_gain
 
 
-class PrecisionWeightedTopDownGeneratorLegacy(nn.Module):
-    """Legacy Top-Down Generator kept for backward state_dict compatibility."""
+    """
     def __init__(self, hidden_dim=768, device_str='cpu'):
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -1061,17 +1029,11 @@ class CoREAgent(nn.Module):
                     unrolled_inputs[name] = seq_tensor.contiguous().view(batch_size * seq_len, -1).float()
 
         # Vector 3: Hippocampal Retrieval directly into Gateway's 'episodic_recall' channel
-        # Continuous Locus Coeruleus Phasic Gain Modulation (Zero Hardcode Constants - EXP-114 Validated 🟢)
-        na_t = curr_u_t[:, 4:5]
-        phasic_gain = self.lc_gain(na_t) # continuous factor in (0, 1)
-
         active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
-        if episodic_memory is not None and active_slots > 0:
+        if episodic_memory is not None and active_slots > 2:
             q_sensory = self.episodic_sensory_proj(full_emb.mean(dim=1)).float()
-            ret_mem, max_sim = episodic_memory.read(q_sensory, temperature=0.05, threshold=0.50, sigmoid_beta=10.0)
-            # Modulate episodic recall smoothly by phasic noradrenaline gain
-            ret_mem_modulated = ret_mem * phasic_gain
-            ret_mem_unrolled = ret_mem_modulated.unsqueeze(1).expand(batch_size, seq_len, -1).contiguous().view(batch_size * seq_len, -1).float()
+            ret_mem, max_sim = episodic_memory.read(q_sensory, temperature=0.05, threshold=0.65, sigmoid_beta=15.0)
+            ret_mem_unrolled = ret_mem.unsqueeze(1).expand(batch_size, seq_len, -1).contiguous().view(batch_size * seq_len, -1).float()
             unrolled_inputs['episodic_recall'] = ret_mem_unrolled
 
         h_prev_unrolled = torch.zeros(batch_size * seq_len, self.hidden_dim, device=self.device).float()
@@ -1111,8 +1073,7 @@ class CoREAgent(nn.Module):
 
             eff_dt = torch.tensor(1.0, device=self.device)
             topdown_prior = self.topdown_prior_proj(h_s2)
-            # Smooth continuous modulation via LC Phasic Gain
-            h_combined = h_s1 + h_s2 + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
+            h_combined = h_s1 + h_s2 + 0.15 * topdown_prior
 
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)

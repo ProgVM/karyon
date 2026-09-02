@@ -1111,8 +1111,7 @@ class CoREAgent(nn.Module):
 
             eff_dt = torch.tensor(1.0, device=self.device)
             topdown_prior = self.topdown_prior_proj(h_s2)
-            # Smooth continuous modulation via LC Phasic Gain
-            h_combined = h_s1 + h_s2 + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
+            h_combined = h_s1 + h_s2 + 0.15 * topdown_prior
 
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)

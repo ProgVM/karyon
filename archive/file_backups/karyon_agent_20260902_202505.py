@@ -257,37 +257,6 @@ class PrecisionWeightedTopDownGenerator(nn.Module):
     2. Computes prediction error: e1 = h_s1 - h_s1_hat.
     3. Computes precision weight: pi_t = 2.0 * sigmoid(W_pi [h_s1, h_s1_hat, NA_t]).
     4. Routes precision-weighted error: e1_weighted = pi_t * e1.
-    """
-    def __init__(self, hidden_dim=512, device_str='cpu'):
-        super().__init__()
-        self.hidden_dim = hidden_dim
-        self.device = torch.device(device_str)
-
-        self.topdown_net = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim)
-        ).to(self.device)
-
-        self.precision_estimator = nn.Sequential(
-            nn.Linear(hidden_dim * 2 + 1, 64),
-            nn.SiLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
-        ).to(self.device)
-
-    def forward(self, h_s1: torch.Tensor, h_s2: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        batch_size, seq_len, _ = h_s1.size()
-        h_s1_hat = self.topdown_net(h_s2)
-        e1 = h_s1 - h_s1_hat
-
-        na_t = u_t[:, 4].view(batch_size, 1, 1).expand(batch_size, seq_len, 1)
-        prec_input = torch.cat([h_s1, h_s1_hat, na_t], dim=-1)
-        pi_t = 2.0 * self.precision_estimator(prec_input)
-
-        e1_weighted = pi_t * e1
-        return e1_weighted, h_s1_hat, pi_t.mean()
-
 # =============================================================================
 # BIOPHYSICAL LOCUS COERULEUS PHASIC NEURAL GAIN CONTROLLER (EXP-114 VALIDATED 🟢)
 # =============================================================================
@@ -327,8 +296,7 @@ class LocusCoeruleusGainController(nn.Module):
         return phasic_gain
 
 
-class PrecisionWeightedTopDownGeneratorLegacy(nn.Module):
-    """Legacy Top-Down Generator kept for backward state_dict compatibility."""
+    """
     def __init__(self, hidden_dim=768, device_str='cpu'):
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -1061,17 +1029,11 @@ class CoREAgent(nn.Module):
                     unrolled_inputs[name] = seq_tensor.contiguous().view(batch_size * seq_len, -1).float()
 
         # Vector 3: Hippocampal Retrieval directly into Gateway's 'episodic_recall' channel
-        # Continuous Locus Coeruleus Phasic Gain Modulation (Zero Hardcode Constants - EXP-114 Validated 🟢)
-        na_t = curr_u_t[:, 4:5]
-        phasic_gain = self.lc_gain(na_t) # continuous factor in (0, 1)
-
         active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
-        if episodic_memory is not None and active_slots > 0:
+        if episodic_memory is not None and active_slots > 2:
             q_sensory = self.episodic_sensory_proj(full_emb.mean(dim=1)).float()
-            ret_mem, max_sim = episodic_memory.read(q_sensory, temperature=0.05, threshold=0.50, sigmoid_beta=10.0)
-            # Modulate episodic recall smoothly by phasic noradrenaline gain
-            ret_mem_modulated = ret_mem * phasic_gain
-            ret_mem_unrolled = ret_mem_modulated.unsqueeze(1).expand(batch_size, seq_len, -1).contiguous().view(batch_size * seq_len, -1).float()
+            ret_mem, max_sim = episodic_memory.read(q_sensory, temperature=0.05, threshold=0.65, sigmoid_beta=15.0)
+            ret_mem_unrolled = ret_mem.unsqueeze(1).expand(batch_size, seq_len, -1).contiguous().view(batch_size * seq_len, -1).float()
             unrolled_inputs['episodic_recall'] = ret_mem_unrolled
 
         h_prev_unrolled = torch.zeros(batch_size * seq_len, self.hidden_dim, device=self.device).float()
@@ -1111,8 +1073,7 @@ class CoREAgent(nn.Module):
 
             eff_dt = torch.tensor(1.0, device=self.device)
             topdown_prior = self.topdown_prior_proj(h_s2)
-            # Smooth continuous modulation via LC Phasic Gain
-            h_combined = h_s1 + h_s2 + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
+            h_combined = h_s1 + h_s2 + 0.15 * topdown_prior
 
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
@@ -1249,28 +1210,26 @@ class CoREAgent(nn.Module):
             
             sensor_inputs = {'text': t_emb.squeeze(1)}
             active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
-            
-            # Continuous Locus Coeruleus Phasic Gain computation (Zero Hardcode Constants)
-            na_t = hu_st[:, 4:5]
-            phasic_gain = self.lc_gain(na_t) # continuous factor in (0, 1)
-
-            if episodic_memory is not None and active_slots > 0:
+            if episodic_memory is not None and hu_st[0, 4].item() > 0.10 and active_slots > 2:
                 q_k = self.episodic_sensory_proj(t_emb.squeeze(1)).float()
-                ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.50, sigmoid_beta=10.0)
-                # Modulate memory injection smoothly by phasic noradrenaline gain
-                sensor_inputs['episodic_recall'] = ret_mem * phasic_gain
+                ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.65, sigmoid_beta=15.0)
+                if (max_sim > 0.65).any():
+                    sensor_inputs['episodic_recall'] = ret_mem
 
             w_t, _, _, _ = self.gateway(sensor_inputs, m_s2.view(1, -1)[:, :self.hidden_dim], hu_st)
             h_in = self.in_proj(w_t).unsqueeze(1)
 
-            h_s1, h_s2, m_s1, m_s2, sal_gate = self.fused_stack(h_in, m_s1, m_s2, hu_st, window_t[:, -1:])
+            h_s1, m_s1, _ = self.stage1(h_in, m_s1, hu_st, torch.Tensor(), 1.0)
+            sal_gate = self.boundary_detector(h_s1, window_t[:, -1:])
+
+            e1_weighted, h1_prev_last, _ = self.pw_lper(h_s1, h1_prev_last, hu_st)
+            h_s2, m_s2, _ = self.stage2(e1_weighted, m_s2, hu_st, sal_gate, 1.0)
             
             # Hierarchical Volitional Override in generation
             effective_hu_st, gamma_override, allostatic_strain = self.will_engine(h_s2, hu_st)
 
             topdown_prior = self.topdown_prior_proj(h_s2)
-            # Smooth continuous modulation via LC Phasic Gain
-            h_combined = h_s1 + h_s2 + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
+            h_combined = h_s1 + h_s2 + 0.15 * topdown_prior
 
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, effective_hu_st)
@@ -1290,15 +1249,25 @@ class CoREAgent(nn.Module):
                 self.somatic_byte_penalty = somatic_byte_penalty
 
             logits = raw_logits - self.somatic_byte_penalty
-            early_step_factor = math.exp(-step / 4.0)
-            logits[:, 257] = logits[:, 257] - 15.0 * early_step_factor
+            if step < 10:
+                logits[:, 257] = logits[:, 257] - 15.0
 
             p_dist = F.softmax(logits, dim=-1)
             entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1)
+            entropy_val = entropy.item()
+            is_boundary = (len(rolling_token_ids) > 0 and rolling_token_ids[-1] in [32, 10, 44, 46])
 
-            # Continuous Active Inference PAC Decoding (Modulated by LC Phasic Gain & Local Surprise)
-            temp = 0.10 + 0.35 * torch.sigmoid(5.0 * (entropy - 0.60) + 2.0 * (phasic_gain.squeeze() - 0.50)).item()
-            top_p_val = 0.90 + 0.09 * (1.0 - torch.sigmoid(4.0 * (entropy - 0.60)).item())
+            # FACTOR 1: Entropy-Peak Morphemic Boundary Macro-Reset (EXP-100 Validated 🟢)
+            if is_boundary or entropy_val > 0.70:
+                h_combined = h_relaxed.unsqueeze(1)
+
+            # Continuous Active Inference PAC Decoding (Buzsáki & Friston Theta-Gamma PAC)
+            if is_boundary:
+                temp = 0.40
+                top_p_val = 0.88
+            else:
+                temp = max(0.08, 0.40 * (1.0 - torch.sigmoid((0.70 - entropy) * 5.0).item()))
+                top_p_val = 0.99
 
             scaled_logits = logits / max(temp, 1e-4)
             sorted_logits, sorted_indices = torch.sort(scaled_logits, descending=True, dim=-1)

@@ -1,0 +1,19 @@
+{
+  "exp_id": "EXP-114",
+  "verdict": "\u26aa NEUTRAL / INCONCLUSIVE",
+  "base_loss": 3.212666130065918,
+  "prop_loss": 3.2069238424301147,
+  "delta_loss": 0.0057422876358033115,
+  "base_fe": 0.9485163807868957,
+  "prop_fe": 0.9873276770114898,
+  "delta_fe": -0.038811296224594116,
+  "base_tok_per_sec": 21415.6772235028,
+  "prop_tok_per_sec": 31439.378089339825,
+  "speedup_pct": 146.8054349214623,
+  "base_vram_mb": 387.58,
+  "prop_vram_mb": 385.31,
+  "speech_samples": {
+    "Hello!": "r it r rer the ous at a is le ofe i",
+    "Energy for Earth": "eeithe int of in l a of crn in il t"
+  }
+}
