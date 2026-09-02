@@ -1220,43 +1220,64 @@ class CoREAgent(nn.Module):
                 raw_logits[:, 257] = -1e9
 
             p_dist = F.softmax(raw_logits, dim=-1)
-            entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1)
-            entropy_val = entropy.item()
+            entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1).item()
             is_boundary = (len(rolling_token_ids) > 0 and rolling_token_ids[-1] in [32, 10, 44, 46])
 
             # FACTOR 1: Entropy-Peak Morphemic Boundary Macro-Reset (EXP-100 Validated 🟢)
-            if is_boundary or entropy_val > 0.70:
+            if is_boundary or entropy > 0.70:
                 h_combined = h_relaxed.unsqueeze(1)
 
-            # Continuous Active Inference PAC Decoding (Buzsáki & Friston Theta-Gamma PAC)
-            # Dynamic continuous temperature and nucleus bounds based on information entropy
-            if is_boundary:
-                temp = 0.40
-                top_p_val = 0.88
+            # FACTOR 2: System 2 Active Inference Mental Sandbox Search (EXP-100 Validated 🟢)
+            if (is_boundary or entropy > 0.70) and step > 2:
+                top6_vals, top6_indices = torch.topk(raw_logits, k=6, dim=-1)
+                best_token_id = top6_indices[0, 0].item()
+                lowest_efe = 1e9
+
+                for cand_idx in range(6):
+                    cand_id = top6_indices[0, cand_idx].item()
+                    cand_t = torch.tensor([[cand_id]], device=self.device)
+                    cand_emb = self.pos_embeddings.byte_embed(cand_t) * self.inv_sqrt_text_dim
+                    cand_w = self.episodic_sensory_proj(cand_emb.squeeze(1))
+                    
+                    _, cand_efe = self.world_model.evaluate_counterfactual_rollout(
+                        h_combined[:, -1, :], cand_w, num_steps=3
+                    )
+                    
+                    homeo_penalty = 0.05 * abs(cand_efe - (1.0 - effective_hu_st[0, 1].item()))
+                    total_cand_cost = cand_efe + homeo_penalty
+                    
+                    if total_cand_cost < lowest_efe:
+                        lowest_efe = total_cand_cost
+                        best_token_id = cand_id
+
+                next_token_id = best_token_id
             else:
-                # Inside continuous morphemic stream: precision phase locking (MAP attractor)
-                temp = max(0.08, 0.40 * (1.0 - torch.sigmoid((0.70 - entropy) * 5.0).item()))
-                top_p_val = 0.99
+                if is_boundary:
+                    temp = 0.40
+                    top_p_val = 0.88
+                else:
+                    temp = 0.08
+                    top_p_val = 0.99
 
-            logits = raw_logits / max(temp, 1e-4)
-            sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
-            cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
-            to_remove = cumulative_probs > top_p_val
-            to_remove[..., 1:] = to_remove[..., :-1].clone()
-            to_remove[..., 0] = False
-            indices_to_remove = to_remove.scatter(1, sorted_indices, to_remove)
-            logits[indices_to_remove] = -1e9
+                logits = raw_logits / max(temp, 1e-4)
+                sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
+                cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                to_remove = cumulative_probs > top_p_val
+                to_remove[..., 1:] = to_remove[..., :-1].clone()
+                to_remove[..., 0] = False
+                indices_to_remove = to_remove.scatter(1, sorted_indices, to_remove)
+                logits[indices_to_remove] = -1e9
 
-            probs = F.softmax(logits, dim=-1)
-            probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
-            prob_sum = probs.sum(dim=-1, keepdim=True)
-            if (prob_sum <= 0).any():
-                probs = torch.full_like(probs, 1.0 / 258)
-            else:
-                probs = probs / prob_sum
+                probs = F.softmax(logits, dim=-1)
+                probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
+                prob_sum = probs.sum(dim=-1, keepdim=True)
+                if (prob_sum <= 0).any():
+                    probs = torch.full_like(probs, 1.0 / 258)
+                else:
+                    probs = probs / prob_sum
 
-            next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
-            next_token_id = next_token.item()
+                next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
+                next_token_id = next_token.item()
 
             if step % 4 == 0:
                 hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)

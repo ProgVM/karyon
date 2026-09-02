@@ -367,14 +367,9 @@ class HierarchicalVolitionalOverrideModule(nn.Module):
 
 class VolitionalActiveInferenceMotorHead(nn.Module):
     """
-    Continuous Volitional Action Selection Engine (Friston Active Inference - EXP-98/113 Validated):
-    Fully continuous population-level motor readout.
-    1. Projects relaxed hidden trajectory h_relaxed into motor text space.
-    2. Modulates readout gain via dopaminergic precision: motor_gain = (1.0 + 1.0 * DA_t).
-    3. Computes Expected Free Energy (G) continuously across the entire byte manifold V=258:
-       G(a) = f_efe(W_emb, u_t)
-    4. Modulates logits without discrete top-k masks:
-       Logits = (h_proj * motor_gain) @ W_emb^T - gamma * G(a)
+    Continuous Volitional Action Selection Engine (Friston Active Inference - EXP-98 Validated):
+    Evaluates Expected Free Energy G(a) for motor trajectories under homeostatic prior preferences
+    P(u) and modulates motor readout logits directly: Logits = Logits_raw - gamma * G(a).
     """
     def __init__(self, hidden_dim=768, text_dim=256, vocab_size=258, gamma_volition=0.15, device_str='cpu'):
         super().__init__()
@@ -391,12 +386,10 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
             nn.LayerNorm(text_dim)
         ).to(self.device)
 
-        # Continuous manifold EFE evaluator: maps [V, text_dim] embeddings + [B, 6] homeostatic drives
-        self.efe_motor_proj = nn.Linear(text_dim, 64).to(self.device)
-        self.efe_homeo_proj = nn.Linear(6, 64).to(self.device)
         self.efe_evaluator = nn.Sequential(
+            nn.Linear(text_dim + 6, 128),
             nn.SiLU(),
-            nn.Linear(64, 1)
+            nn.Linear(128, 1)
         ).to(self.device)
 
     def compute_volitional_logits(self, h_relaxed: torch.Tensor, u_t: torch.Tensor, byte_embed_weights: torch.Tensor) -> torch.Tensor:
@@ -415,16 +408,16 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         h_proj_gain = h_proj * motor_gain
         raw_logits = F.linear(h_proj_gain, byte_embed_weights)
 
-        # Continuous Manifold Field EFE Modulation across all V=258 bytes
-        # Byte embeddings: [V, text_dim] -> [V, 64]
-        # Somatic state: [B, 6] -> [B, 64]
-        v_emb_proj = self.efe_motor_proj(byte_embed_weights) # [V, 64]
-        u_t_proj = self.efe_homeo_proj(u_t_exp) # [B, 64]
-
-        # Outer sum tensor broadcasting: [B, 1, 64] + [1, V, 64] -> [B, V, 64]
-        efe_field = self.efe_evaluator(v_emb_proj.unsqueeze(0) + u_t_proj.unsqueeze(1)).squeeze(-1) # [B, V]
-
-        modulated_logits = raw_logits - self.gamma_volition * efe_field
+        top8_vals, top8_indices = torch.topk(raw_logits, k=8, dim=-1)
+        top8_embs = byte_embed_weights[top8_indices] # [total_tokens, 8, text_dim]
+        u_t_expanded = u_t_exp.unsqueeze(1).expand(total_tokens, 8, 6) # [total_tokens, 8, 6]
+        
+        efe_inputs = torch.cat([top8_embs, u_t_expanded], dim=-1)
+        g_scores = self.efe_evaluator(efe_inputs).squeeze(-1) # [total_tokens, 8]
+        
+        volitional_mod = -self.gamma_volition * g_scores
+        modulated_logits = raw_logits.scatter_add(1, top8_indices, volitional_mod)
+        
         return modulated_logits
 
 
@@ -1220,43 +1213,64 @@ class CoREAgent(nn.Module):
                 raw_logits[:, 257] = -1e9
 
             p_dist = F.softmax(raw_logits, dim=-1)
-            entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1)
-            entropy_val = entropy.item()
+            entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1).item()
             is_boundary = (len(rolling_token_ids) > 0 and rolling_token_ids[-1] in [32, 10, 44, 46])
 
             # FACTOR 1: Entropy-Peak Morphemic Boundary Macro-Reset (EXP-100 Validated 🟢)
-            if is_boundary or entropy_val > 0.70:
+            if is_boundary or entropy > 0.70:
                 h_combined = h_relaxed.unsqueeze(1)
 
-            # Continuous Active Inference PAC Decoding (Buzsáki & Friston Theta-Gamma PAC)
-            # Dynamic continuous temperature and nucleus bounds based on information entropy
-            if is_boundary:
-                temp = 0.40
-                top_p_val = 0.88
+            # FACTOR 2: System 2 Active Inference Mental Sandbox Search (EXP-100 Validated 🟢)
+            if (is_boundary or entropy > 0.70) and step > 2:
+                top6_vals, top6_indices = torch.topk(raw_logits, k=6, dim=-1)
+                best_token_id = top6_indices[0, 0].item()
+                lowest_efe = 1e9
+
+                for cand_idx in range(6):
+                    cand_id = top6_indices[0, cand_idx].item()
+                    cand_t = torch.tensor([[cand_id]], device=self.device)
+                    cand_emb = self.pos_embeddings.byte_embed(cand_t) * self.inv_sqrt_text_dim
+                    cand_w = self.episodic_sensory_proj(cand_emb.squeeze(1))
+                    
+                    _, cand_efe = self.world_model.evaluate_counterfactual_rollout(
+                        h_combined[:, -1, :], cand_w, num_steps=3
+                    )
+                    
+                    homeo_penalty = 0.05 * abs(cand_efe - (1.0 - effective_hu_st[0, 1].item()))
+                    total_cand_cost = cand_efe + homeo_penalty
+                    
+                    if total_cand_cost < lowest_efe:
+                        lowest_efe = total_cand_cost
+                        best_token_id = cand_id
+
+                next_token_id = best_token_id
             else:
-                # Inside continuous morphemic stream: precision phase locking (MAP attractor)
-                temp = max(0.08, 0.40 * (1.0 - torch.sigmoid((0.70 - entropy) * 5.0).item()))
-                top_p_val = 0.99
+                if is_boundary:
+                    temp = 0.40
+                    top_p_val = 0.88
+                else:
+                    temp = 0.08
+                    top_p_val = 0.99
 
-            logits = raw_logits / max(temp, 1e-4)
-            sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
-            cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
-            to_remove = cumulative_probs > top_p_val
-            to_remove[..., 1:] = to_remove[..., :-1].clone()
-            to_remove[..., 0] = False
-            indices_to_remove = to_remove.scatter(1, sorted_indices, to_remove)
-            logits[indices_to_remove] = -1e9
+                logits = raw_logits / max(temp, 1e-4)
+                sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
+                cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+                to_remove = cumulative_probs > top_p_val
+                to_remove[..., 1:] = to_remove[..., :-1].clone()
+                to_remove[..., 0] = False
+                indices_to_remove = to_remove.scatter(1, sorted_indices, to_remove)
+                logits[indices_to_remove] = -1e9
 
-            probs = F.softmax(logits, dim=-1)
-            probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
-            prob_sum = probs.sum(dim=-1, keepdim=True)
-            if (prob_sum <= 0).any():
-                probs = torch.full_like(probs, 1.0 / 258)
-            else:
-                probs = probs / prob_sum
+                probs = F.softmax(logits, dim=-1)
+                probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
+                prob_sum = probs.sum(dim=-1, keepdim=True)
+                if (prob_sum <= 0).any():
+                    probs = torch.full_like(probs, 1.0 / 258)
+                else:
+                    probs = probs / prob_sum
 
-            next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
-            next_token_id = next_token.item()
+                next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
+                next_token_id = next_token.item()
 
             if step % 4 == 0:
                 hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)
