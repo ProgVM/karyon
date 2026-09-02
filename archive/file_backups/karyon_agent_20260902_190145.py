@@ -133,34 +133,49 @@ class DynamicSensoryGateway(nn.Module):
         batch_size = h_prev.size(0)
         projected_channels = []
         channel_names = []
-
-        # Only process actually active/provided sensory channels (Dynamic Sparse Stream Processing)
-        for name, x_in in sensor_inputs.items():
-            if name in self.projections:
-                proj_x = self.projections[name](x_in.float() if x_in.dtype != torch.float32 else x_in)
+        channel_masks = []
+        
+        # Pre-allocate zero representations for inactive channels to avoid redundant GEMMs and allocations
+        zero_chan = torch.zeros(batch_size, self.unified_dim, dtype=torch.float32, device=self.device)
+        zero_mask = torch.full((batch_size, 1), -10000.0, dtype=torch.float32, device=self.device)
+        active_mask = torch.zeros(batch_size, 1, dtype=torch.float32, device=self.device)
+        
+        for name, proj in self.projections.items():
+            if name in sensor_inputs:
+                x_in = sensor_inputs[name]
+                proj_x = proj(x_in.float())
                 projected_channels.append(proj_x)
                 channel_names.append(name)
-
-        # Always include continuous somatic body drive and recurrent mind state
-        projected_channels.append(self.homeo_proj(u_t.float() if u_t.dtype != torch.float32 else u_t))
+                channel_masks.append(active_mask)
+            else:
+                projected_channels.append(zero_chan)
+                channel_names.append(name)
+                channel_masks.append(zero_mask)
+            
+        projected_channels.append(self.homeo_proj(u_t.float()))
         channel_names.append('body')
-
-        projected_channels.append(self.mind_proj(h_prev.float() if h_prev.dtype != torch.float32 else h_prev))
+        channel_masks.append(active_mask)
+        
+        projected_channels.append(self.mind_proj(h_prev.float()))
         channel_names.append('mind')
-
-        stacked_channels = torch.stack(projected_channels, dim=1) # [B, num_active_channels, D]
+        channel_masks.append(active_mask)
+        
+        stacked_channels = torch.stack(projected_channels, dim=1)
         norm_stacked = self.channel_norm(stacked_channels)
-
-        volition_query = self.attention_query_layer(h_prev.float() if h_prev.dtype != torch.float32 else h_prev).unsqueeze(1)
+        
+        volition_query = self.attention_query_layer(h_prev.float()).unsqueeze(1)
         norm_query = self.query_norm(volition_query)
-
+        
         sim = (norm_query * norm_stacked).sum(dim=-1) / math.sqrt(self.unified_dim)
+        stacked_masks = torch.cat(channel_masks, dim=1)
+        sim = sim + stacked_masks
+        
         attention_weights = F.softmax(sim, dim=-1)
-
         eps = 1e-9
         epistemic_entropy = -torch.sum(attention_weights * torch.log(attention_weights + eps), dim=-1, keepdim=True)
-
+        
         w_t = (attention_weights.unsqueeze(-1) * stacked_channels).sum(dim=1)
+        
         return w_t, attention_weights, channel_names, epistemic_entropy
 
 
@@ -1021,10 +1036,10 @@ class CoREAgent(nn.Module):
 
             if use_checkpointing and self.training and self.hardware.is_cuda:
                 h_s2, m_s2, dt2 = checkpoint.checkpoint(
-                    self._stage2_forward, e1_weighted, m_s2, curr_u_t, saliency_gate, float(dynamic_dt_scale.detach().mean().item()), use_reentrant=False
+                    self._stage2_forward, e1_weighted, m_s2, curr_u_t, saliency_gate, dynamic_dt_scale.mean(), use_reentrant=False
                 )
             else:
-                h_s2, m_s2, dt2 = self._stage2_forward(e1_weighted, m_s2, curr_u_t, saliency_gate, float(dynamic_dt_scale.detach().mean().item()))
+                h_s2, m_s2, dt2 = self._stage2_forward(e1_weighted, m_s2, curr_u_t, saliency_gate, dynamic_dt_scale.mean())
 
             h_s2 = h_s2 * dynamic_dt_scale
 

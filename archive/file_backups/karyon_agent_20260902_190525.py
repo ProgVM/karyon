@@ -1021,10 +1021,10 @@ class CoREAgent(nn.Module):
 
             if use_checkpointing and self.training and self.hardware.is_cuda:
                 h_s2, m_s2, dt2 = checkpoint.checkpoint(
-                    self._stage2_forward, e1_weighted, m_s2, curr_u_t, saliency_gate, float(dynamic_dt_scale.detach().mean().item()), use_reentrant=False
+                    self._stage2_forward, e1_weighted, m_s2, curr_u_t, saliency_gate, dynamic_dt_scale.mean(), use_reentrant=False
                 )
             else:
-                h_s2, m_s2, dt2 = self._stage2_forward(e1_weighted, m_s2, curr_u_t, saliency_gate, float(dynamic_dt_scale.detach().mean().item()))
+                h_s2, m_s2, dt2 = self._stage2_forward(e1_weighted, m_s2, curr_u_t, saliency_gate, dynamic_dt_scale.mean())
 
             h_s2 = h_s2 * dynamic_dt_scale
 
