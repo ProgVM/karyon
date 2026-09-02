@@ -1,0 +1,20 @@
+{
+  "exp_id": "EXP-113",
+  "verdict": "\u26aa NEUTRAL / INCONCLUSIVE",
+  "base_loss": 3.199143314361572,
+  "prop_loss": 3.1967984676361083,
+  "delta_loss": 0.002344846725463867,
+  "base_ppl": 24.511522530583104,
+  "prop_ppl": 24.454114100529836,
+  "base_tok_per_sec": 22040.428188336493,
+  "prop_tok_per_sec": 32781.35096832686,
+  "speedup_pct": 148.73282264849246,
+  "base_vram_mb": 289.02,
+  "prop_vram_mb": 389.25,
+  "base_fe": 1.0827139019966125,
+  "prop_fe": 1.1829601287841798,
+  "speech_samples": {
+    "Hello!": "B\ufffdH/\ufffd/\ufffd/////\ufffd/\ufffdm//\ufffdb/H//\ufffdb/H/\ufffd\ufffd://\ufffd\ufffd/\ufffd",
+    "Energy for Earth": "G\ufffde/\ufffdBmn/B\ufffdO\ufffd\ufffd/m/H/\ufffd\ufffd/\ufffd\ufffd/\ufffd,,FB\ufffd\ufffd/\ufffd/\ufffd,x\ufffd"
+  }
+}
