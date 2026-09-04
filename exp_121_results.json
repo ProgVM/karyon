@@ -1,0 +1,80 @@
+{
+  "num_cycles": 10,
+  "avg_cycle_ms": 21.262882300106867,
+  "total_time_ms": 212.62882300106867,
+  "initial_curiosity": 0.95,
+  "final_curiosity": 0.10000000149011612,
+  "final_energy": 0.7000001668930054,
+  "logs": [
+    {
+      "cycle": 1,
+      "efe_surprise": 0.030616186559200287,
+      "curiosity_after": 0.8044559955596924,
+      "energy_after": 0.8799999952316284,
+      "duration_ms": 182.65038800018374
+    },
+    {
+      "cycle": 2,
+      "efe_surprise": 0.029676474630832672,
+      "curiosity_after": 0.6587791442871094,
+      "energy_after": 0.8600000143051147,
+      "duration_ms": 3.4907789995486382
+    },
+    {
+      "cycle": 3,
+      "efe_surprise": 0.03238273411989212,
+      "curiosity_after": 0.5134841799736023,
+      "energy_after": 0.8400000333786011,
+      "duration_ms": 3.1552320015180157
+    },
+    {
+      "cycle": 4,
+      "efe_surprise": 0.03382524475455284,
+      "curiosity_after": 0.3683919608592987,
+      "energy_after": 0.8200000524520874,
+      "duration_ms": 3.2118319995788625
+    },
+    {
+      "cycle": 5,
+      "efe_surprise": 0.03606754541397095,
+      "curiosity_after": 0.22361375391483307,
+      "energy_after": 0.8000000715255737,
+      "duration_ms": 3.4451749997970182
+    },
+    {
+      "cycle": 6,
+      "efe_surprise": 0.03467021882534027,
+      "curiosity_after": 0.10000000149011612,
+      "energy_after": 0.7800000905990601,
+      "duration_ms": 3.121990001091035
+    },
+    {
+      "cycle": 7,
+      "efe_surprise": 0.03280548378825188,
+      "curiosity_after": 0.10000000149011612,
+      "energy_after": 0.7600001096725464,
+      "duration_ms": 3.196646001015324
+    },
+    {
+      "cycle": 8,
+      "efe_surprise": 0.03403384983539581,
+      "curiosity_after": 0.10000000149011612,
+      "energy_after": 0.7400001287460327,
+      "duration_ms": 3.2267099995806348
+    },
+    {
+      "cycle": 9,
+      "efe_surprise": 0.03223218768835068,
+      "curiosity_after": 0.10000000149011612,
+      "energy_after": 0.720000147819519,
+      "duration_ms": 3.503142001136439
+    },
+    {
+      "cycle": 10,
+      "efe_surprise": 0.03331029787659645,
+      "curiosity_after": 0.10000000149011612,
+      "energy_after": 0.7000001668930054,
+      "duration_ms": 3.124213999399217
+    }
+  ]
+}
