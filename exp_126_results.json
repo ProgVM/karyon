@@ -1,0 +1,172 @@
+{
+  "num_env_steps": 20,
+  "action_counts": {
+    "EXPRESS_OUTPUT": 0,
+    "THINK_DEEPER_SANDBOX": 19,
+    "INITIATE_SLEEP_CONSOLIDATION": 1
+  },
+  "avg_step_latency_ms": 82.7862778999588,
+  "final_energy": 0.5999999046325684,
+  "telemetry": [
+    {
+      "step": 1,
+      "energy": 0.849999976158142,
+      "curiosity": 0.8500000238418579,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 1152.1945590011455,
+      "avg_fe": 0.05020198101798693
+    },
+    {
+      "step": 2,
+      "energy": 0.7999999642372131,
+      "curiosity": 0.7000000476837158,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.660158000391675,
+      "avg_fe": 0.04569957529505094
+    },
+    {
+      "step": 3,
+      "energy": 0.7499999523162841,
+      "curiosity": 0.5500000715255737,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 26.023278998764,
+      "avg_fe": 0.050361111760139465
+    },
+    {
+      "step": 4,
+      "energy": 0.6999999403953552,
+      "curiosity": 0.40000006556510925,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.929833000191138,
+      "avg_fe": 0.053021956235170364
+    },
+    {
+      "step": 5,
+      "energy": 0.6499999284744262,
+      "curiosity": 0.2500000596046448,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.679566999315284,
+      "avg_fe": 0.04846705744663874
+    },
+    {
+      "step": 6,
+      "energy": 0.5999999165534973,
+      "curiosity": 0.1000000610947609,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.184800000715768,
+      "avg_fe": 0.05092912664016088
+    },
+    {
+      "step": 7,
+      "energy": 0.5499999046325683,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 26.808443000845728,
+      "avg_fe": 0.05644288410743078
+    },
+    {
+      "step": 8,
+      "energy": 0.4999998927116394,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.6542580009409,
+      "avg_fe": 0.04296236981948217
+    },
+    {
+      "step": 9,
+      "energy": 0.44999988079071046,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.442378000661847,
+      "avg_fe": 0.04336807504296303
+    },
+    {
+      "step": 10,
+      "energy": 0.3999998688697815,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.29363399844442,
+      "avg_fe": 0.04214131459593773
+    },
+    {
+      "step": 11,
+      "energy": 0.34999985694885255,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.41079299953708,
+      "avg_fe": 0.04771008715033531
+    },
+    {
+      "step": 12,
+      "energy": 0.2999998450279236,
+      "curiosity": 0.10000000149011612,
+      "action": "INITIATE_SLEEP_CONSOLIDATION",
+      "latency_ms": 43.06508699846745,
+      "avg_fe": 0.048245528091986976
+    },
+    {
+      "step": 13,
+      "energy": 0.95,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.61935100129631,
+      "avg_fe": 0.04778903226057688
+    },
+    {
+      "step": 14,
+      "energy": 0.899999988079071,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.36616699944716,
+      "avg_fe": 0.04665028055508932
+    },
+    {
+      "step": 15,
+      "energy": 0.849999976158142,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.229451999621233,
+      "avg_fe": 0.056403095523516335
+    },
+    {
+      "step": 16,
+      "energy": 0.7999999642372131,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 24.957779000033042,
+      "avg_fe": 0.05056704208254814
+    },
+    {
+      "step": 17,
+      "energy": 0.7499999523162841,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.156924999464536,
+      "avg_fe": 0.05113928144176801
+    },
+    {
+      "step": 18,
+      "energy": 0.6999999403953552,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.72123800018744,
+      "avg_fe": 0.05102116490403811
+    },
+    {
+      "step": 19,
+      "energy": 0.6499999284744262,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.346377999085234,
+      "avg_fe": 0.0714934766292572
+    },
+    {
+      "step": 20,
+      "energy": 0.5999999165534973,
+      "curiosity": 0.10000000149011612,
+      "action": "THINK_DEEPER_SANDBOX",
+      "latency_ms": 25.98147900062031,
+      "avg_fe": 0.051117077469825745
+    }
+  ]
+}

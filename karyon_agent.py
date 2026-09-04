@@ -1234,6 +1234,33 @@ class CoREAgent(nn.Module):
 
             return outs, fe, commit_loss, attn_weights, channel_names, m_s1_next.detach(), m_s2_next.detach(), z_t
 
+    def process_universal_stream(self, channel_name: str, tensor_data: torch.Tensor, hu: HomeostaticUnit, episodic_mem: BatchedEpisodicMemory) -> Tuple[torch.Tensor, float, float, float]:
+        """
+        Processes a single modality channel stream on the unified representation space.
+        Returns: (h_mind, FreeEnergy, Loss, latency_ms)
+        """
+        t0 = time.perf_counter()
+        
+        # Format as sensory input dict
+        sensor_dict = {channel_name: tensor_data}
+        
+        # Initialize dummy states
+        m_s1 = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
+        m_s2 = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
+        u_t = hu.state if hu is not None else torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], device=self.device)
+        
+        with torch.no_grad():
+            outs, fe, commit_loss, _, _, m_s1_next, m_s2_next, z_t = self.forward_multimodal_step(sensor_dict, m_s1, m_s2, u_t)
+            
+            # Write to episodic memory if novelty is high
+            fe_val = fe.mean().item()
+            if fe_val > 0.01 and episodic_mem is not None:
+                q_proj = self.episodic_sensory_proj(outs.get(channel_name, torch.randn(1, self.text_dim, device=self.device)))
+                episodic_mem.write(q_proj, q_proj)
+                
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        h_mind = m_s2_next.view(1, -1)[:, :self.hidden_dim]
+        return h_mind, fe_val, commit_loss.mean().item(), duration_ms
     def generate_thought_and_speech(
         self, prompt: str, m_state: torch.Tensor, h_state: torch.Tensor, hu, episodic_memory, 
         config, max_generated_tokens: int = 120, temperature: float = 0.45, top_p: float = 0.90
