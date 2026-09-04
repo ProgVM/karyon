@@ -24,8 +24,8 @@
 
 ## 2. The 10 Fundamental KEP Rules
 
-### KEP Rule #1 (Hypothesis & Telemetry First)
-No feature, layer, or theoretical modification may be merged into production codebase files without passing an isolated benchmark script (`experiments/exp_*.py`) logging empirical telemetry.
+### KEP Rule #1 (Hypothesis, Behavioral Scope & Telemetry First)
+No feature, layer, or theoretical modification may be merged into production codebase files without passing an isolated benchmark or diagnostic observation script (`experiments/exp_*.py`) logging empirical telemetry. Experiments are NOT restricted strictly to model training or gradient optimization; they may observe and evaluate live dialogue sessions, emergent behavioral dynamics, memory consolidation fidelity, somatic homeostasis trajectories, or any specific cognitive phenomenon. Telemetry and diagnostic logging MUST explicitly capture and reflect the specific target objects or phenomena under study.
 
 ### KEP Rule #1.1 (Mandatory Debugging to Completion Principle)
 If an experiment benchmark terminates abnormally, crashes, or produces inconclusive/distorted results due to internal implementation bugs, tensor broadcasting mismatches, or un-epsiloned mathematical singularities in the benchmark code itself, the researcher/AI MUST persist and iteratively debug the code to completion until a clean, bug-free, and unambiguous empirical benchmark run is achieved and documented.

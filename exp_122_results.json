@@ -1,0 +1,10 @@
+{
+  "num_facts": 20,
+  "num_distractors": 80,
+  "baseline_accuracy_pct": 0.0,
+  "baseline_mean_sim": 0.0999144371598959,
+  "proposed_accuracy_pct": 100.0,
+  "proposed_mean_sim": 0.9808372259140015,
+  "avg_read_latency_ms": 4.426803400019708,
+  "avg_write_latency_ms": 0.11622290003288072
+}
