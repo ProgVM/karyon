@@ -7,17 +7,23 @@ Universal Multimodal & Cross-Modal State-Space Cognitive Engine (EXP-90 Validate
 ===============================================================================
 """
 import os
+import sys
 import torch
 from torch.utils.cpp_extension import load
 
-print("[C++ JIT] Compiling and linking native Karyon C++20 architecture (v24.0 Master Universal Multimodal)...")
-
-karyon_cpp = load(
-    name="karyon_cpp_ext_v24",
-    sources=["karyon_core.cpp"],
-    extra_cflags=["-O3", "-std=c++20"],
-    verbose=False
-)
+# Idempotent Load Safeguard for PyBind11 Re-registration
+if "karyon_cpp_ext_v24" in sys.modules:
+    karyon_cpp = sys.modules["karyon_cpp_ext_v24"]
+else:
+    print("[C++ JIT] Compiling and linking native Karyon C++20 architecture (v24.0 Master Universal Multimodal)...")
+    karyon_cpp = load(
+        name="karyon_cpp_ext_v24",
+        sources=["karyon_core.cpp"],
+        extra_cflags=["-O3", "-std=c++20"],
+        verbose=False
+    )
+    sys.modules["karyon_cpp_ext_v24"] = karyon_cpp
+    print("[C++ JIT] Native C++20 v24.0 Master Universal Multimodal architecture successfully compiled and initialized!")
 
 # Export all 16 native C++ classes to Python interface
 ByteTokenizer = karyon_cpp.ByteTokenizer
@@ -40,5 +46,3 @@ TDFreeEnergyCritic = karyon_cpp.TDFreeEnergyCritic
 BatchedEpisodicMemory = karyon_cpp.BatchedEpisodicMemory
 VolitionalActionEvaluator = karyon_cpp.VolitionalActionEvaluator
 LocalNeuromodulatedPlasticity = karyon_cpp.LocalNeuromodulatedPlasticity
-
-print("[C++ JIT] Native C++20 v24.0 Master Universal Multimodal architecture successfully compiled and initialized!")
