@@ -135,6 +135,13 @@ class DynamicSensoryGateway(nn.Module):
 
     def forward(self, sensor_inputs: Dict[str, torch.Tensor], h_prev: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, List[str], torch.Tensor]:
         batch_size = h_prev.size(0)
+        # Defensive proxy slice if h_prev is 4D SSD state or non-standard dimension
+        if h_prev.dim() > 2 or h_prev.size(-1) != self.hidden_dim:
+            if h_prev.numel() >= batch_size * self.hidden_dim:
+                h_prev = h_prev.view(batch_size, -1)[:, :self.hidden_dim]
+            else:
+                h_prev = torch.zeros(batch_size, self.hidden_dim, device=self.device, dtype=h_prev.dtype if hasattr(h_prev, 'dtype') else torch.float32)
+
         projected_channels = []
         channel_names = []
 
@@ -680,15 +687,20 @@ class CoREAgent(nn.Module):
         with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), dtype=self.hardware.get_autocast_dtype(), enabled=self.hardware.config.enable_amp and not self.hardware.is_cpu):
             x_in = self.in_proj(w_t).unsqueeze(1)
             
-            if h_fast.dim() == 2:
-                m_s1 = h_fast.view(h_fast.size(0), self.num_heads, self.head_k, self.head_v) if h_fast.numel() == h_fast.size(0) * self.num_heads * self.head_k * self.head_v else torch.zeros(h_fast.size(0), self.num_heads, self.head_k, self.head_v, device=self.device)
-            else:
+            expected_m_numel = h_fast.size(0) * self.num_heads * self.head_k * self.head_v
+            if h_fast.dim() == 4 and h_fast.size(1) == self.num_heads and h_fast.size(2) == self.head_k and h_fast.size(3) == self.head_v:
                 m_s1 = h_fast
-                
-            if h_slow.dim() == 2:
-                m_s2 = h_slow.view(h_slow.size(0), self.num_heads, self.head_k, self.head_v) if h_slow.numel() == h_slow.size(0) * self.num_heads * self.head_k * self.head_v else torch.zeros(h_slow.size(0), self.num_heads, self.head_k, self.head_v, device=self.device)
+            elif h_fast.numel() == expected_m_numel:
+                m_s1 = h_fast.view(h_fast.size(0), self.num_heads, self.head_k, self.head_v)
             else:
+                m_s1 = torch.zeros(h_fast.size(0), self.num_heads, self.head_k, self.head_v, device=self.device, dtype=x_in.dtype)
+                
+            if h_slow.dim() == 4 and h_slow.size(1) == self.num_heads and h_slow.size(2) == self.head_k and h_slow.size(3) == self.head_v:
                 m_s2 = h_slow
+            elif h_slow.numel() == expected_m_numel:
+                m_s2 = h_slow.view(h_slow.size(0), self.num_heads, self.head_k, self.head_v)
+            else:
+                m_s2 = torch.zeros(h_slow.size(0), self.num_heads, self.head_k, self.head_v, device=self.device, dtype=x_in.dtype)
 
             h_s1_out, m_s1_next, dt1 = self.stage1(x_in, m_s1, u_t, torch.Tensor(), dt)
             dummy_ids = torch.zeros(x_in.size(0), 1, dtype=torch.long, device=self.device)

@@ -247,11 +247,17 @@ while True:
             
         elif event["status"] == "exhausted":
             print(event["text"], end="", flush=True)
-            h_fast = event.get("h_state", h_fast)
+            h_st = event.get("h_state", h_fast)
+            h_fast = h_st.squeeze(1) if (h_st is not None and h_st.dim() == 3) else h_st
+            if "m_state" in event:
+                h_slow = event["m_state"].view(1, -1)[:, :agent_brain.hidden_dim]
             
         elif event["status"] == "speech_end":
             print()
-            h_fast = event.get("h_state", h_fast)
+            h_st = event.get("h_state", h_fast)
+            h_fast = h_st.squeeze(1) if (h_st is not None and h_st.dim() == 3) else h_st
+            if "m_state" in event:
+                h_slow = event["m_state"].view(1, -1)[:, :agent_brain.hidden_dim]
             
             # Compute Russell and Panksepp Affective states
             with torch.no_grad():
