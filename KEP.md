@@ -19,6 +19,8 @@
 9. **Principle 9 (Continuous Spontaneous Dual-Refactoring Mandate):** Refactoring is an active, spontaneous, and continuous obligation executed on Axis A (Technical & Hardware Safety) and Axis B (Biophysical & KEP Compliance).
 10. **Principle 10 (Autonomy of Protocol Evolution):** The Lead AI Cyberneticist possesses full, self-directed autonomy to update and refine the KEP specification, operational rules, and architectural guidelines whenever a more optimal, elegant, or biologically realistic algorithm or workflow is discovered, or when directed by Bazilevs.
 11. **Principle 11 (Deliberative Ideation First — "Think Before Code"):** Architectural concepts, paradigm shifts, and theoretical reframings MUST be fully elaborated, stress-tested, and polished to architectural perfection across multi-step theoretical deliberation BEFORE writing any production or benchmark code.
+12. **Principle 12 (Universal Modality-Agnostic Substrate):** Karyon is strictly modality-agnostic. Information is handled as raw byte streams, spatial tensors, motor efference, or physical dynamics ($V=258$ or continuous manifolds). All mechanisms (Active Inference, SSD time-mixing, Hopfield relaxation, Sandbox rollouts) operate on unified representation space, seamlessly handling text, vision, audio, motor robotics, or bio-molecular structures without text-centric bias.
+13. **Principle 13 (Mandatory KEP Protocol Inscription):** Any new operational agreement, architectural shift, or research guideline accepted during collaboration MUST be immediately recorded into `KEP.md` (and related master specs) to guarantee unbroken continuity across context compression and future sessions.
 
 ---
 
