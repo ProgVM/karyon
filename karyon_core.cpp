@@ -1153,6 +1153,61 @@ public:
         return net->forward(h);
     }
 };
+// ============================================================================
+// 17. VOLITIONAL ACTION EVALUATOR & LOCAL PLASTICITY C++20 ENGINE (EXP-125)
+// ============================================================================
+class VolitionalActionEvaluatorImpl : public torch::nn::Module {
+public:
+    torch::nn::Linear action_head{nullptr};
+
+    VolitionalActionEvaluatorImpl(int64_t hidden_dim = 512, std::string device_str = "cpu") {
+        action_head = register_module("action_head", torch::nn::Linear(hidden_dim, 3));
+        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
+            this->to(torch::kCUDA);
+        }
+    }
+
+    // Evaluates Expected Free Energy G and returns optimal policy index:
+    // 0: EXPRESS_OUTPUT, 1: THINK_DEEPER_SANDBOX, 2: INITIATE_SLEEP_CONSOLIDATION
+    int64_t select_volitional_action(torch::Tensor h_current, float curiosity, float energy) {
+        torch::NoGradGuard no_grad;
+        auto logits = action_head->forward(h_current);
+        logits.select(1, 1).add_(1.5f * curiosity);
+        logits.select(1, 2).add_(2.0f * std::max(0.0f, 0.40f - energy));
+        return logits.argmax(-1).item<int64_t>();
+    }
+};
+
+class LocalNeuromodulatedPlasticityImpl : public torch::nn::Module {
+public:
+    int64_t in_features;
+    int64_t out_features;
+    float lr;
+    torch::Tensor W_base;
+    torch::Tensor W_fast;
+
+    LocalNeuromodulatedPlasticityImpl(int64_t in_features = 512, int64_t out_features = 512, float lr = 0.08f, std::string device_str = "cpu")
+        : in_features(in_features), out_features(out_features), lr(lr) {
+        auto dev = (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) ? torch::kCUDA : torch::kCPU;
+        W_base = register_parameter("W_base", torch::randn({out_features, in_features}, dev) * (1.0f / std::sqrt(static_float_cast(in_features))));
+        W_fast = register_buffer("W_fast", torch::zeros({out_features, in_features}, dev));
+    }
+
+    static float static_float_cast(int64_t val) { return static_cast<float>(val); }
+
+    torch::Tensor forward(torch::Tensor x) {
+        auto W_eff = W_base + W_fast;
+        return torch::nn::functional::linear(x, W_eff);
+    }
+
+    void adapt_local_fast_weights(torch::Tensor pre_act, torch::Tensor post_err, float na_t, float da_t) {
+        torch::NoGradGuard no_grad;
+        float neuromodulation = 0.20f + 0.80f * na_t + 0.50f * da_t;
+        auto dW = torch::bmm(post_err.unsqueeze(-1), pre_act.unsqueeze(1)).mean(0);
+        W_fast.mul_(0.92f); // Passive decay
+        W_fast.add_(dW * (lr * neuromodulation));
+    }
+};
 
 // ============================================================================
 // 16. PYBIND11 MODULE BINDINGS (ALL 15 NATIVE C++ COGNITIVE MODULES)
@@ -1354,4 +1409,18 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
              py::arg("query"), py::arg("temperature") = 0.05f, py::arg("threshold") = 0.5f, py::arg("sigmoid_beta") = 15.0f)
         .def("consolidate_and_prune", &BatchedEpisodicMemoryImpl::consolidate_and_prune,
              py::arg("similarity_threshold") = 0.95f, py::arg("protected_slots") = 3);
+    py::class_<VolitionalActionEvaluatorImpl, torch::nn::Module, std::shared_ptr<VolitionalActionEvaluatorImpl>>(m, "VolitionalActionEvaluator")
+        .def(py::init<int64_t, std::string>(), py::arg("hidden_dim") = 512, py::arg("device") = "cpu")
+        .def("select_volitional_action", &VolitionalActionEvaluatorImpl::select_volitional_action,
+             py::arg("h_current"), py::arg("curiosity"), py::arg("energy"));
+
+    py::class_<LocalNeuromodulatedPlasticityImpl, torch::nn::Module, std::shared_ptr<LocalNeuromodulatedPlasticityImpl>>(m, "LocalNeuromodulatedPlasticity")
+        .def(py::init<int64_t, int64_t, float, std::string>(),
+             py::arg("in_features") = 512, py::arg("out_features") = 512, py::arg("lr") = 0.08f, py::arg("device") = "cpu")
+        .def("forward", &LocalNeuromodulatedPlasticityImpl::forward)
+        .def("__call__", &LocalNeuromodulatedPlasticityImpl::forward)
+        .def("adapt_local_fast_weights", &LocalNeuromodulatedPlasticityImpl::adapt_local_fast_weights,
+             py::arg("pre_act"), py::arg("post_err"), py::arg("na_t"), py::arg("da_t"))
+        .def_readwrite("W_base", &LocalNeuromodulatedPlasticityImpl::W_base)
+        .def_readwrite("W_fast", &LocalNeuromodulatedPlasticityImpl::W_fast);
 }

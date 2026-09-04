@@ -26,6 +26,7 @@ Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 ===============================================================================
 """
 
+import time
 import math
 from typing import Generator, Dict, Any, List, Tuple
 import torch
@@ -52,7 +53,9 @@ from karyon_core import (
     DesaturatedHopfieldAttractorHead,
     LatentPredictor,
     TDFreeEnergyCritic,
-    BatchedEpisodicMemory
+    BatchedEpisodicMemory,
+    VolitionalActionEvaluator,
+    LocalNeuromodulatedPlasticity
 )
 
 
@@ -631,6 +634,41 @@ class CoREAgent(nn.Module):
         
         # 9. Native C++20 Temporal-Difference Free Energy Value Critic
         self.critic = TDFreeEnergyCritic(hidden_dim=self.hidden_dim, device=self.device_str)
+
+        # 10. Native C++20 Volitional Action Evaluator & Local Neuromodulated Plasticity
+        self.efe_action_evaluator = VolitionalActionEvaluator(hidden_dim=self.hidden_dim, device=self.device_str)
+        self.local_plasticity = LocalNeuromodulatedPlasticity(in_features=self.hidden_dim, out_features=self.hidden_dim, lr=0.08, device=self.device_str)
+
+    def execute_sleep_consolidation_2(self, hu: HomeostaticUnit, episodic_mem: BatchedEpisodicMemory, num_replay_cycles: int = 5) -> Dict[str, float]:
+        """
+        Executes Biophysical Sleep 2.0 with Memory Replay & Tononi SHY Synaptic Scaling.
+        """
+        t0 = time.perf_counter()
+        replayed_memories = 0
+        active_slots = getattr(episodic_mem, 'max_active_cpu', 0) if episodic_mem is not None else 0
+        
+        with torch.no_grad():
+            if episodic_mem is not None and active_slots > 0:
+                for _ in range(num_replay_cycles):
+                    q_dummy = torch.randn(1, self.unified_dim, device=self.device)
+                    ret_val, sim = episodic_mem.read(q_dummy, temperature=0.05, threshold=0.10)
+                    replayed_memories += 1
+
+            total_scaled_params = 0
+            for param in self.parameters():
+                param.data.mul_(0.998)
+                total_scaled_params += param.numel()
+
+            hu.state[0, 1] = 1.00 # Energy fully restored
+            hu.state[0, 0] = torch.clamp(hu.state[0, 0] * 0.80, 0.1, 1.0) # Curiosity balanced
+
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        return {
+            "replayed_memories": float(replayed_memories),
+            "total_scaled_params": float(total_scaled_params),
+            "restored_energy": 1.00,
+            "duration_ms": duration_ms
+        }
 
     def register_sensory_channel(self, name: str, in_dim: int):
         self.gateway.register_channel(name, in_dim)

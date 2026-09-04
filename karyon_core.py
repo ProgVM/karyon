@@ -38,5 +38,7 @@ DesaturatedHopfieldAttractorHead = karyon_cpp.DesaturatedHopfieldAttractorHead
 LatentPredictor = karyon_cpp.LatentPredictor
 TDFreeEnergyCritic = karyon_cpp.TDFreeEnergyCritic
 BatchedEpisodicMemory = karyon_cpp.BatchedEpisodicMemory
+VolitionalActionEvaluator = karyon_cpp.VolitionalActionEvaluator
+LocalNeuromodulatedPlasticity = karyon_cpp.LocalNeuromodulatedPlasticity
 
 print("[C++ JIT] Native C++20 v24.0 Master Universal Multimodal architecture successfully compiled and initialized!")
