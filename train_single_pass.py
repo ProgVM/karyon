@@ -156,7 +156,7 @@ class ContinuousPackedDataset(Dataset):
             if inst and out:
                 dialog = f"User: {inst}\nKaryon: {out}"
                 raw_b = dialog.encode('utf-8')
-                arr = np.frombuffer(raw_b, dtype=np.uint16).astype(np.uint16)
+                arr = np.frombuffer(raw_b, dtype=np.uint8).astype(np.uint16)
                 byte_chunks.append(arr)
                 byte_chunks.append(eos_arr)
                 
@@ -336,7 +336,7 @@ def run_single_pass_training():
         energy_val = hu.state[0, 1].item()
 
         # Dynamic Volitional Sleep 2.0 Trigger
-        action_idx = agent_brain.efe_action_evaluator.select_volitional_action(h_curr, curiosity_val, energy_val)
+        action_idx = agent_brain.efe_action_evaluator.select_volitional_action(h_curr[0:1], curiosity_val, energy_val)
         should_sleep = (energy_val <= 0.35) or (action_idx == 2)
 
         if should_sleep:
