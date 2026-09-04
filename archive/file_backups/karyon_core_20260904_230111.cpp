@@ -859,7 +859,7 @@ struct FusedCascadedLaminarStackImpl : torch::nn::Module {
 };
 
 // ============================================================================
-// 13. DENSE MODERN HOPFIELD ATTRACTOR HEAD WITH BIOPHYSICAL HABITUATION (EXP-130)
+// 13. DENSE MODERN HOPFIELD ATTRACTOR HEAD (COMMITMENT LOSS)
 // ============================================================================
 class DesaturatedHopfieldAttractorHeadImpl : public torch::nn::Module {
 public:
@@ -867,7 +867,6 @@ public:
     int64_t num_attractors;
     float scale;
     torch::Tensor attractor_basins;
-    torch::Tensor visitation_trace;
     torch::nn::LayerNorm norm{nullptr};
 
     DesaturatedHopfieldAttractorHeadImpl(int64_t hidden_dim = 512, int64_t vocab_size = 258, 
@@ -880,7 +879,6 @@ public:
             opts = opts.device(torch::kCUDA);
         }
         attractor_basins = register_parameter("attractor_basins", torch::randn({num_attractors, hidden_dim}, opts) * 0.05f);
-        visitation_trace = register_buffer("visitation_trace", torch::zeros({num_attractors}, opts));
         norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
 
         if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
@@ -902,19 +900,7 @@ public:
         }
 
         auto sim = torch::matmul(h_state, attractor_basins.transpose(0, 1)) * (scale * beta);
-        
-        // Biophysical Habituation: subtract visitation fatigue (synaptic depression & GABA decay)
-        auto fatigue_penalty = 1.20f * visitation_trace.unsqueeze(0);
-        auto habituated_sim = sim - fatigue_penalty;
-        
-        auto attn_weights = torch::softmax(habituated_sim, -1);
-
-        // Update visitation trace: passive GABA decay (0.82) + active accumulation
-        {
-            torch::NoGradGuard no_grad;
-            visitation_trace.copy_(0.82f * visitation_trace + attn_weights.detach().mean(0));
-        }
-
+        auto attn_weights = torch::softmax(sim, -1);
         auto attractor_shift = torch::matmul(attn_weights, attractor_basins);
         auto h_relaxed = norm->forward(h_state + 0.25f * attractor_shift);
         

@@ -1,9 +1,9 @@
 # karyon_core.py
 """
 ===============================================================================
-KARYON CORE C++20 LIBTORCH COMPILATION & PYTHON BRIDGE v26.0 MASTER
+KARYON CORE C++20 LIBTORCH COMPILATION & PYTHON BRIDGE v25.0 MASTER
 Python as Client, C++20 as Engine (KEP Principle 1)
-Universal Multimodal & Cross-Modal State-Space Cognitive Engine (EXP-130 Validated)
+Universal Multimodal & Cross-Modal State-Space Cognitive Engine (EXP-90 Validated)
 ===============================================================================
 """
 import os
@@ -27,18 +27,17 @@ for mod_name, mod in list(sys.modules.items()):
             karyon_cpp = mod
             break
 
-# Step 2: Try importing candidate names directly from disk / cache (prefer newest v26)
+# Step 2: Try importing candidate names directly from disk / cache
 if karyon_cpp is None:
     for path in [
-        "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v26",
+        "/kaggle/working/karyon/build/karyon_core_jit",
         "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v25",
-        "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v24",
-        "/kaggle/working/karyon/build/karyon_core_jit"
+        "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v24"
     ]:
         if os.path.exists(path) and path not in sys.path:
             sys.path.append(path)
             
-    for candidate_name in ["karyon_cpp_ext_v26", "karyon_cpp_ext_v25", "karyon_cpp_ext_v24"]:
+    for candidate_name in ["karyon_cpp_ext_v25", "karyon_cpp_ext_v24"]:
         try:
             mod = importlib.import_module(candidate_name)
             if _is_valid_karyon_cpp_module(mod):
@@ -50,20 +49,20 @@ if karyon_cpp is None:
 
 # Step 3: Compile and load if not found
 if karyon_cpp is None:
-    print("[C++ JIT] Compiling and linking native Karyon C++20 architecture (v26.0 Master Habituation)...")
+    print("[C++ JIT] Compiling and linking native Karyon C++20 architecture (v25.0 Master Universal Multimodal)...")
     try:
         karyon_cpp = load(
-            name="karyon_cpp_ext_v26",
+            name="karyon_cpp_ext_v25",
             sources=["karyon_core.cpp"],
             extra_cflags=["-O3", "-std=c++20"],
             verbose=False
         )
-        sys.modules["karyon_cpp_ext_v26"] = karyon_cpp
-        print("[C++ JIT] Native C++20 v26.0 Master Habituation architecture successfully compiled and initialized!")
+        sys.modules["karyon_cpp_ext_v25"] = karyon_cpp
+        print("[C++ JIT] Native C++20 v25.0 Master Universal Multimodal architecture successfully compiled and initialized!")
     except Exception as e:
         if "already registered" in str(e):
             print("[C++ JIT] PyBind11 type registration conflict detected. Attempting fallback import...")
-            for candidate_name in ["karyon_cpp_ext_v26", "karyon_cpp_ext_v25", "karyon_cpp_ext_v24"]:
+            for candidate_name in ["karyon_cpp_ext_v25", "karyon_cpp_ext_v24"]:
                 try:
                     mod = importlib.import_module(candidate_name)
                     if _is_valid_karyon_cpp_module(mod):
