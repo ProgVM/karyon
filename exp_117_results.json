@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-117",
+  "baseline_tok_per_sec": 4849.7398120440885,
+  "proposed_tok_per_sec": 19891.84822838906,
+  "speedup_pct": 310.1632046112791,
+  "baseline_vram_mb": 742.79736328125,
+  "proposed_vram_mb": 1171.65283203125,
+  "vram_savings_pct": -57.735189965613785,
+  "base_real_val_loss": 2.5110342502593994,
+  "prop_real_val_loss": 3.316619396209717,
+  "delta_val_loss": -0.8055851459503174
+}
