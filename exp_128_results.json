@@ -1,0 +1,46 @@
+[
+  {
+    "turn": 1,
+    "user_input": "Hello Karyon! Who are you?",
+    "is_spontaneous": false,
+    "response": "titestatatsinereninten fongrevel foresit",
+    "energy": 0.8039978742599487,
+    "curiosity": 0.8000001907348633,
+    "valence": -0.19600212574005127,
+    "arousal": 0.08,
+    "turn_duration_ms": 2073.9496179994603
+  },
+  {
+    "turn": 2,
+    "user_input": "What is the source of light in our solar system?",
+    "is_spontaneous": false,
+    "response": "tit\ufffd\ufffdI\ufffdtotsedit\ufffdrsteditorerersinoreredit",
+    "energy": 0.9959979057312012,
+    "curiosity": 0.6000003814697266,
+    "valence": -0.004002094268798828,
+    "arousal": 0.08699999323114753,
+    "turn_duration_ms": 1584.7800440024002
+  },
+  {
+    "turn": 3,
+    "user_input": "",
+    "is_spontaneous": true,
+    "response": "tenghiterersoredred morerererselrat\ufffdKnca",
+    "energy": 0.9959979057312012,
+    "curiosity": 0.4000004231929779,
+    "valence": -0.004002094268798828,
+    "arousal": 0.08700000347569585,
+    "turn_duration_ms": 1503.4793810009432
+  },
+  {
+    "turn": 4,
+    "user_input": "Thank you for sharing your thoughts with me.",
+    "is_spontaneous": false,
+    "response": "t-rel matsurs.\ufffdt\ufffdat\ufffdtigrerelrestitatorer",
+    "energy": 1.0,
+    "curiosity": 0.2000003606081009,
+    "valence": 0.0,
+    "arousal": 0.08699999323114753,
+    "turn_duration_ms": 1287.8018020019226
+  }
+]
