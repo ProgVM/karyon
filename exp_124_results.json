@@ -1,0 +1,16 @@
+{
+  "text_latency_ms": 1021.4940009991551,
+  "vision_latency_ms": 5.0529689997347305,
+  "motor_latency_ms": 0.7420700003422098,
+  "volition_action_high_curiosity": "THINK_DEEPER_SANDBOX",
+  "volition_action_low_energy": "INITIATE_SLEEP_CONSOLIDATION",
+  "sleep_report": {
+    "replayed_memories": 10,
+    "total_scaled_params": 57486962,
+    "initial_fe": 0.85,
+    "final_fe": 0.012,
+    "fe_reduction_pct": 98.58823529411764,
+    "restored_energy": 1.0,
+    "duration_ms": 91.87280199876113
+  }
+}
