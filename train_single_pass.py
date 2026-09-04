@@ -339,14 +339,6 @@ def run_single_pass_training():
         action_idx = agent_brain.efe_action_evaluator.select_volitional_action(h_curr[0:1], curiosity_val, energy_val)
         should_sleep = (energy_val <= 0.35) or (action_idx == 2)
 
-        if should_sleep:
-            total_sleep_cycles += 1
-            t_sleep_start = time.perf_counter()
-            logger.info(f"🌙 [Step {batch_idx+1}] Somatic Energy={energy_val:.2f} | C++20 EFE Volition Action={action_idx}. Entering Biophysical Sleep 2.0...")
-            pruned_weights = agent_brain.execute_deep_allostatic_sleep(episodic_mem, hu, num_replay_cycles=3, downscaling_factor=0.03)
-            sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
-            logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep 2.0 Complete ({sleep_duration_ms:.1f}ms). Restored Energy={hu.state[0, 1].item():.2f} | Pruned Weights={pruned_weights}")
-
         moving_mean_fe = (1.0 - alpha_ma) * moving_mean_fe + alpha_ma * fe_val
         moving_var_fe = (1.0 - alpha_ma) * moving_var_fe + alpha_ma * ((fe_val - moving_mean_fe)**2)
         moving_std_fe = math.sqrt(max(1e-6, moving_var_fe))
@@ -385,6 +377,14 @@ def run_single_pass_training():
                 
             total_skipped_batches += 1
             status_str = f"RESTING / SKIPPED (0 Backprop FLOPs)"
+
+        if should_sleep:
+            total_sleep_cycles += 1
+            t_sleep_start = time.perf_counter()
+            logger.info(f"🌙 [Step {batch_idx+1}] Somatic Energy={energy_val:.2f} | C++20 EFE Volition Action={action_idx}. Entering Biophysical Sleep 2.0...")
+            pruned_weights = agent_brain.execute_deep_allostatic_sleep(episodic_mem, hu, num_replay_cycles=3, downscaling_factor=0.03)
+            sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
+            logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep 2.0 Complete ({sleep_duration_ms:.1f}ms). Restored Energy={hu.state[0, 1].item():.2f} | Pruned Weights={pruned_weights}")
 
         batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
         tokens_per_sec = (current_batch_size * (seq_len - 1)) / (batch_total_ms / 1000.0)
