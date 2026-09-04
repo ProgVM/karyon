@@ -1300,6 +1300,17 @@ class CoREAgent(nn.Module):
             temp = 0.10 + 0.35 * torch.sigmoid(5.0 * (entropy - 0.60) + 2.0 * (phasic_gain.squeeze() - 0.50)).item()
             top_p_val = 0.90 + 0.09 * (1.0 - torch.sigmoid(4.0 * (entropy - 0.60)).item())
 
+            # System 2 Parallel Mental Sandbox Integration on High Entropy Boundaries (H > 0.70)
+            if entropy.item() > 0.70 and hasattr(self, 'world_model') and self.world_model is not None:
+                with torch.no_grad():
+                    w_curr_gen = w_t
+                    best_thought_h, min_efe = self.world_model.evaluate_counterfactual_rollout(
+                        h_relaxed, w_curr_gen, num_steps=3
+                    )
+                    # Modulate logits smoothly by Expected Free Energy from Sandbox rollout
+                    efe_penalty = torch.clamp(torch.tensor(min_efe, device=self.device) * 0.10, 0.0, 3.0)
+                    logits = logits - efe_penalty
+
             scaled_logits = logits / max(temp, 1e-4)
             sorted_logits, sorted_indices = torch.sort(scaled_logits, descending=True, dim=-1)
             cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
