@@ -1,7 +1,7 @@
 # karyon_core.py
 """
 ===============================================================================
-KARYON CORE C++20 LIBTORCH COMPILATION & PYTHON BRIDGE v25.0 MASTER
+KARYON CORE C++20 LIBTORCH COMPILATION & PYTHON BRIDGE v24.0 MASTER
 Python as Client, C++20 as Engine (KEP Principle 1)
 Universal Multimodal & Cross-Modal State-Space Cognitive Engine (EXP-90 Validated)
 ===============================================================================
@@ -12,35 +12,32 @@ import importlib
 import torch
 from torch.utils.cpp_extension import load
 
-def _is_valid_karyon_cpp_module(mod):
-    if mod is None:
-        return False
-    required_attrs = ["ByteTokenizer", "SensoryGateway", "ParallelLogDecaySSDLayer", "FusedCascadedLaminarStack"]
-    return all(hasattr(mod, attr) and isinstance(getattr(mod, attr), type) for attr in required_attrs)
-
-# Step 1: Check sys.modules for any already loaded C++ extension binary (excluding Python wrappers & __main__)
+# Step 1: Check if any real C++ module with ByteTokenizer is already loaded in sys.modules
 karyon_cpp = None
 for mod_name, mod in list(sys.modules.items()):
-    if mod_name not in ["__main__", "karyon_core", "karyon_agent", "dialogue"] and (mod_name.startswith("karyon_cpp_ext") or mod_name.startswith("karyon_core_ext")):
-        if _is_valid_karyon_cpp_module(mod):
-            print(f"[C++ JIT] Reusing already loaded C++ module: '{mod_name}'")
-            karyon_cpp = mod
-            break
+    # Skip torch.ops/classes/dynamo to avoid dummy attributes
+    if mod is not None and not any(x in mod_name for x in ["torch.ops", "torch.classes", "torch._dynamo"]):
+        try:
+            val = getattr(mod, "ByteTokenizer", None)
+            if val is not None and isinstance(val, type):
+                print(f"[C++ JIT] Reusing already loaded C++ module: '{mod_name}'")
+                karyon_cpp = mod
+                break
+        except Exception:
+            pass
 
-# Step 2: Try importing candidate names directly from disk / cache
+# Step 2: Try importing candidate names directly
 if karyon_cpp is None:
-    for path in [
-        "/kaggle/working/karyon/build/karyon_core_jit",
-        "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v25",
-        "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v24"
-    ]:
+    # Add common build paths to sys.path
+    for path in ["/kaggle/working/karyon/build/karyon_core_jit", "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v24"]:
         if os.path.exists(path) and path not in sys.path:
             sys.path.append(path)
             
-    for candidate_name in ["karyon_cpp_ext_v25", "karyon_cpp_ext_v24"]:
+    for candidate_name in ["karyon_cpp_ext_v24", "karyon_core_ext", "karyon_core_ext_v1"]:
         try:
             mod = importlib.import_module(candidate_name)
-            if _is_valid_karyon_cpp_module(mod):
+            val = getattr(mod, "ByteTokenizer", None)
+            if val is not None and isinstance(val, type):
                 print(f"[C++ JIT] Successfully imported existing compiled module: '{candidate_name}'")
                 karyon_cpp = mod
                 break
@@ -49,23 +46,25 @@ if karyon_cpp is None:
 
 # Step 3: Compile and load if not found
 if karyon_cpp is None:
-    print("[C++ JIT] Compiling and linking native Karyon C++20 architecture (v25.0 Master Universal Multimodal)...")
+    print("[C++ JIT] Compiling and linking native Karyon C++20 architecture (v24.0 Master Universal Multimodal)...")
     try:
         karyon_cpp = load(
-            name="karyon_cpp_ext_v25",
+            name="karyon_cpp_ext_v24",
             sources=["karyon_core.cpp"],
             extra_cflags=["-O3", "-std=c++20"],
             verbose=False
         )
-        sys.modules["karyon_cpp_ext_v25"] = karyon_cpp
-        print("[C++ JIT] Native C++20 v25.0 Master Universal Multimodal architecture successfully compiled and initialized!")
+        sys.modules["karyon_cpp_ext_v24"] = karyon_cpp
+        print("[C++ JIT] Native C++20 v24.0 Master Universal Multimodal architecture successfully compiled and initialized!")
     except Exception as e:
+        # If compilation failed because of "already registered", try to find any loaded .so or fallback to karyon_core_ext_v1
         if "already registered" in str(e):
             print("[C++ JIT] PyBind11 type registration conflict detected. Attempting fallback import...")
-            for candidate_name in ["karyon_cpp_ext_v25", "karyon_cpp_ext_v24"]:
+            for candidate_name in ["karyon_core_ext_v1", "karyon_core_ext"]:
                 try:
                     mod = importlib.import_module(candidate_name)
-                    if _is_valid_karyon_cpp_module(mod):
+                    val = getattr(mod, "ByteTokenizer", None)
+                    if val is not None and isinstance(val, type):
                         print(f"[C++ JIT] Fallback successful! Reusing '{candidate_name}'")
                         karyon_cpp = mod
                         break
@@ -76,7 +75,7 @@ if karyon_cpp is None:
         else:
             raise e
 
-# Export all native C++ classes to Python interface
+# Export all 16 native C++ classes to Python interface
 ByteTokenizer = karyon_cpp.ByteTokenizer
 HomeostaticUnit = karyon_cpp.HomeostaticUnit
 SensoryGateway = karyon_cpp.SensoryGateway

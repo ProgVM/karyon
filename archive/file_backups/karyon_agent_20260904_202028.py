@@ -135,13 +135,6 @@ class DynamicSensoryGateway(nn.Module):
 
     def forward(self, sensor_inputs: Dict[str, torch.Tensor], h_prev: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, List[str], torch.Tensor]:
         batch_size = h_prev.size(0)
-        # Defensive proxy slice if h_prev is 4D SSD state or non-standard dimension
-        if h_prev.dim() > 2 or h_prev.size(-1) != self.hidden_dim:
-            if h_prev.numel() >= batch_size * self.hidden_dim:
-                h_prev = h_prev.view(batch_size, -1)[:, :self.hidden_dim]
-            else:
-                h_prev = torch.zeros(batch_size, self.hidden_dim, device=self.device, dtype=h_prev.dtype if hasattr(h_prev, 'dtype') else torch.float32)
-
         projected_channels = []
         channel_names = []
 
@@ -687,20 +680,15 @@ class CoREAgent(nn.Module):
         with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), dtype=self.hardware.get_autocast_dtype(), enabled=self.hardware.config.enable_amp and not self.hardware.is_cpu):
             x_in = self.in_proj(w_t).unsqueeze(1)
             
-            expected_m_numel = h_fast.size(0) * self.num_heads * self.head_k * self.head_v
-            if h_fast.dim() == 4 and h_fast.size(1) == self.num_heads and h_fast.size(2) == self.head_k and h_fast.size(3) == self.head_v:
+            if h_fast.dim() == 2:
+                m_s1 = h_fast.view(h_fast.size(0), self.num_heads, self.head_k, self.head_v) if h_fast.numel() == h_fast.size(0) * self.num_heads * self.head_k * self.head_v else torch.zeros(h_fast.size(0), self.num_heads, self.head_k, self.head_v, device=self.device)
+            else:
                 m_s1 = h_fast
-            elif h_fast.numel() == expected_m_numel:
-                m_s1 = h_fast.view(h_fast.size(0), self.num_heads, self.head_k, self.head_v)
-            else:
-                m_s1 = torch.zeros(h_fast.size(0), self.num_heads, self.head_k, self.head_v, device=self.device, dtype=x_in.dtype)
                 
-            if h_slow.dim() == 4 and h_slow.size(1) == self.num_heads and h_slow.size(2) == self.head_k and h_slow.size(3) == self.head_v:
-                m_s2 = h_slow
-            elif h_slow.numel() == expected_m_numel:
-                m_s2 = h_slow.view(h_slow.size(0), self.num_heads, self.head_k, self.head_v)
+            if h_slow.dim() == 2:
+                m_s2 = h_slow.view(h_slow.size(0), self.num_heads, self.head_k, self.head_v) if h_slow.numel() == h_slow.size(0) * self.num_heads * self.head_k * self.head_v else torch.zeros(h_slow.size(0), self.num_heads, self.head_k, self.head_v, device=self.device)
             else:
-                m_s2 = torch.zeros(h_slow.size(0), self.num_heads, self.head_k, self.head_v, device=self.device, dtype=x_in.dtype)
+                m_s2 = h_slow
 
             h_s1_out, m_s1_next, dt1 = self.stage1(x_in, m_s1, u_t, torch.Tensor(), dt)
             dummy_ids = torch.zeros(x_in.size(0), 1, dtype=torch.long, device=self.device)
@@ -1249,7 +1237,7 @@ class CoREAgent(nn.Module):
     def process_universal_stream(self, channel_name: str, tensor_data: torch.Tensor, hu: HomeostaticUnit, episodic_mem: BatchedEpisodicMemory) -> Tuple[torch.Tensor, float, float, float]:
         """
         Processes a single modality channel stream on the unified representation space.
-        Returns: (h_mind, FreeEnergy, Loss, latency_ms)
+        Returns: (h_relaxed, FreeEnergy, Loss, latency_ms)
         """
         t0 = time.perf_counter()
         
@@ -1262,7 +1250,7 @@ class CoREAgent(nn.Module):
         u_t = hu.state if hu is not None else torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], device=self.device)
         
         with torch.no_grad():
-            outs, fe, commit_loss, _, _, m_s1_next, m_s2_next, z_t = self.forward_multimodal_step(sensor_dict, m_s1, m_s2, u_t)
+            outs, fe, commit_loss, _, _, _, _, _ = self.forward_multimodal_step(sensor_dict, m_s1, m_s2, u_t)
             
             # Write to episodic memory if novelty is high
             fe_val = fe.mean().item()
@@ -1271,8 +1259,7 @@ class CoREAgent(nn.Module):
                 episodic_mem.write(q_proj, q_proj)
                 
         duration_ms = (time.perf_counter() - t0) * 1000.0
-        h_mind = m_s2_next.view(1, -1)[:, :self.hidden_dim]
-        return h_mind, fe_val, commit_loss.mean().item(), duration_ms
+        return outs.get(channel_name, torch.randn(1, self.text_dim, device=self.device)), fe_val, commit_loss.mean().item(), duration_ms
     def generate_thought_and_speech(
         self, prompt: str, m_state: torch.Tensor, h_state: torch.Tensor, hu, episodic_memory, 
         config, max_generated_tokens: int = 120, temperature: float = 0.45, top_p: float = 0.90
@@ -1370,18 +1357,11 @@ class CoREAgent(nn.Module):
             early_step_factor = math.exp(-step / 4.0)
             logits[:, 257] = logits[:, 257] - 15.0 * early_step_factor
 
-            # Continuous Repetition Penalty (Frequency Penalty) to prevent autoregressive loops
-            recent_tokens = rolling_token_ids[-32:]
-            if len(recent_tokens) > 0:
-                token_counts = torch.bincount(torch.tensor(recent_tokens, device=self.device), minlength=258).float()
-                rep_penalty = token_counts.unsqueeze(0) * 2.0
-                logits = logits - rep_penalty
-
             p_dist = F.softmax(logits, dim=-1)
             entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1)
 
             # Continuous Active Inference PAC Decoding (Modulated by LC Phasic Gain & Local Surprise)
-            temp = 0.30 + 0.35 * torch.sigmoid(5.0 * (entropy - 0.60) + 2.0 * (phasic_gain.squeeze() - 0.50)).item()
+            temp = 0.10 + 0.35 * torch.sigmoid(5.0 * (entropy - 0.60) + 2.0 * (phasic_gain.squeeze() - 0.50)).item()
             top_p_val = 0.90 + 0.09 * (1.0 - torch.sigmoid(4.0 * (entropy - 0.60)).item())
 
             # System 2 Parallel Mental Sandbox Integration on High Entropy Boundaries (H > 0.70)

@@ -611,14 +611,9 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         auto y_inter_all = torch::matmul(q_decay_flat, M_all); // (B, num_heads, num_chunks, Q, head_v)
         auto y_inter = y_inter_all.permute({0, 2, 1, 3, 4}); // (B, num_chunks, num_heads, Q, head_v)
 
-        // Final state update for next sequence:
-        // M_all contains state entering each chunk. For the last chunk (index num_chunks - 1),
-        // state entering is M_all.slice(2, -1).
-        // To compute the state LEAVING the last chunk, decay it across the last chunk and add last chunk update U.
-        auto alpha_last_chunk = torch::exp(log_alpha_chunks.slice(1, -1)).squeeze(-1).squeeze(-1).permute({0, 2, 1}).unsqueeze(-1).unsqueeze(-1); // (B, num_heads, 1, 1, 1)
-        auto m_enter_last = M_all.slice(2, -1); // (B, num_heads, 1, head_k, head_v)
-        auto U_last = U.slice(2, -1); // (B, num_heads, 1, head_k, head_v)
-        auto m_next = m_enter_last * alpha_last_chunk + U_last;
+        // Final state update for next sequence
+        auto alpha_last = torch::exp(lambda_chunks_flat.slice(2, -1)).unsqueeze(-1).unsqueeze(-1);
+        auto m_next = alpha_last * m_prev.unsqueeze(2) + M_inter_all.slice(2, -1);
         auto m_curr = torch::clamp(m_next.squeeze(2), -10000.0f, 10000.0f);
         auto y_total = (y_intra + y_inter).permute({0, 1, 3, 2, 4}).reshape({batch_size * seq_len, num_heads * head_v});
         auto y_normed = head_norm->forward(y_total.to(torch::kFloat32)).to(orig_dtype); // Normalized in float32 for absolute numerical stability
@@ -1175,7 +1170,7 @@ public:
     // Evaluates Expected Free Energy G and returns optimal policy index:
     // 0: EXPRESS_OUTPUT, 1: THINK_DEEPER_SANDBOX, 2: INITIATE_SLEEP_CONSOLIDATION
     int64_t select_volitional_action(torch::Tensor h_current, float curiosity, float energy) {
-        torch::NoGradGuard no_grad;
+        torch::NoGradSection no_grad;
         auto logits = action_head->forward(h_current);
         logits.select(1, 1).add_(1.5f * curiosity);
         logits.select(1, 2).add_(2.0f * std::max(0.0f, 0.40f - energy));
@@ -1206,7 +1201,7 @@ public:
     }
 
     void adapt_local_fast_weights(torch::Tensor pre_act, torch::Tensor post_err, float na_t, float da_t) {
-        torch::NoGradGuard no_grad;
+        torch::NoGradSection no_grad;
         float neuromodulation = 0.20f + 0.80f * na_t + 0.50f * da_t;
         auto dW = torch::bmm(post_err.unsqueeze(-1), pre_act.unsqueeze(1)).mean(0);
         W_fast.mul_(0.92f); // Passive decay
@@ -1410,6 +1405,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def_readwrite("size", &BatchedEpisodicMemoryImpl::size)
         .def("write", &BatchedEpisodicMemoryImpl::write,
              py::arg("key"), py::arg("value"), py::arg("protected_slots") = 3)
+        .def("read", &BatchedEpisodicMemoryImpl::read,
+             py::arg("query"), py::arg("temperature") = 0.05f, py::arg("threshold") = 0.5f, py::arg("sigmoid_beta") = 15.0f)
         .def("read", &BatchedEpisodicMemoryImpl::read,
              py::arg("query"), py::arg("temperature") = 0.05f, py::arg("threshold") = 0.5f, py::arg("sigmoid_beta") = 15.0f)
         .def("consolidate_and_prune", &BatchedEpisodicMemoryImpl::consolidate_and_prune,

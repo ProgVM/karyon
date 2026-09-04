@@ -10,9 +10,6 @@ karyon_agent_runtime/
 *.agent.db
 *.agent.db-wal
 *.agent.db-shm
-state.db
-state.db-wal
-state.db-shm
 
 # --- C++ JIT & Build Artifacts ---
 *.so

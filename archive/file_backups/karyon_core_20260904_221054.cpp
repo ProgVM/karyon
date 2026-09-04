@@ -611,14 +611,9 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         auto y_inter_all = torch::matmul(q_decay_flat, M_all); // (B, num_heads, num_chunks, Q, head_v)
         auto y_inter = y_inter_all.permute({0, 2, 1, 3, 4}); // (B, num_chunks, num_heads, Q, head_v)
 
-        // Final state update for next sequence:
-        // M_all contains state entering each chunk. For the last chunk (index num_chunks - 1),
-        // state entering is M_all.slice(2, -1).
-        // To compute the state LEAVING the last chunk, decay it across the last chunk and add last chunk update U.
-        auto alpha_last_chunk = torch::exp(log_alpha_chunks.slice(1, -1)).squeeze(-1).squeeze(-1).permute({0, 2, 1}).unsqueeze(-1).unsqueeze(-1); // (B, num_heads, 1, 1, 1)
-        auto m_enter_last = M_all.slice(2, -1); // (B, num_heads, 1, head_k, head_v)
-        auto U_last = U.slice(2, -1); // (B, num_heads, 1, head_k, head_v)
-        auto m_next = m_enter_last * alpha_last_chunk + U_last;
+        // Final state update for next sequence
+        auto alpha_last = torch::exp(lambda_chunks_flat.slice(2, -1)).unsqueeze(-1).unsqueeze(-1);
+        auto m_next = alpha_last * m_prev.unsqueeze(2) + M_inter_all.slice(2, -1);
         auto m_curr = torch::clamp(m_next.squeeze(2), -10000.0f, 10000.0f);
         auto y_total = (y_intra + y_inter).permute({0, 1, 3, 2, 4}).reshape({batch_size * seq_len, num_heads * head_v});
         auto y_normed = head_norm->forward(y_total.to(torch::kFloat32)).to(orig_dtype); // Normalized in float32 for absolute numerical stability
