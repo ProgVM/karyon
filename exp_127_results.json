@@ -1,0 +1,252 @@
+{
+  "initial_loss": 5.9041595458984375,
+  "final_loss": 2.4313430786132812,
+  "loss_delta": 3.4728164672851562,
+  "initial_ppl": 366.55902025726783,
+  "final_ppl": 11.374148201099437,
+  "total_sleep_cycles": 0,
+  "avg_tok_per_sec": 42044.75830901132,
+  "total_duration_sec": 6.851006846000018,
+  "telemetry": [
+    {
+      "step": 1,
+      "loss": 5.9041595458984375,
+      "free_energy": 1.1339963674545288,
+      "energy": 0.8365000486373901,
+      "sleep_occurred": false,
+      "tok_per_sec": 997.4194312079974
+    },
+    {
+      "step": 2,
+      "loss": 10.267041206359863,
+      "free_energy": 1.0545201301574707,
+      "energy": 0.8230000734329224,
+      "sleep_occurred": false,
+      "tok_per_sec": 34109.45286648137
+    },
+    {
+      "step": 3,
+      "loss": 10.356010437011719,
+      "free_energy": 1.0541257858276367,
+      "energy": 0.8095000982284546,
+      "sleep_occurred": false,
+      "tok_per_sec": 34549.49176667352
+    },
+    {
+      "step": 4,
+      "loss": 10.319446563720703,
+      "free_energy": 1.0613969564437866,
+      "energy": 0.7960001230239868,
+      "sleep_occurred": false,
+      "tok_per_sec": 43872.24966990366
+    },
+    {
+      "step": 5,
+      "loss": 10.266134262084961,
+      "free_energy": 1.0468535423278809,
+      "energy": 0.782500147819519,
+      "sleep_occurred": false,
+      "tok_per_sec": 46789.492438815425
+    },
+    {
+      "step": 6,
+      "loss": 10.271458625793457,
+      "free_energy": 1.058248519897461,
+      "energy": 0.7690001726150513,
+      "sleep_occurred": false,
+      "tok_per_sec": 45378.77906359386
+    },
+    {
+      "step": 7,
+      "loss": 8.19426155090332,
+      "free_energy": 0.8090593814849854,
+      "energy": 0.7555001974105835,
+      "sleep_occurred": false,
+      "tok_per_sec": 43835.453022329886
+    },
+    {
+      "step": 8,
+      "loss": 6.940901279449463,
+      "free_energy": 0.8091311454772949,
+      "energy": 0.7420002222061157,
+      "sleep_occurred": false,
+      "tok_per_sec": 44395.62083426825
+    },
+    {
+      "step": 9,
+      "loss": 6.730790138244629,
+      "free_energy": 0.5799174904823303,
+      "energy": 0.728500247001648,
+      "sleep_occurred": false,
+      "tok_per_sec": 43519.80851645578
+    },
+    {
+      "step": 10,
+      "loss": 4.775171279907227,
+      "free_energy": 0.7780423164367676,
+      "energy": 0.7150002717971802,
+      "sleep_occurred": false,
+      "tok_per_sec": 44638.921199117256
+    },
+    {
+      "step": 11,
+      "loss": 4.195185661315918,
+      "free_energy": 0.5343006253242493,
+      "energy": 0.7015002965927124,
+      "sleep_occurred": false,
+      "tok_per_sec": 43899.270527352164
+    },
+    {
+      "step": 12,
+      "loss": 3.3538453578948975,
+      "free_energy": 0.5525115728378296,
+      "energy": 0.6880003213882446,
+      "sleep_occurred": false,
+      "tok_per_sec": 44409.59205492349
+    },
+    {
+      "step": 13,
+      "loss": 3.2175216674804688,
+      "free_energy": 0.6105502843856812,
+      "energy": 0.6745003461837769,
+      "sleep_occurred": false,
+      "tok_per_sec": 43804.65150766967
+    },
+    {
+      "step": 14,
+      "loss": 3.0449228286743164,
+      "free_energy": 0.710835337638855,
+      "energy": 0.6610003709793091,
+      "sleep_occurred": false,
+      "tok_per_sec": 43191.959709166375
+    },
+    {
+      "step": 15,
+      "loss": 2.979973793029785,
+      "free_energy": 0.6039078831672668,
+      "energy": 0.6475003957748413,
+      "sleep_occurred": false,
+      "tok_per_sec": 44259.556599921234
+    },
+    {
+      "step": 16,
+      "loss": 3.024418354034424,
+      "free_energy": 0.5854676961898804,
+      "energy": 0.6340004205703735,
+      "sleep_occurred": false,
+      "tok_per_sec": 43793.00271937793
+    },
+    {
+      "step": 17,
+      "loss": 3.0366134643554688,
+      "free_energy": 0.6088231801986694,
+      "energy": 0.6205004453659058,
+      "sleep_occurred": false,
+      "tok_per_sec": 44196.639880193296
+    },
+    {
+      "step": 18,
+      "loss": 3.073169469833374,
+      "free_energy": 0.5868608355522156,
+      "energy": 0.607000470161438,
+      "sleep_occurred": false,
+      "tok_per_sec": 44473.47320373672
+    },
+    {
+      "step": 19,
+      "loss": 2.792861223220825,
+      "free_energy": 0.5738651752471924,
+      "energy": 0.5935004949569702,
+      "sleep_occurred": false,
+      "tok_per_sec": 43933.31772712712
+    },
+    {
+      "step": 20,
+      "loss": 2.947014331817627,
+      "free_energy": 0.5517981052398682,
+      "energy": 0.5800005197525024,
+      "sleep_occurred": false,
+      "tok_per_sec": 44304.48999162796
+    },
+    {
+      "step": 21,
+      "loss": 2.7304329872131348,
+      "free_energy": 0.5733656287193298,
+      "energy": 0.5665005445480347,
+      "sleep_occurred": false,
+      "tok_per_sec": 43529.62310526437
+    },
+    {
+      "step": 22,
+      "loss": 3.1611456871032715,
+      "free_energy": 0.6549279689788818,
+      "energy": 0.5530005693435669,
+      "sleep_occurred": false,
+      "tok_per_sec": 44342.4058593757
+    },
+    {
+      "step": 23,
+      "loss": 2.904031753540039,
+      "free_energy": 0.5509665012359619,
+      "energy": 0.5395005941390991,
+      "sleep_occurred": false,
+      "tok_per_sec": 44145.2916491206
+    },
+    {
+      "step": 24,
+      "loss": 2.833339214324951,
+      "free_energy": 0.4417599141597748,
+      "energy": 0.5260006189346313,
+      "sleep_occurred": false,
+      "tok_per_sec": 44374.60131848778
+    },
+    {
+      "step": 25,
+      "loss": 2.755492687225342,
+      "free_energy": 0.5896133780479431,
+      "energy": 0.5125006437301636,
+      "sleep_occurred": false,
+      "tok_per_sec": 43798.90697305983
+    },
+    {
+      "step": 26,
+      "loss": 2.6916537284851074,
+      "free_energy": 0.5085815191268921,
+      "energy": 0.4990006685256958,
+      "sleep_occurred": false,
+      "tok_per_sec": 43037.77394453077
+    },
+    {
+      "step": 27,
+      "loss": 2.570892333984375,
+      "free_energy": 0.4809781014919281,
+      "energy": 0.485500693321228,
+      "sleep_occurred": false,
+      "tok_per_sec": 43787.875521979935
+    },
+    {
+      "step": 28,
+      "loss": 2.5232906341552734,
+      "free_energy": 0.3658747375011444,
+      "energy": 0.47200071811676025,
+      "sleep_occurred": false,
+      "tok_per_sec": 43591.76267439393
+    },
+    {
+      "step": 29,
+      "loss": 2.4302239418029785,
+      "free_energy": 0.3680059313774109,
+      "energy": 0.4585007429122925,
+      "sleep_occurred": false,
+      "tok_per_sec": 44043.38842076998
+    },
+    {
+      "step": 30,
+      "loss": 2.4313430786132812,
+      "free_energy": 0.40018025040626526,
+      "energy": 0.4450007677078247,
+      "sleep_occurred": false,
+      "tok_per_sec": 44338.477073413604
+    }
+  ]
+}
