@@ -1,0 +1,6 @@
+{
+  "exp_id": "EXP-116",
+  "baseline_tok_per_sec": 173.56726388194704,
+  "fused_tok_per_sec": 192.6743704079391,
+  "speedup_pct": 11.008473659519053
+}
