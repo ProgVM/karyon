@@ -2,7 +2,7 @@
 
 > **Official Cybernetic & Biophysical Protocol for Karyon-CoRE Architecture Development**  
 > **Author & Repository Owner:** Bazilevs (ProgVM)  
-> **Standard:** KEP v8.1 Master (Mandatory for all human architects and AI collaborators).
+> **Standard:** KEP v9.0 Master (Mandatory for all human architects and AI collaborators).
 
 ---
 
@@ -18,6 +18,7 @@
 8. **Principle 8 (Compositional Depth Over Flat Width):** A single-layer network cannot substitute compositional reasoning with exponential width. Multi-stage hierarchical laminar depth is mandatory for complex multi-step reasoning.
 9. **Principle 9 (Continuous Spontaneous Dual-Refactoring Mandate):** Refactoring is an active, spontaneous, and continuous obligation executed on Axis A (Technical & Hardware Safety) and Axis B (Biophysical & KEP Compliance).
 10. **Principle 10 (Autonomy of Protocol Evolution):** The Lead AI Cyberneticist possesses full, self-directed autonomy to update and refine the KEP specification, operational rules, and architectural guidelines whenever a more optimal, elegant, or biologically realistic algorithm or workflow is discovered, or when directed by Bazilevs.
+11. **Principle 11 (Deliberative Ideation First — "Think Before Code"):** Architectural concepts, paradigm shifts, and theoretical reframings MUST be fully elaborated, stress-tested, and polished to architectural perfection across multi-step theoretical deliberation BEFORE writing any production or benchmark code.
 
 ---
 
