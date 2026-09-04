@@ -1370,11 +1370,18 @@ class CoREAgent(nn.Module):
             early_step_factor = math.exp(-step / 4.0)
             logits[:, 257] = logits[:, 257] - 15.0 * early_step_factor
 
+            # Continuous Repetition Penalty (Frequency Penalty) to prevent autoregressive loops
+            recent_tokens = rolling_token_ids[-32:]
+            if len(recent_tokens) > 0:
+                token_counts = torch.bincount(torch.tensor(recent_tokens, device=self.device), minlength=258).float()
+                rep_penalty = token_counts.unsqueeze(0) * 2.0
+                logits = logits - rep_penalty
+
             p_dist = F.softmax(logits, dim=-1)
             entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1)
 
             # Continuous Active Inference PAC Decoding (Modulated by LC Phasic Gain & Local Surprise)
-            temp = 0.10 + 0.35 * torch.sigmoid(5.0 * (entropy - 0.60) + 2.0 * (phasic_gain.squeeze() - 0.50)).item()
+            temp = 0.30 + 0.35 * torch.sigmoid(5.0 * (entropy - 0.60) + 2.0 * (phasic_gain.squeeze() - 0.50)).item()
             top_p_val = 0.90 + 0.09 * (1.0 - torch.sigmoid(4.0 * (entropy - 0.60)).item())
 
             # System 2 Parallel Mental Sandbox Integration on High Entropy Boundaries (H > 0.70)
