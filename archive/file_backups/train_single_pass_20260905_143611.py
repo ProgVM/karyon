@@ -286,10 +286,10 @@ episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_conf
 
 h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 
-optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=5e-4, weight_decay=0.01)
+optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
-scaler = torch.amp.GradScaler(hw_engine.device_type, enabled=(use_amp and autocast_dtype == torch.float16))
+scaler = torch.amp.GradScaler(hw_engine.device_type, enabled=use_amp)
 
 TOTAL_TRAINING_STEPS = len(stream_loader)
 WARMUP_STEPS = 50
@@ -416,22 +416,16 @@ def run_single_pass_training():
         t_opt_ms = 0.0
         if should_adapt:
             t_opt_start = time.perf_counter()
-            if scaler.is_enabled():
-                scaler.scale(total_loss_tensor).backward()
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=1.0)
-                
-                scale_before = scaler.get_scale()
-                scaler.step(optimizer)
-                scaler.update()
-                scale_after = scaler.get_scale()
-                
-                if scale_before <= scale_after:
-                    lr_scheduler.step()
-            else:
-                total_loss_tensor.backward()
-                torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=1.0)
-                optimizer.step()
+            scaler.scale(total_loss_tensor).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=3.0)
+            
+            scale_before = scaler.get_scale()
+            scaler.step(optimizer)
+            scaler.update()
+            scale_after = scaler.get_scale()
+            
+            if scale_before <= scale_after:
                 lr_scheduler.step()
                 
             t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
