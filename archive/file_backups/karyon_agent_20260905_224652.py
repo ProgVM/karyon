@@ -941,17 +941,9 @@ class CoREAgent(nn.Module):
             h_dummy = torch.zeros(k_samples.size(0), self.hidden_dim, device=self.device)
             self.world_model(h_dummy, h_dummy, k_samples)
 
-    def execute_deep_allostatic_sleep(
-        self,
-        episodic_memory: BatchedEpisodicMemory,
-        hu: HomeostaticUnit,
-        num_replay_cycles: int = 5,
-        downscaling_factor: float = 0.03,
-        pruning_percentile: float = 0.05,
-        eval_inputs: Optional[torch.Tensor] = None,
-        eval_targets: Optional[torch.Tensor] = None,
-        criterion_speech: Optional[nn.Module] = None
-    ) -> int:
+    def execute_deep_allostatic_sleep(self, episodic_memory: BatchedEpisodicMemory, hu: HomeostaticUnit,
+                                      num_replay_cycles: int = 5, downscaling_factor: float = 0.03,
+                                      pruning_percentile: float = 0.05) -> int:
         self.train()
         active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
         active_memory_slots = min(active_slots, episodic_memory.max_capacity)
@@ -982,49 +974,29 @@ class CoREAgent(nn.Module):
                 w_pred_dream, _, _, _ = self.world_model(h_dummy, h_dummy, w_dream_random)
                 self.attractor_head.relax_to_minima(self.in_proj(w_pred_dream), hu.state)
 
-        # 3. Phase 3: Morphogenesis & Synaptogenesis (4-Level Self-Evolution Integration)
+        # 3. Synaptic Pruning (Morphogenesis)
         total_pruned_weights = 0
-        try:
-            from kcore_evolution import AutonomousSelfEvolutionOrchestrator, StructuralSynaptogenesisPruner
-            prune_info = StructuralSynaptogenesisPruner.prune_quiescent_synapses(self, prune_ratio=pruning_percentile)
-            total_pruned_weights = prune_info["total_pruned"]
-            
-            surprise_val = hu.state[0, 4].item() if hu is not None and hasattr(hu, 'state') and hu.state is not None else 0.20
-            StructuralSynaptogenesisPruner.sprout_active_axons(self, surprise_metric=max(surprise_val, 0.20))
-
-            if eval_inputs is not None and eval_targets is not None and criterion_speech is not None:
-                orchestrator = AutonomousSelfEvolutionOrchestrator(self, device=self.device_str)
-                orchestrator.execute_full_morphogenetic_cycle(
-                    eval_input_tokens=eval_inputs,
-                    eval_target_tokens=eval_targets,
-                    hu=hu,
-                    criterion_speech=criterion_speech,
-                    surprise_metric=max(surprise_val, 0.20)
-                )
-        except Exception as evo_err:
-            logger.warning(f"Notice during evolutionary sleep cycle: {str(evo_err)}. Falling back to direct pruning.")
-            with torch.no_grad():
-                for name, param in self.named_parameters():
-                    if param.dim() > 1 and "weight" in name and param.numel() > 100:
-                        flat_abs = param.abs().flatten()
-                        k = int(flat_abs.numel() * pruning_percentile)
-                        if k > 0:
-                            threshold = torch.kthvalue(flat_abs, k).values
-                            prune_mask = param.abs() < threshold
-                            total_pruned_weights += prune_mask.sum().item()
-                            param.masked_fill_(prune_mask, 0.0)
-
-        # 4. Phase 4: Tononi SHY Synaptic Scaling & Somatic Reset
         with torch.no_grad():
+            for name, param in self.named_parameters():
+                if param.dim() > 1 and "weight" in name and param.numel() > 100:
+                    flat_abs = param.abs().flatten()
+                    k = int(flat_abs.numel() * pruning_percentile)
+                    if k > 0:
+                        threshold = torch.kthvalue(flat_abs, k).values
+                        prune_mask = param.abs() < threshold
+                        total_pruned_weights += prune_mask.sum().item()
+                        param.masked_fill_(prune_mask, 0.0)
+
+            # 4. Tononi SHY Synaptic Scaling
             for param in self.get_all_parameters():
                 if param.dim() > 1:
                     param.mul_(1.0 - downscaling_factor)
 
             # 5. Full Somatic Allostatic Reset
-            hu.state[:, 1] = 1.00 # Energy restored
-            hu.state[:, 2] = 1.00 # Stability restored
-            hu.state[:, 3] = 1.00 # Health restored
-            hu.state[:, 4] = 0.05 # Noradrenaline reset
+            hu.state[:, 1] = 1.00 # Energy
+            hu.state[:, 2] = 1.00 # Stability
+            hu.state[:, 3] = 1.00 # Health
+            hu.state[:, 4] = 0.05 # Noradrenaline
 
         return total_pruned_weights
 

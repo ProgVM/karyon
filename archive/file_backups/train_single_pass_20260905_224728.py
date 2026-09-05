@@ -452,15 +452,7 @@ def run_single_pass_training():
             total_sleep_cycles += 1
             t_sleep_start = time.perf_counter()
             logger.info(f"🌙 [Step {batch_idx+1}] Somatic Energy={energy_val:.2f} | C++20 EFE Volition Action={action_idx}. Entering Biophysical Sleep 2.0...")
-            pruned_weights = agent_brain.execute_deep_allostatic_sleep(
-                episodic_memory=episodic_mem,
-                hu=hu,
-                num_replay_cycles=3,
-                downscaling_factor=0.03,
-                eval_inputs=input_seq,
-                eval_targets=target_seq,
-                criterion_speech=criterion_speech
-            )
+            pruned_weights = agent_brain.execute_deep_allostatic_sleep(episodic_mem, hu, num_replay_cycles=3, downscaling_factor=0.03)
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
             logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep 2.0 Complete ({sleep_duration_ms:.1f}ms). Restored Energy={hu.state[0, 1].item():.2f} | Pruned Weights={pruned_weights}")
 

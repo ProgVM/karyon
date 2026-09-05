@@ -165,20 +165,6 @@ while True:
         logger.info(f"Session closed. State persisted into '{kcore_path}'.")
         break
 
-    if user_input.lower().strip() in ['sleep', '/sleep', 'sleep!']:
-        logger.info("🌙 [User requested sleep] Karyon is entering Deep Evolutionary Sleep & Synaptic Morphogenesis...")
-        t_sleep_start = time.perf_counter()
-        pruned_weights = agent_brain.execute_deep_allostatic_sleep(
-            episodic_memory=episodic_mem,
-            hu=hu,
-            num_replay_cycles=4,
-            downscaling_factor=0.02
-        )
-        sleep_duration_sec = time.perf_counter() - t_sleep_start
-        logger.info(f"☀️ [Awakened] Evolutionary Sleep Complete ({sleep_duration_sec:.2f}s). Restored Energy={hu.state[0, 1].item():.2f} | Pruned Synapses={pruned_weights}")
-        save_karyon(agent_brain, episodic_mem, hu, h_fast, h_slow, epoch=epoch, story_idx=story_idx, filepath=kcore_path)
-        print(f"Karyon: *awakes from deep evolutionary sleep, synapses pruned ({pruned_weights}), energy fully restored to {hu.state[0, 1].item():.2f}* I am renewed.")
-        continue
     # 1. Spontaneous Active Intent & Silence/Pause Handling
     is_spontaneous = False
     if not user_input.strip():
