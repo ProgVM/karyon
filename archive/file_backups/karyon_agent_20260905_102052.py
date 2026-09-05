@@ -1370,22 +1370,21 @@ class CoREAgent(nn.Module):
                 self.somatic_byte_penalty = somatic_byte_penalty
 
             early_step_factor = math.exp(-step / 4.0)
-            logits = raw_logits - somatic_byte_penalty - 2.20 * refractory_trace
-            logits[0, 257] = logits[0, 257] - 15.0 * early_step_factor
+            somatic_penalty = somatic_byte_penalty.clone()
+            somatic_penalty[0, 257] = 15.0 * early_step_factor
+
+            # Effective logits with Biophysical Motor Refractory Hyperpolarization (EXP-132)
+            logits = raw_logits - somatic_penalty - 2.20 * refractory_trace
 
             p_dist = F.softmax(logits, dim=-1)
             entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1)
 
             # Continuous Active Inference PAC Decoding (Modulated by LC Phasic Gain & Local Surprise)
-            # Fetch scalar values in a single step to avoid multiple GPU-CPU synchronizations
-            entropy_val = entropy.item()
-            phasic_gain_val = phasic_gain.squeeze().item()
-
-            temp = 0.10 + 0.35 * (1.0 / (1.0 + math.exp(-(5.0 * (entropy_val - 0.60) + 2.0 * (phasic_gain_val - 0.50)))))
-            top_p_val = 0.90 + 0.09 * (1.0 - (1.0 / (1.0 + math.exp(-(4.0 * (entropy_val - 0.60))))))
+            temp = 0.10 + 0.35 * torch.sigmoid(5.0 * (entropy - 0.60) + 2.0 * (phasic_gain.squeeze() - 0.50)).item()
+            top_p_val = 0.90 + 0.09 * (1.0 - torch.sigmoid(4.0 * (entropy - 0.60)).item())
 
             # System 2 Parallel Mental Sandbox Integration on High Entropy Boundaries (H > 0.70)
-            if entropy_val > 0.70 and hasattr(self, 'world_model') and self.world_model is not None:
+            if entropy.item() > 0.70 and hasattr(self, 'world_model') and self.world_model is not None:
                 with torch.no_grad():
                     w_curr_gen = w_t
                     best_thought_h, min_efe = self.world_model.evaluate_counterfactual_rollout(
@@ -1413,12 +1412,12 @@ class CoREAgent(nn.Module):
                 probs = probs / prob_sum
 
             next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
-            next_token_id = int(next_token)
+            next_token_id = next_token.item()
 
             if step % 4 == 0:
                 hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)
-                # Apply Health Debt from Volitional Override (Pure GPU tensor op, zero .item() syncs)
-                hu_st[0, 3] = torch.clamp(hu_st[0, 3] - 0.02 * allostatic_strain.mean(), 0.0, 1.0)
+                # Apply Health Debt from Volitional Override
+                hu_st[0, 3] = torch.clamp(hu_st[0, 3] - 0.02 * allostatic_strain.mean().item(), 0.0, 1.0)
 
             rolling_token_ids.append(next_token_id)
             
@@ -1449,8 +1448,7 @@ class CoREAgent(nn.Module):
                 "text": token_char
             }
             
-            # Somatic energy fatigue check (Optimized: only fetch scalar if energy is extremely low)
-            if float(hu_st[0, 1].detach()) <= 0.05 and float(gamma_override.mean().detach()) < 0.2:
+            if hu_st[0, 1].item() <= 0.05 and gamma_override.mean().item() < 0.2:
                 yield {"status": "exhausted", "text": " [fatigued...]", "m_state": m_s2, "h_state": h_combined}
                 return
 

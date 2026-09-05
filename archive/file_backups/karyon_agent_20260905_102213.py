@@ -1450,7 +1450,7 @@ class CoREAgent(nn.Module):
             }
             
             # Somatic energy fatigue check (Optimized: only fetch scalar if energy is extremely low)
-            if float(hu_st[0, 1].detach()) <= 0.05 and float(gamma_override.mean().detach()) < 0.2:
+            if float(hu_st[0, 1]) <= 0.05 and float(gamma_override.mean()) < 0.2:
                 yield {"status": "exhausted", "text": " [fatigued...]", "m_state": m_s2, "h_state": h_combined}
                 return
 

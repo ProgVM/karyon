@@ -27,36 +27,24 @@ KCORE_MAGIC_V5 = b"KCORE\x05\x00\x00"
 KCORE_MAGIC_LEGACY = b"KCORE\x01\x00\x00"
 
 def adapt_and_copy_batch_buffer(target_tensor, source_tensor):
-    """Safely copies tensor data between target and source, handling rank and dimension differences."""
-    if target_tensor is None or source_tensor is None:
-        return
-        
-    src = source_tensor.to(device=target_tensor.device, dtype=target_tensor.dtype)
+    """Safely copies tensor data between target and source, handling dimension differences."""
+    src = source_tensor.to(target_tensor.device)
     
     if target_tensor.shape == src.shape:
         target_tensor.copy_(src)
         return
 
-    # Handle 1D
     if target_tensor.dim() == 1 and src.dim() == 1:
-        copy_len = min(target_tensor.size(0), src.size(0))
-        target_tensor[:copy_len].copy_(src[:copy_len])
+        copy_b = min(target_tensor.size(0), src.size(0))
+        target_tensor[:copy_b].copy_(src[:copy_b])
         return
 
-    # Handle 2D vs Multi-D flattening (e.g. 4D SSD state -> 2D mind representation)
-    if target_tensor.dim() == 2 and src.dim() > 2:
-        src = src.view(src.size(0), -1)
-    elif target_tensor.dim() > 2 and src.dim() == 2 and target_tensor.numel() == src.numel():
-        src = src.view(target_tensor.shape)
-
-    # Handle 2D
     if target_tensor.dim() == 2 and src.dim() == 2:
         copy_b = min(target_tensor.size(0), src.size(0))
         copy_d = min(target_tensor.size(1), src.size(1))
         target_tensor[:copy_b, :copy_d].copy_(src[:copy_b, :copy_d])
         return
 
-    # Handle 3D
     if target_tensor.dim() == 3 and src.dim() == 3:
         copy_b = min(target_tensor.size(0), src.size(0))
         copy_c = min(target_tensor.size(1), src.size(1))
@@ -64,26 +52,8 @@ def adapt_and_copy_batch_buffer(target_tensor, source_tensor):
         target_tensor[:copy_b, :copy_c, :copy_d].copy_(src[:copy_b, :copy_c, :copy_d])
         return
 
-    # Handle 4D (e.g. SSD m_s1, m_s2 states)
-    if target_tensor.dim() == 4 and src.dim() == 4:
-        copy_b = min(target_tensor.size(0), src.size(0))
-        copy_h = min(target_tensor.size(1), src.size(1))
-        copy_k = min(target_tensor.size(2), src.size(2))
-        copy_v = min(target_tensor.size(3), src.size(3))
-        target_tensor[:copy_b, :copy_h, :copy_k, :copy_v].copy_(src[:copy_b, :copy_h, :copy_k, :copy_v])
-        return
-
-    # Fallback for identical rank tensors
-    if target_tensor.dim() == src.dim():
-        slices = tuple(slice(0, min(t_d, s_d)) for t_d, s_d in zip(target_tensor.shape, src.shape))
-        target_tensor[slices].copy_(src[slices])
-    else:
-        # Generic fallback: flatten both along non-batch dimensions
-        b = min(target_tensor.size(0), src.size(0))
-        t_flat = target_tensor.view(target_tensor.size(0), -1)
-        s_flat = src.view(src.size(0), -1)
-        d = min(t_flat.size(1), s_flat.size(1))
-        t_flat[:b, :d].copy_(s_flat[:b, :d])
+    slices = tuple(slice(0, min(t_d, s_d)) for t_d, s_d in zip(target_tensor.shape, src.shape))
+    target_tensor[slices].copy_(src[slices])
 
 def compute_sha256(data_bytes: bytes) -> str:
     """Computes SHA-256 hexadecimal hash string for payload bytes."""

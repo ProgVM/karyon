@@ -120,16 +120,12 @@ if os.path.exists(kcore_path):
         sections = []
         for _ in range(num_sections):
             sec_raw = f.read(64)
-            s_type, flags, offset, size, _ = struct.unpack('<IIQQQ', sec_raw[:32])
-            sections.append({"type": s_type, "flags": flags, "offset": offset, "size": size})
+            s_type, _, offset, size, _ = struct.unpack('<IIQQQ', sec_raw[:32])
+            sections.append({"type": s_type, "offset": offset, "size": size})
         sec_manifest = next((s for s in sections if s["type"] == 1), None)
         if sec_manifest:
             f.seek(sec_manifest["offset"])
-            manifest_raw = f.read(sec_manifest["size"])
-            if sec_manifest["flags"] & 0x01: # FLAG_ZLIB_COMPRESSED
-                import zlib
-                manifest_raw = zlib.decompress(manifest_raw)
-            manifest = json.loads(manifest_raw.decode('utf-8'))
+            manifest = json.loads(f.read(sec_manifest["size"]).decode('utf-8'))
             genome = manifest.get("genome", {})
             if genome.get("text_dim", 128) != 256:
                 logger.warning(f"Detected legacy DNA (text_dim={genome.get('text_dim')}). Rebuilding container for Unshackled Flow 256D...")
