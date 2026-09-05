@@ -1096,8 +1096,6 @@ class CoREAgent(nn.Module):
         m_s1 = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
         m_s2 = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
         curr_u_t = hu_batch.state.clone().detach()
-        if curr_u_t.size(-1) > 6:
-            curr_u_t = curr_u_t[:, :6]
         h_prev_fast = torch.zeros(batch_size, self.hidden_dim, device=self.device)
         h1_prev_last = torch.zeros(batch_size, 1, self.hidden_dim, device=self.device)
         

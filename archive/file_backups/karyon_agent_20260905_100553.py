@@ -1096,8 +1096,8 @@ class CoREAgent(nn.Module):
         m_s1 = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
         m_s2 = torch.zeros(batch_size, self.num_heads, self.head_k, self.head_v, dtype=torch.float32, device=self.device)
         curr_u_t = hu_batch.state.clone().detach()
-        if curr_u_t.size(-1) > 6:
-            curr_u_t = curr_u_t[:, :6]
+        if curr_u_t.size(-1) > self.homeo_dim:
+            curr_u_t = curr_u_t[:, :self.homeo_dim]
         h_prev_fast = torch.zeros(batch_size, self.hidden_dim, device=self.device)
         h1_prev_last = torch.zeros(batch_size, 1, self.hidden_dim, device=self.device)
         
@@ -1126,8 +1126,10 @@ class CoREAgent(nn.Module):
             ret_mem_unrolled = ret_mem_modulated.unsqueeze(1).expand(batch_size, seq_len, -1).contiguous().view(batch_size * seq_len, -1).float()
             unrolled_inputs['episodic_recall'] = ret_mem_unrolled
 
+        print(f"[DEBUG forward_multimodal_sequence] curr_u_t shape: {curr_u_t.shape}, seq_len: {seq_len}, batch_size: {batch_size}")
         h_prev_unrolled = torch.zeros(batch_size * seq_len, self.hidden_dim, device=self.device).float()
         u_t_unrolled = curr_u_t.unsqueeze(1).expand(batch_size, seq_len, -1).contiguous().view(batch_size * seq_len, -1).float()
+        print(f"[DEBUG forward_multimodal_sequence] u_t_unrolled shape: {u_t_unrolled.shape}")
         
         with torch.amp.autocast(device_type=('cuda' if self.hardware.is_cuda else ('xla' if self.hardware.is_tpu else 'cpu')), enabled=False):
             w_t_unrolled, attn_weights_unrolled, channel_names, epistemic_entropy_unrolled = self.gateway(
