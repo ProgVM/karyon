@@ -401,7 +401,7 @@ def run_single_pass_training():
 
         # Dynamic Volitional Sleep 2.0 Trigger
         action_idx = agent_brain.efe_action_evaluator.select_volitional_action(h_curr[0:1], curiosity_val, energy_val)
-        should_sleep = (energy_val <= 0.20) or (energy_val <= 0.35 and action_idx == 2)
+        should_sleep = (energy_val <= 0.35) or (action_idx == 2)
 
         moving_mean_fe = (1.0 - alpha_ma) * moving_mean_fe + alpha_ma * fe_val
         moving_var_fe = (1.0 - alpha_ma) * moving_var_fe + alpha_ma * ((fe_val - moving_mean_fe)**2)
