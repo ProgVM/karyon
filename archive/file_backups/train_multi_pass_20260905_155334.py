@@ -80,8 +80,7 @@ hw_engine = get_hardware_engine()
 device = hw_engine.device
 device_str = str(device)
 use_amp = hw_engine.config.enable_amp and not hw_engine.is_cpu
-autocast_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-logger.info(f"Execution context: {device_str.upper()} (AMP Enabled: {use_amp}, Dtype: {autocast_dtype})")
+logger.info(f"Execution context: {device_str.upper()} (AMP FP16 Enabled: {use_amp})")
 
 kcore_path = "karyon_soul.kcore"
 hf_repo_id = "progvmoff/karyon-v31-core"
@@ -233,7 +232,7 @@ class ContinuousPackedDataset(Dataset):
 def collate_packed_fn(batch):
     return torch.stack(batch, dim=0)
 
-BATCH_SIZE = 12
+BATCH_SIZE = 16
 SEQ_LEN = 1024
 NUM_PASSES = 3
 CHUNK_SIZE = 64
@@ -247,7 +246,8 @@ stream_loader = DataLoader(
     shuffle=True, 
     collate_fn=collate_packed_fn, 
     drop_last=True,
-    num_workers=0,
+    num_workers=2,
+    persistent_workers=True,
     pin_memory=hw_engine.is_cuda
 )
 
@@ -277,7 +277,7 @@ episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_conf
 
 h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 
-optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=5e-4, weight_decay=0.01)
+optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
 scaler = torch.amp.GradScaler(hw_engine.device_type, enabled=use_amp)
@@ -365,7 +365,7 @@ def run_multi_pass_training():
             optimizer.zero_grad()
             
             t_exec_start = time.perf_counter()
-            with torch.amp.autocast(device_type=device_str, dtype=autocast_dtype, enabled=use_amp):
+            with torch.amp.autocast(device_type=device_str, dtype=torch.float16, enabled=use_amp):
                 total_loss_tensor, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
                     input_seq, target_seq, hu, criterion_speech, episodic_memory=episodic_mem,
                     loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE, use_checkpointing=False

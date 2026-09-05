@@ -233,7 +233,7 @@ class ContinuousPackedDataset(Dataset):
 def collate_packed_fn(batch):
     return torch.stack(batch, dim=0)
 
-BATCH_SIZE = 12
+BATCH_SIZE = 16
 SEQ_LEN = 1024
 NUM_PASSES = 3
 CHUNK_SIZE = 64
@@ -247,7 +247,8 @@ stream_loader = DataLoader(
     shuffle=True, 
     collate_fn=collate_packed_fn, 
     drop_last=True,
-    num_workers=0,
+    num_workers=2,
+    persistent_workers=True,
     pin_memory=hw_engine.is_cuda
 )
 
@@ -277,7 +278,7 @@ episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_conf
 
 h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 
-optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=5e-4, weight_decay=0.01)
+optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=3e-3, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
 scaler = torch.amp.GradScaler(hw_engine.device_type, enabled=use_amp)
