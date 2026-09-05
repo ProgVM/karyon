@@ -386,7 +386,6 @@ def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu', v
         adapt_and_copy_batch_buffer(memory.values, states_dict["memory_values"])
         adapt_and_copy_batch_buffer(memory.pointer, states_dict["memory_pointer"])
         adapt_and_copy_batch_buffer(memory.size, states_dict["memory_size"])
-        memory.max_active_cpu = int(memory.size.max().item())
 
     if "homeostasis_state" in states_dict:
         adapt_and_copy_batch_buffer(hu.state, states_dict["homeostasis_state"])

@@ -1419,10 +1419,6 @@ class CoREAgent(nn.Module):
 
             rolling_token_ids.append(next_token_id)
             
-            # Biophysical Action Refractory Update (EXP-132)
-            refractory_trace = 0.78 * refractory_trace
-            refractory_trace[0, next_token_id] += 1.0
-            
             if next_token_id == 257:
                 break
             if next_token_id == 10:

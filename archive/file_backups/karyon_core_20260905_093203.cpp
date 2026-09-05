@@ -1068,8 +1068,7 @@ public:
         values.index_put_({batch_indices, pointer}, value);
 
         size = torch::clamp(size + 1, 0, max_capacity);
-        int64_t max_ptr_idx = pointer.max().item<int64_t>() + 1;
-        max_active_cpu = std::min(std::max(max_active_cpu, max_ptr_idx), max_capacity);
+        max_active_cpu = std::min(max_active_cpu + 1, max_capacity);
 
         auto next_ptr = pointer + 1;
         auto wrap_mask = next_ptr >= max_capacity;
@@ -1083,8 +1082,7 @@ public:
         }
 
         int64_t q_b = query.size(0);
-        int64_t max_sz = (size.numel() > 0) ? size.max().item<int64_t>() : 0;
-        int64_t max_active = std::min(std::max(max_active_cpu, max_sz), max_capacity);
+        int64_t max_active = (max_active_cpu > 0) ? max_active_cpu : size.max().item<int64_t>();
 
         if (max_active == 0) {
             auto empty_val = torch::zeros({q_b, memory_dim}, query.options()).to(orig_dtype);

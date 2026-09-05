@@ -1315,7 +1315,6 @@ class CoREAgent(nn.Module):
 
         total_prompt_len = prompt_tokens.size(1)
         consecutive_newlines = 0
-        refractory_trace = torch.zeros(1, 258, device=self.device)
 
         for step in range(max_generated_tokens):
             context_window = rolling_token_ids[-8:]
@@ -1333,8 +1332,8 @@ class CoREAgent(nn.Module):
             phasic_gain = self.lc_gain(na_t) # continuous factor in (0, 1)
 
             if episodic_memory is not None and active_slots > 0:
-                q_k = self.episodic_sensory_proj(window_emb.mean(dim=1)).float()
-                ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.20, sigmoid_beta=10.0)
+                q_k = self.episodic_sensory_proj(t_emb.squeeze(1)).float()
+                ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.50, sigmoid_beta=10.0)
                 # Modulate memory injection smoothly by phasic noradrenaline gain
                 sensor_inputs['episodic_recall'] = ret_mem * phasic_gain
 
@@ -1367,12 +1366,9 @@ class CoREAgent(nn.Module):
                 somatic_byte_penalty[0, 127] = 8.0
                 self.somatic_byte_penalty = somatic_byte_penalty
 
+            logits = raw_logits - self.somatic_byte_penalty
             early_step_factor = math.exp(-step / 4.0)
-            somatic_penalty = somatic_byte_penalty.clone()
-            somatic_penalty[0, 257] = 15.0 * early_step_factor
-
-            # Effective logits with Biophysical Motor Refractory Hyperpolarization (EXP-132)
-            logits = raw_logits - somatic_penalty - 2.20 * refractory_trace
+            logits[:, 257] = logits[:, 257] - 15.0 * early_step_factor
 
             p_dist = F.softmax(logits, dim=-1)
             entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1)
@@ -1418,10 +1414,6 @@ class CoREAgent(nn.Module):
                 hu_st[0, 3] = torch.clamp(hu_st[0, 3] - 0.02 * allostatic_strain.mean().item(), 0.0, 1.0)
 
             rolling_token_ids.append(next_token_id)
-            
-            # Biophysical Action Refractory Update (EXP-132)
-            refractory_trace = 0.78 * refractory_trace
-            refractory_trace[0, next_token_id] += 1.0
             
             if next_token_id == 257:
                 break
