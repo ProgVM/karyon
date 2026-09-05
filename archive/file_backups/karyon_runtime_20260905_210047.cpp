@@ -43,7 +43,7 @@ KaryonEntity* karyon_load(const char* kcore_file_path, const char* device) {
     KcoreHeader header;
     file.read(reinterpret_cast<char*>(&header), sizeof(KcoreHeader));
 
-    if (std::memcmp(header.magic, KCORE_MAGIC_V5, 5) != 0) return nullptr;
+    if (std::memcmp(header.magic, KCORE_MAGIC, 5) != 0) return nullptr;
 
     std::vector<KcoreSectionHeader> sections(header.num_sections);
     file.read(reinterpret_cast<char*>(sections.data()), sizeof(KcoreSectionHeader) * header.num_sections);
@@ -55,7 +55,7 @@ KaryonEntity* karyon_load(const char* kcore_file_path, const char* device) {
         if (sec.type == static_cast<uint32_t>(KcoreSectionType::MANIFEST)) {
             entity->manifest_buffer.resize(sec.size);
             file.read(reinterpret_cast<char*>(entity->manifest_buffer.data()), sec.size);
-        } else if (sec.type == static_cast<uint32_t>(KcoreSectionType::LOGIC_CODE_BUNDLE) || 
+        } else if (sec.type == static_cast<uint32_t>(KcoreSectionType::LOGIC_CPP_SOURCE) || 
                    sec.type == static_cast<uint32_t>(KcoreSectionType::LOGIC_LLVM_BITCODE)) {
             entity->logic_buffer.resize(sec.size);
             file.read(reinterpret_cast<char*>(entity->logic_buffer.data()), sec.size);
@@ -150,7 +150,7 @@ void karyon_save(KaryonEntity* entity, const char* kcore_file_path) {
     if (!file.is_open()) return;
 
     KcoreHeader header;
-    std::memcpy(header.magic, KCORE_MAGIC_V5, 8);
+    std::memcpy(header.magic, KCORE_MAGIC, 8);
     header.header_size = sizeof(KcoreHeader);
     header.num_sections = 4;
 
