@@ -138,96 +138,36 @@ else:
     logger.warning(f"Container '{kcore_path}' not found! Automatically building base model via init_priors...")
     initialize_priors(recreate=True, filepath=kcore_path, device=device_str)
 
-logger.info("Assembling Rich Multi-Domain Continuous Stream Dataset (Alpaca, Dolly, Code, GSM8k)...")
+logger.info("Loading COMPLETE Conversational Dataset (52,002 samples from vicgalle/alpaca-gpt4)...")
+dataset = load_dataset("vicgalle/alpaca-gpt4", split="train")
 
-def build_multidomain_packed_stream(seq_len=1024):
-    """Zero-Padding Continuous Stream Packing across 4 Diverse Cognitive Domains."""
-    eos_arr = np.array([257], dtype=np.uint16)
-    byte_chunks = []
-
-    # Domain 1: General Conversation & World Knowledge (Alpaca-GPT4)
-    logger.info(" -> Ingesting Domain 1: vicgalle/alpaca-gpt4 (General Dialogue)...")
-    try:
-        ds_alpaca = load_dataset("vicgalle/alpaca-gpt4", split="train")
-        for item in ds_alpaca:
-            inst = item.get("instruction", "").strip()
-            inp = item.get("input", "").strip()
-            out = item.get("output", "").strip()
-            if inst and out:
-                full_in = f"{inst}\nContext: {inp}" if inp else inst
-                dialog = f"User: {full_in}\nKaryon: {out}"
-                raw_b = dialog.encode('utf-8')
-                byte_chunks.append(np.frombuffer(raw_b, dtype=np.uint8).astype(np.uint16))
-                byte_chunks.append(eos_arr)
-        del ds_alpaca
-    except Exception as e:
-        logger.warning(f"Notice loading Alpaca dataset: {e}")
-
-    # Domain 2: Multi-Task Instructions (Databricks-Dolly-15k)
-    logger.info(" -> Ingesting Domain 2: databricks/databricks-dolly-15k (Instructions & QA)...")
-    try:
-        ds_dolly = load_dataset("databricks/databricks-dolly-15k", split="train")
-        for item in ds_dolly:
-            inst = item.get("instruction", "").strip()
-            ctx = item.get("context", "").strip()
-            resp = item.get("response", "").strip()
-            if inst and resp:
-                full_in = f"{inst}\nContext: {ctx}" if ctx else inst
-                dialog = f"User: {full_in}\nKaryon: {resp}"
-                raw_b = dialog.encode('utf-8')
-                byte_chunks.append(np.frombuffer(raw_b, dtype=np.uint8).astype(np.uint16))
-                byte_chunks.append(eos_arr)
-        del ds_dolly
-    except Exception as e:
-        logger.warning(f"Notice loading Dolly dataset: {e}")
-
-    # Domain 3: Algorithmic & Code Logic (Python Code Instructions 18k)
-    logger.info(" -> Ingesting Domain 3: iamtarun/python_code_instructions_18k_alpaca (Code Logic)...")
-    try:
-        ds_code = load_dataset("iamtarun/python_code_instructions_18k_alpaca", split="train")
-        for item in ds_code:
-            inst = item.get("instruction", "").strip()
-            inp = item.get("input", "").strip()
-            out = item.get("output", "").strip()
-            if inst and out:
-                full_in = f"{inst}\n{inp}" if inp else inst
-                dialog = f"User: {full_in}\nKaryon: {out}"
-                raw_b = dialog.encode('utf-8')
-                byte_chunks.append(np.frombuffer(raw_b, dtype=np.uint8).astype(np.uint16))
-                byte_chunks.append(eos_arr)
-        del ds_code
-    except Exception as e:
-        logger.warning(f"Notice loading Code dataset: {e}")
-
-    # Domain 4: Deductive & Mathematical Reasoning (GSM8k)
-    logger.info(" -> Ingesting Domain 4: gsm8k (Step-by-Step Chain-of-Thought)...")
-    try:
-        ds_gsm = load_dataset("gsm8k", "main", split="train")
-        for item in ds_gsm:
-            q = item.get("question", "").strip()
-            a = item.get("answer", "").strip()
-            if q and a:
-                dialog = f"User: Solve step-by-step: {q}\nKaryon: {a}"
-                raw_b = dialog.encode('utf-8')
-                byte_chunks.append(np.frombuffer(raw_b, dtype=np.uint8).astype(np.uint16))
-                byte_chunks.append(eos_arr)
-        del ds_gsm
-    except Exception as e:
-        logger.warning(f"Notice loading GSM8k dataset: {e}")
-
-    flat_stream = np.concatenate(byte_chunks)
-    del byte_chunks
-    gc.collect()
-    return flat_stream
+tokenizer = ByteTokenizer()
 
 # =============================================================================
 # 1. CONTINUOUS PACKED STREAM DATASET (0% PADDING, S=1024) - SINGLE PASS
 # =============================================================================
 class ContinuousPackedDataset(Dataset):
     """Zero-Padding Continuous Stream Packing with EOS Separators (S=1024) - Single Pass."""
-    def __init__(self, flat_stream, seq_len=1024):
+    def __init__(self, hf_data, tokenizer, seq_len=1024):
         self.seq_len = seq_len
-        self.flat_stream = flat_stream
+        
+        byte_chunks = []
+        eos_arr = np.array([257], dtype=np.uint16)
+        
+        for item in hf_data:
+            inst = item.get("instruction", "").strip()
+            out = item.get("output", "").strip()
+            if inst and out:
+                dialog = f"User: {inst}\nKaryon: {out}"
+                raw_b = dialog.encode('utf-8')
+                arr = np.frombuffer(raw_b, dtype=np.uint8).astype(np.uint16)
+                byte_chunks.append(arr)
+                byte_chunks.append(eos_arr)
+                
+        self.flat_stream = np.concatenate(byte_chunks)
+        del byte_chunks
+        gc.collect()
+
         self.num_blocks = len(self.flat_stream) // (seq_len + 1)
 
     def __len__(self):
@@ -245,8 +185,9 @@ BATCH_SIZE = 16
 SEQ_LEN = 1024
 CHUNK_SIZE = 64
 
-flat_stream = build_multidomain_packed_stream(seq_len=SEQ_LEN)
-train_dataset = ContinuousPackedDataset(flat_stream, seq_len=SEQ_LEN)
+train_dataset = ContinuousPackedDataset(dataset, tokenizer, seq_len=SEQ_LEN)
+del dataset
+gc.collect()
 
 stream_loader = DataLoader(
     train_dataset, 
