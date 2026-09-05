@@ -374,7 +374,7 @@ def run_single_pass_training():
         optimizer.zero_grad()
         
         t_exec_start = time.perf_counter()
-        with torch.amp.autocast(device_type=device_str, dtype=autocast_dtype, enabled=use_amp):
+        with torch.amp.autocast(device_type=device_str, dtype=torch.float16, enabled=use_amp):
             total_loss_tensor, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
                 input_seq, target_seq, hu, criterion_speech, episodic_memory=episodic_mem,
                 loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE, use_checkpointing=False
