@@ -1415,19 +1415,16 @@ class CoREAgent(nn.Module):
             indices_to_remove = to_remove.scatter(1, sorted_indices, to_remove)
             scaled_logits[indices_to_remove] = -1e9
 
-            # Action Selection: Greedy MAP when confident (temp < 0.15), Stochastic Nucleus sampling on word boundaries
-            if temp < 0.15:
-                next_token_id = int(torch.argmax(scaled_logits, dim=-1))
+            probs = F.softmax(scaled_logits, dim=-1)
+            probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
+            prob_sum = probs.sum(dim=-1, keepdim=True)
+            if (prob_sum <= 0).any():
+                probs = torch.full_like(probs, 1.0 / 258)
             else:
-                probs = F.softmax(scaled_logits, dim=-1)
-                probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
-                prob_sum = probs.sum(dim=-1, keepdim=True)
-                if (prob_sum <= 0).any():
-                    probs = torch.full_like(probs, 1.0 / 258)
-                else:
-                    probs = probs / prob_sum
-                next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
-                next_token_id = int(next_token)
+                probs = probs / prob_sum
+
+            next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
+            next_token_id = int(next_token)
 
             if step % 4 == 0:
                 hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)

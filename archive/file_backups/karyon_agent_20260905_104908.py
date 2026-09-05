@@ -1316,10 +1316,12 @@ class CoREAgent(nn.Module):
         refractory_trace = torch.zeros(1, 258, device=self.device)
 
         for step in range(max_generated_tokens):
-            # Dynamically unroll full rolling context to ensure unbroken position & receptive field embeddings
-            full_context_t = torch.tensor([rolling_token_ids[-128:]], dtype=torch.long, device=self.device)
-            full_context_emb = self.pos_embeddings(full_context_t, start_pos=max(0, total_prompt_len + step - 128), apply_rf=True)
-            t_emb = full_context_emb[:, -1:, :]
+            context_window = rolling_token_ids[-8:]
+            window_t = torch.tensor([context_window], dtype=torch.long, device=self.device)
+            window_start_pos = (total_prompt_len + step) - (len(context_window) - 1)
+            
+            window_emb = self.pos_embeddings(window_t, start_pos=window_start_pos, apply_rf=True)
+            t_emb = window_emb[:, -1:, :]
             
             sensor_inputs = {'text': t_emb.squeeze(1)}
             active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
@@ -1329,7 +1331,7 @@ class CoREAgent(nn.Module):
             phasic_gain = self.lc_gain(na_t) # continuous factor in (0, 1)
 
             if episodic_memory is not None and active_slots > 0:
-                q_k = self.episodic_sensory_proj(full_context_emb.mean(dim=1)).float()
+                q_k = self.episodic_sensory_proj(window_emb.mean(dim=1)).float()
                 ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.20, sigmoid_beta=10.0)
                 # Modulate memory injection smoothly by phasic noradrenaline gain
                 sensor_inputs['episodic_recall'] = ret_mem * phasic_gain
@@ -1337,7 +1339,7 @@ class CoREAgent(nn.Module):
             w_t, _, _, _ = self.gateway(sensor_inputs, m_s2.view(1, -1)[:, :self.hidden_dim], hu_st)
             h_in = self.in_proj(w_t).unsqueeze(1)
 
-            h_s1, h_s2, m_s1, m_s2, sal_gate = self.fused_stack(h_in, m_s1, m_s2, hu_st, full_context_t[:, -1:])
+            h_s1, h_s2, m_s1, m_s2, sal_gate = self.fused_stack(h_in, m_s1, m_s2, hu_st, window_t[:, -1:])
             
             # Dynamic dt scaling via Entropy Predictor (Exact Alignment with forward_sequence)
             predicted_entropy = self.entropy_predictor(h_s1)
@@ -1415,19 +1417,16 @@ class CoREAgent(nn.Module):
             indices_to_remove = to_remove.scatter(1, sorted_indices, to_remove)
             scaled_logits[indices_to_remove] = -1e9
 
-            # Action Selection: Greedy MAP when confident (temp < 0.15), Stochastic Nucleus sampling on word boundaries
-            if temp < 0.15:
-                next_token_id = int(torch.argmax(scaled_logits, dim=-1))
+            probs = F.softmax(scaled_logits, dim=-1)
+            probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
+            prob_sum = probs.sum(dim=-1, keepdim=True)
+            if (prob_sum <= 0).any():
+                probs = torch.full_like(probs, 1.0 / 258)
             else:
-                probs = F.softmax(scaled_logits, dim=-1)
-                probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
-                prob_sum = probs.sum(dim=-1, keepdim=True)
-                if (prob_sum <= 0).any():
-                    probs = torch.full_like(probs, 1.0 / 258)
-                else:
-                    probs = probs / prob_sum
-                next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
-                next_token_id = int(next_token)
+                probs = probs / prob_sum
+
+            next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
+            next_token_id = int(next_token)
 
             if step % 4 == 0:
                 hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)
