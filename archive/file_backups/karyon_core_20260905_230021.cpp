@@ -1448,13 +1448,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
              py::arg("h_state"), py::arg("u_t") = torch::Tensor());
 
     py::class_<LatentPredictorImpl, torch::nn::Module, std::shared_ptr<LatentPredictorImpl>>(m, "LatentPredictor")
-        .def(py::init<int64_t, int64_t, int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 512, py::arg("unified_dim") = 256, py::arg("latent_dim") = 128, py::arg("num_candidates") = 16, py::arg("device") = "cpu")
+        .def(py::init<int64_t, int64_t, int64_t, std::string>(),
+             py::arg("hidden_dim") = 512, py::arg("unified_dim") = 256, py::arg("latent_dim") = 128, py::arg("device") = "cpu")
         .def("forward", &LatentPredictorImpl::forward)
         .def("evaluate_counterfactual_rollout", &LatentPredictorImpl::evaluate_counterfactual_rollout,
              py::arg("h_prev"), py::arg("w_curr"), py::arg("num_steps") = 3)
-        .def("parallel_rollout_search", &LatentPredictorImpl::parallel_rollout_search,
-             py::arg("h_curr"), py::arg("w_curr"), py::arg("steps") = 3)
         .def("parameters", [](std::shared_ptr<LatentPredictorImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<LatentPredictorImpl> m) { return m->named_parameters(); })
         .def("__call__", &LatentPredictorImpl::forward);

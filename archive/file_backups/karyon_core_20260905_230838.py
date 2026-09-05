@@ -97,4 +97,3 @@ LatentPredictor = karyon_cpp.LatentPredictor
 TDFreeEnergyCritic = karyon_cpp.TDFreeEnergyCritic
 BatchedEpisodicMemory = karyon_cpp.BatchedEpisodicMemory
 VolitionalActionEvaluator = karyon_cpp.VolitionalActionEvaluator
-LocalNeuromodulatedPlasticity = karyon_cpp.LocalNeuromodulatedPlasticity

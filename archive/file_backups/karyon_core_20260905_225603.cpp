@@ -936,22 +936,20 @@ public:
 };
 
 // ============================================================================
-// 14. ACTIVE INFERENCE LATENT WORLD MODEL & SYSTEM 2 PARALLEL MENTAL SANDBOX
+// 14. ACTIVE INFERENCE LATENT WORLD MODEL
 // ============================================================================
 class LatentPredictorImpl : public torch::nn::Module {
 public:
     int64_t hidden_dim;
     int64_t unified_dim;
     int64_t latent_dim;
-    int64_t num_candidates;
 
     torch::nn::Linear prior_net{nullptr};
     torch::nn::Linear posterior_net{nullptr};
     torch::nn::Sequential decoder_net{nullptr};
-    torch::nn::Sequential candidate_proj{nullptr};
 
-    LatentPredictorImpl(int64_t hidden_dim = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, int64_t num_candidates = 16, std::string device_str = "cpu")
-        : hidden_dim(hidden_dim), unified_dim(unified_dim), latent_dim(latent_dim), num_candidates(num_candidates) {
+    LatentPredictorImpl(int64_t hidden_dim = 512, int64_t unified_dim = 256, int64_t latent_dim = 128, std::string device_str = "cpu")
+        : hidden_dim(hidden_dim), unified_dim(unified_dim), latent_dim(latent_dim) {
         
         prior_net = register_module("prior_net", torch::nn::Linear(hidden_dim, latent_dim * 2));
         posterior_net = register_module("posterior_net", torch::nn::Linear(hidden_dim + unified_dim, latent_dim * 2));
@@ -960,12 +958,6 @@ public:
             torch::nn::Linear(latent_dim + hidden_dim, unified_dim * 2),
             torch::nn::SiLU(),
             torch::nn::Linear(unified_dim * 2, unified_dim)
-        ));
-
-        candidate_proj = register_module("candidate_proj", torch::nn::Sequential(
-            torch::nn::Linear(hidden_dim, hidden_dim * 2),
-            torch::nn::SiLU(),
-            torch::nn::Linear(hidden_dim * 2, hidden_dim * num_candidates)
         ));
 
         if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
@@ -1032,49 +1024,6 @@ public:
             w_sim = w_pred;
         }
         return std::make_tuple(w_sim, total_efe);
-    }
-
-    std::tuple<torch::Tensor, torch::Tensor, float> parallel_rollout_search(
-        torch::Tensor h_curr, 
-        torch::Tensor w_curr, 
-        int64_t steps = 3) {
-
-        auto t0 = std::chrono::high_resolution_clock::now();
-        int64_t b_size = h_curr.size(0);
-
-        // 1. Generate K candidate thought variations (B, K, H)
-        auto cand_delta = candidate_proj->forward(h_curr).view({b_size, num_candidates, hidden_dim});
-        auto h_candidates = h_curr.unsqueeze(1) + 0.10f * cand_delta; // (B, K, H)
-
-        // Flatten for batched GPU execution (B * K, H)
-        auto h_sim = h_candidates.view({b_size * num_candidates, hidden_dim});
-        auto w_sim = w_curr.unsqueeze(1).expand({b_size, num_candidates, unified_dim}).reshape({b_size * num_candidates, unified_dim});
-
-        auto accumulated_efe = torch::zeros({b_size * num_candidates, 1}, h_curr.options());
-
-        // 2. Parallel Rollout across N steps
-        for (int64_t step = 0; step < steps; ++step) {
-            auto out = forward(h_sim, h_sim, w_sim);
-            auto w_pred = std::get<0>(out);
-            auto fe_val = std::get<2>(out);
-            accumulated_efe += fe_val;
-            w_sim = w_pred;
-        }
-
-        // Reshape EFE to (B, K)
-        auto efe_matrix = accumulated_efe.view({b_size, num_candidates});
-
-        // 3. Select ArgMin EFE candidate per batch item
-        auto best_indices = torch::argmin(efe_matrix, -1); // (B,)
-
-        auto batch_idx = torch::arange(b_size, h_curr.options().dtype(torch::kLong));
-        auto best_thought_h = h_candidates.index({batch_idx, best_indices, torch::indexing::Slice()}); // (B, H)
-        auto min_efe = efe_matrix.index({batch_idx, best_indices}).unsqueeze(1); // (B, 1)
-
-        auto t1 = std::chrono::high_resolution_clock::now();
-        float duration_ms = std::chrono::duration<float, std::milli>(t1 - t0).count();
-
-        return std::make_tuple(best_thought_h, min_efe, duration_ms);
     }
 };
 
@@ -1448,13 +1397,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
              py::arg("h_state"), py::arg("u_t") = torch::Tensor());
 
     py::class_<LatentPredictorImpl, torch::nn::Module, std::shared_ptr<LatentPredictorImpl>>(m, "LatentPredictor")
-        .def(py::init<int64_t, int64_t, int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 512, py::arg("unified_dim") = 256, py::arg("latent_dim") = 128, py::arg("num_candidates") = 16, py::arg("device") = "cpu")
+        .def(py::init<int64_t, int64_t, int64_t, std::string>(),
+             py::arg("hidden_dim") = 512, py::arg("unified_dim") = 256, py::arg("latent_dim") = 128, py::arg("device") = "cpu")
         .def("forward", &LatentPredictorImpl::forward)
         .def("evaluate_counterfactual_rollout", &LatentPredictorImpl::evaluate_counterfactual_rollout,
              py::arg("h_prev"), py::arg("w_curr"), py::arg("num_steps") = 3)
-        .def("parallel_rollout_search", &LatentPredictorImpl::parallel_rollout_search,
-             py::arg("h_curr"), py::arg("w_curr"), py::arg("steps") = 3)
         .def("parameters", [](std::shared_ptr<LatentPredictorImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<LatentPredictorImpl> m) { return m->named_parameters(); })
         .def("__call__", &LatentPredictorImpl::forward);

@@ -28,7 +28,7 @@ Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 
 import time
 import math
-from typing import Generator, Dict, Any, List, Tuple, Optional
+from typing import Generator, Dict, Any, List, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

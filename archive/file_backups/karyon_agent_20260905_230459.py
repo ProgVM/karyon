@@ -28,7 +28,7 @@ Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 
 import time
 import math
-from typing import Generator, Dict, Any, List, Tuple, Optional
+from typing import Generator, Dict, Any, List, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -1437,16 +1437,9 @@ class CoREAgent(nn.Module):
             if entropy_val > 0.70 and hasattr(self, 'world_model') and self.world_model is not None:
                 with torch.no_grad():
                     w_curr_gen = w_t
-                    if hasattr(self.world_model, 'parallel_rollout_search'):
-                        best_thought_h, min_efe_t, _ = self.world_model.parallel_rollout_search(
-                            h_relaxed, w_curr_gen, steps=3
-                        )
-                        min_efe = float(min_efe_t.mean().item())
-                        h_relaxed = best_thought_h
-                    else:
-                        best_thought_h, min_efe = self.world_model.evaluate_counterfactual_rollout(
-                            h_relaxed, w_curr_gen, num_steps=3
-                        )
+                    best_thought_h, min_efe = self.world_model.evaluate_counterfactual_rollout(
+                        h_relaxed, w_curr_gen, num_steps=3
+                    )
                     # Modulate logits smoothly by Expected Free Energy from Sandbox rollout
                     efe_penalty = torch.clamp(torch.tensor(min_efe, device=self.device) * 0.10, 0.0, 3.0)
                     logits = logits - efe_penalty
