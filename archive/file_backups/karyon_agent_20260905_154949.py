@@ -291,10 +291,7 @@ class PrecisionWeightedTopDownGenerator(nn.Module):
         h_s1_hat = self.topdown_net(h_s2)
         e1 = h_s1 - h_s1_hat
 
-        if u_t.size(0) == 1 and batch_size > 1:
-            na_t = u_t[:, 4:5].unsqueeze(1).expand(batch_size, seq_len, 1)
-        else:
-            na_t = u_t[:batch_size, 4:5].unsqueeze(1).expand(batch_size, seq_len, 1)
+        na_t = u_t[:, 4].view(batch_size, 1, 1).expand(batch_size, seq_len, 1)
         prec_input = torch.cat([h_s1, h_s1_hat, na_t], dim=-1)
         pi_t = 2.0 * self.precision_estimator(prec_input)
 
@@ -494,13 +491,7 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         # Outer sum tensor broadcasting: [B, 1, 64] + [1, V, 64] -> [B, V, 64]
         efe_field = self.efe_evaluator(v_emb_proj.unsqueeze(0) + u_t_proj.unsqueeze(1)).squeeze(-1) # [B, V]
 
-        # Standardize efe_field to act as a bounded biophysical bias
-        # and prevent unnormalized linear MLP outputs from dominating natural language logits
-        efe_mean = efe_field.mean(dim=-1, keepdim=True)
-        efe_std = efe_field.std(dim=-1, keepdim=True).clamp_min(1e-5)
-        efe_field_norm = (efe_field - efe_mean) / efe_std
-
-        modulated_logits = raw_logits - self.gamma_volition * efe_field_norm
+        modulated_logits = raw_logits - self.gamma_volition * efe_field
         return modulated_logits
 
 

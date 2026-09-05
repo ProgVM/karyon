@@ -494,13 +494,7 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         # Outer sum tensor broadcasting: [B, 1, 64] + [1, V, 64] -> [B, V, 64]
         efe_field = self.efe_evaluator(v_emb_proj.unsqueeze(0) + u_t_proj.unsqueeze(1)).squeeze(-1) # [B, V]
 
-        # Standardize efe_field to act as a bounded biophysical bias
-        # and prevent unnormalized linear MLP outputs from dominating natural language logits
-        efe_mean = efe_field.mean(dim=-1, keepdim=True)
-        efe_std = efe_field.std(dim=-1, keepdim=True).clamp_min(1e-5)
-        efe_field_norm = (efe_field - efe_mean) / efe_std
-
-        modulated_logits = raw_logits - self.gamma_volition * efe_field_norm
+        modulated_logits = raw_logits - self.gamma_volition * efe_field
         return modulated_logits
 
 
