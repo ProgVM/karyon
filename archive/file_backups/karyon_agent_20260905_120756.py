@@ -1196,7 +1196,7 @@ class CoREAgent(nn.Module):
                 v_next = v_preds[:, 1:].detach()
                 r_step = -0.10 * fe_per_batch.unsqueeze(1).expand_as(v_current)
                 td_targets = r_step + gamma_fe * v_next
-                critic_loss = torch.clamp(F.mse_loss(v_current, td_targets), 0.0, 10.0)
+                critic_loss = F.mse_loss(v_current, td_targets)
             else:
                 critic_loss = torch.tensor(0.0, device=self.device)
 
