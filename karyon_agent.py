@@ -503,6 +503,142 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         modulated_logits = raw_logits - self.gamma_volition * efe_field_norm
         return modulated_logits
 
+# =============================================================================
+# MODULE 8: NEO-CORTICAL ARCHITECTURE MODULES (EXP-136 SYNTHESIS)
+# =============================================================================
+
+class EntropyMacroGating(nn.Module):
+    """
+    Entropy-Driven Hierarchical Concept Gating (BLT-Neuro / Multi-timescale Macro-Pulse).
+    Computes local Shannon entropy from Stage 1 representation and produces a dynamic macro-boundary gate
+    to scale Stage 2 semantic processing.
+    """
+    def __init__(self, hidden_dim: int, vocab_size: int = 258, device_str: str = 'cpu'):
+        super().__init__()
+        self.device = torch.device('cuda' if 'cuda' in device_str else 'cpu')
+        self.entropy_head = nn.Linear(hidden_dim, vocab_size).to(self.device)
+        self.macro_boundary_proj = nn.Linear(hidden_dim, 1).to(self.device)
+
+    def forward(self, h_s1: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # h_s1: [B, S, D] or [B, D]
+        logits = self.entropy_head(h_s1)
+        probs = F.softmax(logits, dim=-1)
+        log_probs = F.log_softmax(logits, dim=-1)
+        entropy = -torch.sum(probs * log_probs, dim=-1) # [B, S] or [B] in nats
+        
+        boundary_logits = self.macro_boundary_proj(h_s1).squeeze(-1)
+        boundary_gate = torch.sigmoid(boundary_logits + 2.0 * (entropy - 1.5))
+        return entropy, boundary_gate
+
+
+class ThalamocorticalGate(nn.Module):
+    """
+    Thalamocortical Dynamic Routing & Active Attention Gate (Pulvinar/TRN Gate).
+    Dynamically routes and modulates Stage 1, Stage 2, and non-linear interactive features
+    conditioned on Ashby somatic homeostatic state u_t.
+    """
+    def __init__(self, hidden_dim: int, homeo_dim: int = 6, device_str: str = 'cpu'):
+        super().__init__()
+        self.device = torch.device('cuda' if 'cuda' in device_str else 'cpu')
+        self.routing_mlp = nn.Sequential(
+            nn.Linear(homeo_dim + hidden_dim * 2, 128),
+            nn.SiLU(),
+            nn.Linear(128, 3)
+        ).to(self.device)
+
+    def forward(self, h_s1: torch.Tensor, h_s2: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Supports [B, S, D] or [B, D]
+        if h_s1.dim() == 3:
+            B, S, D = h_s1.shape
+            u_t_seq = u_t.unsqueeze(1).expand(B, S, -1) if u_t.dim() == 2 else u_t
+            ctx = torch.cat([u_t_seq, h_s1, h_s2], dim=-1)
+            routing_weights = F.softmax(self.routing_mlp(ctx), dim=-1) # [B, S, 3]
+            w1 = routing_weights[..., 0:1]
+            w2 = routing_weights[..., 1:2]
+            w3 = routing_weights[..., 2:3]
+            h_thalamic = w1 * h_s1 + w2 * h_s2 + w3 * (h_s1 * h_s2)
+        else:
+            ctx = torch.cat([u_t, h_s1, h_s2], dim=-1)
+            routing_weights = F.softmax(self.routing_mlp(ctx), dim=-1) # [B, 3]
+            w1 = routing_weights[..., 0:1]
+            w2 = routing_weights[..., 1:2]
+            w3 = routing_weights[..., 2:3]
+            h_thalamic = w1 * h_s1 + w2 * h_s2 + w3 * (h_s1 * h_s2)
+        return h_thalamic, routing_weights
+
+
+class FastWeightHebbianPlasticity(nn.Module):
+    """
+    Synaptic Fast-Weight Programmers & Hebbian Plasticity.
+    Maintains fast in-context associative memory updated online via causal exponential decay
+    and modulated by noradrenaline (NA_t).
+    """
+    def __init__(self, hidden_dim: int, key_dim: int = 64, value_dim: int = 64, lambda_decay: float = 0.92, device_str: str = 'cpu'):
+        super().__init__()
+        self.device = torch.device('cuda' if 'cuda' in device_str else 'cpu')
+        self.hidden_dim = hidden_dim
+        self.key_dim = key_dim
+        self.value_dim = value_dim
+        self.lambda_decay = lambda_decay
+        
+        self.k_proj = nn.Linear(hidden_dim, key_dim, bias=False).to(self.device)
+        self.v_proj = nn.Linear(hidden_dim, value_dim, bias=False).to(self.device)
+        self.q_proj = nn.Linear(hidden_dim, key_dim, bias=False).to(self.device)
+        self.out_proj = nn.Linear(value_dim, hidden_dim, bias=False).to(self.device)
+
+    def forward(self, h_seq: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
+        # Handles 3D [B, S, D] and 2D [B, D] (or [B, 1, D])
+        is_2d = (h_seq.dim() == 2)
+        if is_2d:
+            h_seq = h_seq.unsqueeze(1)
+            
+        B, S, D = h_seq.shape
+        K = self.k_proj(h_seq)
+        V = self.v_proj(h_seq)
+        Q = self.q_proj(h_seq)
+        
+        na_t = u_t[:, 4:5].unsqueeze(1) if u_t.dim() == 2 else u_t[..., 4:5]
+        eta = 0.10 * (1.0 + 2.0 * na_t)
+        
+        if S > 1:
+            idx = torch.arange(S, device=h_seq.device)
+            decay_mask = self.lambda_decay ** (idx.unsqueeze(1) - idx.unsqueeze(0))
+            causal_decay_mask = torch.tril(decay_mask).unsqueeze(0)
+            attn_sim = torch.bmm(Q, K.transpose(1, 2)) / math.sqrt(self.key_dim)
+            attn_decayed = attn_sim * causal_decay_mask * eta
+            y_fast = torch.bmm(attn_decayed, V)
+        else:
+            # Single step: instantaneous projection
+            attn_sim = torch.bmm(Q, K.transpose(1, 2)) / math.sqrt(self.key_dim)
+            y_fast = torch.bmm(attn_sim * eta, V)
+            
+        out = self.out_proj(y_fast)
+        return out.squeeze(1) if is_2d else out
+
+
+class PredictiveResidualRouting(nn.Module):
+    """
+    Hierarchical Predictive Residual Coding (Bottom-Up Unpredicted Errors Only).
+    Generates top-down prediction of Stage 1 from Stage 2 and routes only precision-weighted
+    prediction error residuals, calculating residual surprise for Free Energy minimization.
+    """
+    def __init__(self, hidden_dim: int, homeo_dim: int = 6, device_str: str = 'cpu'):
+        super().__init__()
+        self.device = torch.device('cuda' if 'cuda' in device_str else 'cpu')
+        self.topdown_pred = nn.Linear(hidden_dim, hidden_dim).to(self.device)
+        self.precision_gate = nn.Linear(homeo_dim, hidden_dim).to(self.device)
+
+    def forward(self, h_s1: torch.Tensor, h_s2: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        hat_h_s1 = self.topdown_pred(h_s2)
+        error_s1 = h_s1 - hat_h_s1
+        if u_t.dim() == 2 and h_s1.dim() == 3:
+            precision = torch.sigmoid(self.precision_gate(u_t)).unsqueeze(1)
+        else:
+            precision = torch.sigmoid(self.precision_gate(u_t))
+        weighted_error = precision * error_s1
+        error_magnitude = torch.mean(weighted_error ** 2)
+        return weighted_error, error_magnitude
+
 
 # =============================================================================
 # MASTER CORE AGENT (v30.0 PROD MASTER)
@@ -656,6 +792,12 @@ class CoREAgent(nn.Module):
         self.efe_action_evaluator = VolitionalActionEvaluator(hidden_dim=self.hidden_dim, device=self.device_str)
         self.local_plasticity = LocalNeuromodulatedPlasticity(in_features=self.hidden_dim, out_features=self.hidden_dim, lr=0.08, device=self.device_str)
 
+        # 11. Neo-Cortical Quad-Vector Grand Synthesis (EXP-136 Validated 🟢)
+        self.entropy_macro_gate = EntropyMacroGating(self.hidden_dim, vocab_size=self.text_gen_dim, device_str=self.device_str)
+        self.thalamic_router = ThalamocorticalGate(self.hidden_dim, homeo_dim=config.net.homeo_dim, device_str=self.device_str)
+        self.fast_weight_hebbian = FastWeightHebbianPlasticity(self.hidden_dim, device_str=self.device_str)
+        self.predictive_residual_router = PredictiveResidualRouting(self.hidden_dim, homeo_dim=config.net.homeo_dim, device_str=self.device_str)
+
     def execute_sleep_consolidation_2(self, hu: HomeostaticUnit, episodic_mem: BatchedEpisodicMemory, num_replay_cycles: int = 5) -> Dict[str, float]:
         """
         Executes Biophysical Sleep 2.0 with Memory Replay & Tononi SHY Synaptic Scaling.
@@ -725,8 +867,16 @@ class CoREAgent(nn.Module):
             # Hierarchical Volitional Override
             effective_u_t, gamma_override, allostatic_strain = self.will_engine(h_s2_out, u_t)
 
-            topdown_prior = self.topdown_prior_proj(h_s2_out)
-            h_combined = h_s1_out + h_s2_out + 0.15 * topdown_prior
+            # EXP-136 Neo-Cortical Quad-Vector Grand Synthesis
+            entropy_s1, boundary_gate = self.entropy_macro_gate(h_s1_out)
+            h_s2_gated = h_s2_out * (0.50 + 1.00 * boundary_gate.unsqueeze(-1))
+
+            h_thalamic, routing_weights = self.thalamic_router(h_s1_out, h_s2_gated, effective_u_t)
+            y_fast = self.fast_weight_hebbian(h_s1_out, effective_u_t)
+            weighted_error, error_magnitude = self.predictive_residual_router(h_s1_out, h_s2_gated, effective_u_t)
+
+            topdown_prior = self.topdown_prior_proj(h_s2_gated)
+            h_combined = h_thalamic + 0.20 * y_fast + weighted_error + 0.15 * topdown_prior
             h_flat = h_combined.view(-1, self.hidden_dim)
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
             
@@ -766,7 +916,11 @@ class CoREAgent(nn.Module):
             list(self.episodic_sensory_proj.parameters()) +
             list(self.motor_text_proj.parameters()) +
             list(self.volitional_head.parameters()) +
-            list(self.reflex_circuit.parameters())
+            list(self.reflex_circuit.parameters()) +
+            list(self.entropy_macro_gate.parameters()) +
+            list(self.thalamic_router.parameters()) +
+            list(self.fast_weight_hebbian.parameters()) +
+            list(self.predictive_residual_router.parameters())
         )
         for submodule in [self.fused_stack, self.gateway, self.stage1, self.stage2, self.world_model, self.output_gateway, self.attractor_head, self.critic]:
             if hasattr(submodule, 'parameters'):
@@ -1200,9 +1354,18 @@ class CoREAgent(nn.Module):
             effective_u_t, gamma_override, allostatic_strain = self.will_engine(h_s2, curr_u_t)
 
             eff_dt = torch.tensor(1.0, device=self.device)
-            topdown_prior = self.topdown_prior_proj(h_s2)
+
+            # EXP-136 Neo-Cortical Quad-Vector Grand Synthesis
+            entropy_s1, boundary_gate = self.entropy_macro_gate(h_s1)
+            h_s2_gated = h_s2 * (0.50 + 1.00 * boundary_gate.unsqueeze(-1))
+
+            h_thalamic, routing_weights = self.thalamic_router(h_s1, h_s2_gated, effective_u_t)
+            y_fast = self.fast_weight_hebbian(h_s1, effective_u_t)
+            weighted_error, error_magnitude = self.predictive_residual_router(h_s1, h_s2_gated, effective_u_t)
+
+            topdown_prior = self.topdown_prior_proj(h_s2_gated)
             # Smooth continuous modulation via LC Phasic Gain
-            h_combined = h_s1 + h_s2 + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
+            h_combined = h_thalamic + 0.20 * y_fast + weighted_error + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
 
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
@@ -1248,7 +1411,8 @@ class CoREAgent(nn.Module):
                 loss_free_energy_weight * fe_loss_tensor + 
                 0.05 * commit_loss + 
                 0.01 * ortho_loss + 
-                0.02 * critic_loss
+                0.02 * critic_loss +
+                0.10 * error_magnitude
             )
 
         h_proxy = m_s2.view(batch_size, -1)[:, :self.hidden_dim]
@@ -1276,8 +1440,16 @@ class CoREAgent(nn.Module):
             # Volitional override
             effective_u_t, gamma_override, allostatic_strain = self.will_engine(h_s2_out, u_t)
 
-            topdown_prior = self.topdown_prior_proj(h_s2_out)
-            h_combined = h_s1_out + h_s2_out + 0.15 * topdown_prior
+            # EXP-136 Neo-Cortical Quad-Vector Grand Synthesis
+            entropy_s1, boundary_gate = self.entropy_macro_gate(h_s1_out)
+            h_s2_gated = h_s2_out * (0.50 + 1.00 * boundary_gate.unsqueeze(-1))
+
+            h_thalamic, routing_weights = self.thalamic_router(h_s1_out, h_s2_gated, effective_u_t)
+            y_fast = self.fast_weight_hebbian(h_s1_out, effective_u_t)
+            weighted_error, error_magnitude = self.predictive_residual_router(h_s1_out, h_s2_gated, effective_u_t)
+
+            topdown_prior = self.topdown_prior_proj(h_s2_gated)
+            h_combined = h_thalamic + 0.20 * y_fast + weighted_error + 0.15 * topdown_prior
             h_flat = h_combined.view(-1, self.hidden_dim)
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
 
@@ -1385,9 +1557,17 @@ class CoREAgent(nn.Module):
             # Hierarchical Volitional Override in generation
             effective_hu_st, gamma_override, allostatic_strain = self.will_engine(h_s2, hu_st)
 
-            topdown_prior = self.topdown_prior_proj(h_s2)
+            # EXP-136 Neo-Cortical Quad-Vector Grand Synthesis
+            entropy_s1, boundary_gate = self.entropy_macro_gate(h_s1)
+            h_s2_gated = h_s2 * (0.50 + 1.00 * boundary_gate.unsqueeze(-1))
+
+            h_thalamic, routing_weights = self.thalamic_router(h_s1, h_s2_gated, effective_hu_st)
+            y_fast = self.fast_weight_hebbian(h_s1, effective_hu_st)
+            weighted_error, error_magnitude = self.predictive_residual_router(h_s1, h_s2_gated, effective_hu_st)
+
+            topdown_prior = self.topdown_prior_proj(h_s2_gated)
             # Full cortical laminar combination matching forward_sequence
-            h_combined = h_s1 + h_s2 + topdown_prior
+            h_combined = h_thalamic + 0.20 * y_fast + weighted_error + topdown_prior
 
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, effective_hu_st)
