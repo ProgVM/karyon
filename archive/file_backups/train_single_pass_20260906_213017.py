@@ -1,7 +1,7 @@
 # train_single_pass.py
 """
 ===============================================================================
-KARYON SINGLE-PASS CONTINUOUS ALLOSTATIC LEARNING RUNTIME (v33.0 MASTER)
+KARYON SINGLE-PASS CONTINUOUS ALLOSTATIC LEARNING RUNTIME (v32.0 MASTER)
 ===============================================================================
 Grounded in KEP Principles & Biological AGI Reality:
 - Single Continuous Stream Pass (N=1 Pass, Zero Artificial Epochs):
@@ -31,10 +31,6 @@ import json
 import importlib
 import gc
 import numpy as np
-
-# Force expandable segments to prevent CUDA VRAM fragmentation and OOM on Kaggle GPU
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-
 import torch
 
 # =============================================================================
@@ -102,45 +98,55 @@ hf_repo_id = "progvmoff/karyon-v31-core"
 # Function to safely push checkpoint to Hugging Face Hub
 def sync_checkpoint_to_hf(local_file: str, repo_id: str, commit_msg: str):
     try:
+        if not os.path.exists(local_file):
+            return
         api = HfApi()
-        logger.info(f"🤗 [HF Auto-Sync] Pushing checkpoint '{local_file}' to HuggingFace Hub: {repo_id}...")
         api.upload_file(
             path_or_fileobj=local_file,
-            path_in_repo="karyon_soul.kcore",
+            path_in_repo=local_file,
             repo_id=repo_id,
             repo_type="model",
             commit_message=commit_msg
         )
         logger.info(f"🤗 [HF Auto-Sync] Successfully uploaded '{local_file}' to '{repo_id}'!")
     except Exception as e:
-        logger.warning(f"⚠️ [HF Auto-Sync Warning] Failed to upload checkpoint to HuggingFace Hub: {e}")
+        logger.warning(f"⚠️ [HF Auto-Sync Notice] Could not push to HF ({e}). Local checkpoint remains safe.")
 
-# =============================================================================
-# 1. MULTI-DOMAIN CONTINUOUS STREAM DATASET BUILDER
-# =============================================================================
-def build_multidomain_packed_stream(seq_len: int = 1024) -> np.ndarray:
-    """
-    Constructs a rich, diverse, continuous single-pass byte stream spanning:
-    1. General Dialogue & Conversational Semantics (vicgalle/alpaca-gpt4)
-    2. Factuality, Instructions & Q&A (databricks/databricks-dolly-15k)
-    3. Algorithmic Logic & Python Source Code (iamtarun/python_code_instructions_18k_alpaca)
-    4. Multi-Step Mathematical & Chain-of-Thought Reasoning (gsm8k)
-    
-    Packaged as a 100% continuous byte array with zero padding and EOS (257) delimiters.
-    """
-    corpus_cache_file = "data/karyon_multidomain_single_pass_stream.npy"
-    if os.path.exists(corpus_cache_file):
-        logger.info(f"⚡ Loading pre-compiled multi-domain packed stream from cache: '{corpus_cache_file}'...")
-        flat_stream = np.load(corpus_cache_file)
-        logger.info(f"Loaded {len(flat_stream):,} continuous bytes from disk cache.")
-        return flat_stream
+# Ensure valid kcore container exists
+if os.path.exists(kcore_path):
+    with open(kcore_path, 'rb') as f:
+        f.seek(8)
+        header_raw = f.read(24)
+        _, num_sections, _, _ = struct.unpack('<IIQQ', header_raw)
+        sections = []
+        for _ in range(num_sections):
+            sec_raw = f.read(64)
+            s_type, flags, offset, size, _ = struct.unpack('<IIQQQ', sec_raw[:32])
+            sections.append({"type": s_type, "flags": flags, "offset": offset, "size": size})
+        sec_manifest = next((s for s in sections if s["type"] == 1), None)
+        if sec_manifest:
+            f.seek(sec_manifest["offset"])
+            manifest_raw = f.read(sec_manifest["size"])
+            if sec_manifest["flags"] & 0x01: # FLAG_ZLIB_COMPRESSED
+                import zlib
+                manifest_raw = zlib.decompress(manifest_raw)
+            manifest = json.loads(manifest_raw.decode('utf-8'))
+            genome = manifest.get("genome", {})
+            if genome.get("text_dim", 128) != 256:
+                logger.warning(f"Detected legacy DNA (text_dim={genome.get('text_dim')}). Rebuilding container for Unshackled Flow 256D...")
+                initialize_priors(recreate=True, filepath=kcore_path, device=device_str)
+else:
+    logger.warning(f"Container '{kcore_path}' not found! Automatically building base model via init_priors...")
+    initialize_priors(recreate=True, filepath=kcore_path, device=device_str)
 
-    os.makedirs("data", exist_ok=True)
-    logger.info("Assembling Rich Multi-Domain Continuous Stream Dataset (Alpaca, Dolly, Code, GSM8k)...")
-    
-    text_chunks = []
-    
-    # Domain 1: General Dialogue (Alpaca GPT-4)
+logger.info("Assembling Rich Multi-Domain Continuous Stream Dataset (Alpaca, Dolly, Code, GSM8k)...")
+
+def build_multidomain_packed_stream(seq_len=1024):
+    """Zero-Padding Continuous Stream Packing across 4 Diverse Cognitive Domains."""
+    eos_arr = np.array([257], dtype=np.uint16)
+    byte_chunks = []
+
+    # Domain 1: General Conversation & World Knowledge (Alpaca-GPT4)
     logger.info(" -> Ingesting Domain 1: vicgalle/alpaca-gpt4 (General Dialogue)...")
     try:
         ds_alpaca = load_dataset("vicgalle/alpaca-gpt4", split="train")
@@ -148,16 +154,17 @@ def build_multidomain_packed_stream(seq_len: int = 1024) -> np.ndarray:
             inst = item.get("instruction", "").strip()
             inp = item.get("input", "").strip()
             out = item.get("output", "").strip()
-            if inp:
-                text = f"User: {inst}\nContext: {inp}\nKaryon: {out}\n\n"
-            else:
-                text = f"User: {inst}\nKaryon: {out}\n\n"
-            text_chunks.append(text)
-        logger.info(f"Loaded {len(ds_alpaca):,} Alpaca dialogue samples.")
+            if inst and out:
+                full_in = f"{inst}\nContext: {inp}" if inp else inst
+                dialog = f"User: {full_in}\nKaryon: {out}"
+                raw_b = dialog.encode('utf-8')
+                byte_chunks.append(np.frombuffer(raw_b, dtype=np.uint8).astype(np.uint16))
+                byte_chunks.append(eos_arr)
+        del ds_alpaca
     except Exception as e:
-        logger.warning(f"Failed to load Alpaca dataset: {e}")
+        logger.warning(f"Notice loading Alpaca dataset: {e}")
 
-    # Domain 2: Instruction & QA (Databricks Dolly 15k)
+    # Domain 2: Multi-Task Instructions (Databricks-Dolly-15k)
     logger.info(" -> Ingesting Domain 2: databricks/databricks-dolly-15k (Instructions & QA)...")
     try:
         ds_dolly = load_dataset("databricks/databricks-dolly-15k", split="train")
@@ -165,16 +172,17 @@ def build_multidomain_packed_stream(seq_len: int = 1024) -> np.ndarray:
             inst = item.get("instruction", "").strip()
             ctx = item.get("context", "").strip()
             resp = item.get("response", "").strip()
-            if ctx:
-                text = f"Instruction: {inst}\nReference Context: {ctx}\nAnswer: {resp}\n\n"
-            else:
-                text = f"Question: {inst}\nAnswer: {resp}\n\n"
-            text_chunks.append(text)
-        logger.info(f"Loaded {len(ds_dolly):,} Dolly instruction samples.")
+            if inst and resp:
+                full_in = f"{inst}\nContext: {ctx}" if ctx else inst
+                dialog = f"User: {full_in}\nKaryon: {resp}"
+                raw_b = dialog.encode('utf-8')
+                byte_chunks.append(np.frombuffer(raw_b, dtype=np.uint8).astype(np.uint16))
+                byte_chunks.append(eos_arr)
+        del ds_dolly
     except Exception as e:
-        logger.warning(f"Failed to load Dolly dataset: {e}")
+        logger.warning(f"Notice loading Dolly dataset: {e}")
 
-    # Domain 3: Python Code Logic (Python Code Instructions 18k)
+    # Domain 3: Algorithmic & Code Logic (Python Code Instructions 18k)
     logger.info(" -> Ingesting Domain 3: iamtarun/python_code_instructions_18k_alpaca (Code Logic)...")
     try:
         ds_code = load_dataset("iamtarun/python_code_instructions_18k_alpaca", split="train")
@@ -182,65 +190,53 @@ def build_multidomain_packed_stream(seq_len: int = 1024) -> np.ndarray:
             inst = item.get("instruction", "").strip()
             inp = item.get("input", "").strip()
             out = item.get("output", "").strip()
-            if inp:
-                text = f"Problem: {inst}\nCode Context: {inp}\nSolution:\n{out}\n\n"
-            else:
-                text = f"Coding Task: {inst}\nSolution:\n{out}\n\n"
-            text_chunks.append(text)
-        logger.info(f"Loaded {len(ds_code):,} Python Code samples.")
+            if inst and out:
+                full_in = f"{inst}\n{inp}" if inp else inst
+                dialog = f"User: {full_in}\nKaryon: {out}"
+                raw_b = dialog.encode('utf-8')
+                byte_chunks.append(np.frombuffer(raw_b, dtype=np.uint8).astype(np.uint16))
+                byte_chunks.append(eos_arr)
+        del ds_code
     except Exception as e:
-        logger.warning(f"Failed to load Python Code dataset: {e}")
+        logger.warning(f"Notice loading Code dataset: {e}")
 
-    # Domain 4: Step-by-Step Chain-of-Thought (GSM8k)
+    # Domain 4: Deductive & Mathematical Reasoning (GSM8k)
     logger.info(" -> Ingesting Domain 4: gsm8k (Step-by-Step Chain-of-Thought)...")
     try:
         ds_gsm = load_dataset("gsm8k", "main", split="train")
         for item in ds_gsm:
             q = item.get("question", "").strip()
             a = item.get("answer", "").strip()
-            text = f"Math Question: {q}\nStep-by-Step Solution: {a}\n\n"
-            text_chunks.append(text)
-        logger.info(f"Loaded {len(ds_gsm):,} GSM8k math reasoning samples.")
+            if q and a:
+                dialog = f"User: Solve step-by-step: {q}\nKaryon: {a}"
+                raw_b = dialog.encode('utf-8')
+                byte_chunks.append(np.frombuffer(raw_b, dtype=np.uint8).astype(np.uint16))
+                byte_chunks.append(eos_arr)
+        del ds_gsm
     except Exception as e:
-        logger.warning(f"Failed to load GSM8k dataset: {e}")
+        logger.warning(f"Notice loading GSM8k dataset: {e}")
 
-    import random
-    random.seed(42)
-    random.shuffle(text_chunks)
-    
-    logger.info(f"Total Unified Multi-Domain Samples: {len(text_chunks):,}. Encoding into raw UTF-8 byte stream...")
-    
-    encoded_bytes_list = []
-    EOS_BYTE = 257
-    for t in text_chunks:
-        b = t.encode('utf-8', errors='replace')
-        encoded_bytes_list.extend(list(b))
-        encoded_bytes_list.append(EOS_BYTE)
-
-    flat_stream = np.array(encoded_bytes_list, dtype=np.int16)
-    
-    # Trim to exact multiple of (seq_len + 1)
-    target_multiple = (seq_len + 1)
-    valid_len = (len(flat_stream) // target_multiple) * target_multiple
-    flat_stream = flat_stream[:valid_len]
-    
-    np.save(corpus_cache_file, flat_stream)
-    logger.info(f"Compiled and cached packed byte stream to '{corpus_cache_file}'. Total size: {len(flat_stream):,} bytes ({len(flat_stream) / 1024 / 1024:.2f} MB).")
+    flat_stream = np.concatenate(byte_chunks)
+    del byte_chunks
+    gc.collect()
     return flat_stream
 
+# =============================================================================
+# 1. CONTINUOUS PACKED STREAM DATASET (0% PADDING, S=1024) - SINGLE PASS
+# =============================================================================
 class ContinuousPackedDataset(Dataset):
-    def __init__(self, flat_stream: np.ndarray, seq_len: int = 1024):
-        self.flat_stream = flat_stream
+    """Zero-Padding Continuous Stream Packing with EOS Separators (S=1024) - Single Pass."""
+    def __init__(self, flat_stream, seq_len=1024):
         self.seq_len = seq_len
-        self.stride = seq_len
-        self.num_blocks = (len(flat_stream) - 1) // self.stride
+        self.flat_stream = flat_stream
+        self.num_blocks = len(self.flat_stream) // (seq_len + 1)
 
     def __len__(self):
         return self.num_blocks
 
     def __getitem__(self, idx):
-        start = idx * self.stride
-        end = start + self.seq_len + 1
+        start = idx * (self.seq_len + 1)
+        end = start + (self.seq_len + 1)
         return torch.from_numpy(self.flat_stream[start:end].astype(np.int64))
 
 def collate_packed_fn(batch):
@@ -288,10 +284,7 @@ agent_brain = CoREAgent(config=core_config, device=device_str).to(device)
 hu = HomeostaticUnit(batch_size=BATCH_SIZE, device=device_str)
 episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_config.net.unified_dim, max_capacity=1000, device=device_str)
 
-h_fast, h_slow, saved_epoch, saved_story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
-start_step = (saved_story_idx // BATCH_SIZE) if saved_story_idx else 0
-if start_step > 0:
-    logger.info(f"⏩ [Resume Detected] Found saved checkpoint at step {start_step}/{len(stream_loader)}. Resuming stream seamlessly...")
+h_fast, h_slow, saved_epoch, _ = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 
 optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=5e-4, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
@@ -348,7 +341,7 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
             episodic_memory=diag_mem,
             config=config,
             max_generated_tokens=75,
-            temperature=0.35,
+            temperature=0.45,
             top_p=0.90
         )
         for event in gen_stream:
@@ -369,10 +362,6 @@ def run_single_pass_training():
     logger.info(f"\n{'='*85}\n === [STARTING SINGLE-PASS CONTINUOUS STREAM LEARNING (N=1 PASS)] ===\n{'='*85}")
     
     for batch_idx, batch_tokens in enumerate(stream_loader):
-        # Seamlessly skip already completed stream steps upon resuming
-        if batch_idx < start_step:
-            continue
-
         t_batch_start = time.perf_counter()
         
         batch_tokens = batch_tokens.to(device, non_blocking=(device_str == 'cuda'))
@@ -385,20 +374,11 @@ def run_single_pass_training():
         optimizer.zero_grad()
         
         t_exec_start = time.perf_counter()
-        try:
-            with torch.amp.autocast(device_type=device_str, dtype=autocast_dtype, enabled=use_amp):
-                total_loss_tensor, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
-                    input_seq, target_seq, hu, criterion_speech, episodic_memory=episodic_mem,
-                    loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE, use_checkpointing=False
-                )
-        except torch.OutOfMemoryError:
-            logger.warning(f"⚠️ [Step {batch_idx+1}] CUDA OOM intercepted. Purging VRAM cache and retrying...")
-            gc.collect()
-            if device_str == 'cuda':
-                torch.cuda.empty_cache()
-            optimizer.zero_grad()
-            continue
-
+        with torch.amp.autocast(device_type=device_str, dtype=autocast_dtype, enabled=use_amp):
+            total_loss_tensor, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
+                input_seq, target_seq, hu, criterion_speech, episodic_memory=episodic_mem,
+                loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE, use_checkpointing=False
+            )
         t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
         if math.isnan(speech_loss_val) or math.isnan(fe_val) or torch.isnan(total_loss_tensor).any():
@@ -483,9 +463,6 @@ def run_single_pass_training():
             )
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
             logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep 2.0 Complete ({sleep_duration_ms:.1f}ms). Restored Energy={hu.state[0, 1].item():.2f} | Pruned Weights={pruned_weights}")
-            gc.collect()
-            if device_str == 'cuda':
-                torch.cuda.empty_cache()
 
         batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
         tokens_per_sec = (current_batch_size * (seq_len - 1)) / (batch_total_ms / 1000.0)
