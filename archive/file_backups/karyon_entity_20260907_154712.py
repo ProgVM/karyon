@@ -233,23 +233,17 @@ class KaryonEntity:
         """
         Executes a self-reflective introspective scan using the Predictive Interoceptive Self-Model (PISM).
         Returns predicted self-state, actual somatic state, self-prediction error, and interoceptive fidelity.
-        Vectorized batch extraction avoiding PCIe sync stalls (Axis A compliance).
         """
         with torch.no_grad():
             u_pred, self_err = self.brain.predictive_self_model(self.h_fast, self.hu.state)
             u_act = self.hu.state
-            
-            # Vectorized GPU -> CPU extraction
-            u_pred_list = u_pred[0, :6].cpu().tolist()
-            u_act_list = u_act[0, :6].cpu().tolist()
-            err_val = float(self_err.mean().cpu().tolist())
-            fidelity = float(1.0 - err_val)
+            fidelity = float(1.0 - self_err.mean().item())
             
             names = ["curiosity", "energy", "stability", "health", "noradrenaline", "dopamine"]
             report = {
-                "predicted_state": {names[i]: u_pred_list[i] for i in range(6)},
-                "actual_state": {names[i]: u_act_list[i] for i in range(6)},
-                "self_prediction_error": err_val,
+                "predicted_state": {names[i]: float(u_pred[0, i].item()) for i in range(6)},
+                "actual_state": {names[i]: float(u_act[0, i].item()) for i in range(6)},
+                "self_prediction_error": float(self_err.mean().item()),
                 "interoceptive_fidelity": max(0.0, min(1.0, fidelity))
             }
             return report

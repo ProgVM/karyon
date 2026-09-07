@@ -446,8 +446,6 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
        G(a) = f_efe(W_emb, u_t)
     4. Modulates logits without discrete top-k masks:
        Logits = (h_proj * motor_gain) @ W_emb^T - gamma * G(a)
-    5. Integrates a 1D Causal Motor Receptive Field (CPG Conv1D K=4) directly in the motor output pathway
-       to provide local proprioceptive history (EXP-145 Validated 🟢).
     """
     def __init__(self, hidden_dim=768, text_dim=256, vocab_size=258, gamma_volition=0.15, device_str='cpu'):
         super().__init__()
@@ -460,19 +458,6 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
 
         self.motor_text_proj = nn.Sequential(
             nn.Linear(hidden_dim, text_dim),
-            nn.SiLU(),
-            nn.LayerNorm(text_dim)
-        ).to(self.device)
-
-        # CPG Causal Motor Receptive Field (EXP-145)
-        self.cpg_motor = nn.Sequential(
-            nn.Conv1d(
-                in_channels=text_dim,
-                out_channels=text_dim,
-                kernel_size=4,
-                padding=3, # Causal padding (K-1)
-                groups=text_dim # Depthwise-separable for hardware safety
-            ),
             nn.SiLU(),
             nn.LayerNorm(text_dim)
         ).to(self.device)
@@ -497,24 +482,13 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         da_level = u_t_exp[:, 5:6]
         motor_gain = (1.0 + 1.0 * da_level)
 
-        # 1. Project relaxed state to sensory manifold
-        h_proj = self.motor_text_proj(h_relaxed) # [S, D]
-        
-        # 2. Apply CPG Causal Motor Receptive Field (Proprioceptive temporal smoothing)
-        # Reshape to sequence dimension [1, D, S] for 1D convolution
-        h_proj_seq = h_proj.unsqueeze(0).transpose(1, 2) # [1, D, S]
-        h_cpg_seq = self.cpg_motor[0](h_proj_seq) # Conv1d
-        h_cpg_seq = h_cpg_seq[:, :, :total_tokens] # Slice causal padding
-        h_cpg = h_cpg_seq.transpose(1, 2).squeeze(0) # [S, D]
-        
-        # Residual connection + Norm + Act
-        h_cpg_out = self.cpg_motor[2](self.cpg_motor[1](h_cpg) + h_proj)
-
-        # 3. Apply Dopaminergic Precision Gain
-        h_proj_gain = h_cpg_out * motor_gain
+        h_proj = self.motor_text_proj(h_relaxed)
+        h_proj_gain = h_proj * motor_gain
         raw_logits = F.linear(h_proj_gain, byte_embed_weights)
 
         # Continuous Manifold Field EFE Modulation across all V=258 bytes
+        # Byte embeddings: [V, text_dim] -> [V, 64]
+        # Somatic state: [B, 6] -> [B, 64]
         v_emb_proj = self.efe_motor_proj(byte_embed_weights) # [V, 64]
         u_t_proj = self.efe_homeo_proj(u_t_exp) # [B, 64]
 
@@ -522,6 +496,7 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         efe_field = self.efe_evaluator(v_emb_proj.unsqueeze(0) + u_t_proj.unsqueeze(1)).squeeze(-1) # [B, V]
 
         # Standardize efe_field to act as a bounded biophysical bias
+        # and prevent unnormalized linear MLP outputs from dominating natural language logits
         efe_mean = efe_field.mean(dim=-1, keepdim=True)
         efe_std = efe_field.std(dim=-1, keepdim=True).clamp_min(1e-5)
         efe_field_norm = (efe_field - efe_mean) / efe_std
