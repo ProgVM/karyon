@@ -1147,12 +1147,6 @@ class CoREAgent(nn.Module):
                 replay_loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.get_all_parameters(), max_norm=2.0)
                 opt_replay.step()
-            
-            # Clean up replay optimizer to prevent CUDA memory leaks and OOM
-            del opt_replay
-            gc.collect()
-            if self.device_str.startswith('cuda'):
-                torch.cuda.empty_cache()
 
         # 2. Phase 2: REM Sleep (Generative Counterfactual Synthetic Dreaming)
         with torch.no_grad():
@@ -1537,16 +1531,11 @@ class CoREAgent(nn.Module):
         yield {"status": "speech_start"}
         
         prompt_len = prompt_tokens.size(1)
-        # Full alignment with forward_sequence: process prompt through Gateway
-        prompt_unrolled = {'text': prompt_embs.contiguous().view(1 * prompt_len, -1).float()}
-        h_prev_zero = torch.zeros(prompt_len, self.hidden_dim, device=self.device).float()
-        u_t_prompt = hu_st.unsqueeze(1).expand(1, prompt_len, -1).contiguous().view(prompt_len, -1).float()
-        
-        w_t_prompt, _, _, _ = self.gateway(prompt_unrolled, h_prev_zero, u_t_prompt)
-        w_t_seq = w_t_prompt.view(1, prompt_len, self.unified_dim)
-        full_h_in = self.in_proj(w_t_seq)
-        
-        h_s1, h_s2, m_s1, m_s2, sal_gate = self.fused_stack(full_h_in, m_s1, m_s2, hu_st, prompt_tokens)
+        for c_idx in range(0, prompt_len, 64):
+            c_emb = prompt_embs[:, c_idx : min(c_idx + 64, prompt_len), :]
+            c_in = prompt_tokens[:, c_idx : min(c_idx + 64, prompt_len)]
+            h_in = self.in_proj(c_emb)
+            h_s1, h_s2, m_s1, m_s2, sal_gate = self.fused_stack(h_in, m_s1, m_s2, hu_st, c_in)
         
         rolling_token_ids = prompt_tokens[0].tolist()
         energy_action_cost = torch.tensor([[getattr(config.homeo, 'motor_speech_cost_per_patch', 0.0040)]], device=self.device)
@@ -1560,59 +1549,46 @@ class CoREAgent(nn.Module):
         for step in range(max_generated_tokens):
             # Dynamically unroll full rolling context to ensure unbroken position & receptive field embeddings
             full_context_t = torch.tensor([rolling_token_ids[-128:]], dtype=torch.long, device=self.device)
-            ctx_len = full_context_t.size(1)
-            full_context_emb = self.pos_embeddings(full_context_t, start_pos=max(0, total_prompt_len + step - ctx_len), apply_rf=True)
+            full_context_emb = self.pos_embeddings(full_context_t, start_pos=max(0, total_prompt_len + step - 128), apply_rf=True)
+            t_emb = full_context_emb[:, -1:, :]
             
-            # Pass full context window through Gateway + in_proj + fused_stack to maintain continuous conv receptive fields
-            ctx_unrolled = {'text': full_context_emb.contiguous().view(1 * ctx_len, -1).float()}
-            h_prev_ctx = torch.zeros(ctx_len, self.hidden_dim, device=self.device).float()
-            u_t_ctx = hu_st.unsqueeze(1).expand(1, ctx_len, -1).contiguous().view(ctx_len, -1).float()
-            
+            sensor_inputs = {'text': t_emb.squeeze(1)}
             active_slots = getattr(episodic_memory, 'max_active_cpu', 0) if episodic_memory is not None else 0
+            
+            # Continuous Locus Coeruleus Phasic Gain computation (Zero Hardcode Constants)
             na_t = hu_st[:, 4:5]
             phasic_gain = self.lc_gain(na_t) # continuous factor in (0, 1)
 
             if episodic_memory is not None and active_slots > 0:
                 q_k = self.episodic_sensory_proj(full_context_emb.mean(dim=1)).float()
                 ret_mem, max_sim = episodic_memory.read(q_k, temperature=0.05, threshold=0.20, sigmoid_beta=10.0)
-                ctx_unrolled['episodic_recall'] = (ret_mem * phasic_gain).repeat(ctx_len, 1)
+                # Modulate memory injection smoothly by phasic noradrenaline gain
+                sensor_inputs['episodic_recall'] = ret_mem * phasic_gain
 
-            w_t_ctx, _, _, _ = self.gateway(ctx_unrolled, h_prev_ctx, u_t_ctx)
-            w_t_seq = w_t_ctx.view(1, ctx_len, self.unified_dim)
-            h_in_seq = self.in_proj(w_t_seq)
+            w_t, _, _, _ = self.gateway(sensor_inputs, m_s2.view(1, -1)[:, :self.hidden_dim], hu_st)
+            h_in = self.in_proj(w_t).unsqueeze(1)
 
-            m_s1_step = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
-            m_s2_step = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
-
-            h_s1, h_s2, m_s1, m_s2, sal_gate = self.fused_stack(h_in_seq, m_s1_step, m_s2_step, hu_st, full_context_t)
-            
-            # Extract last token slice of the context sequence
-            h_s1_last = h_s1[:, -1:, :]
-            h_s2_last = h_s2[:, -1:, :]
-            w_t = w_t_seq[:, -1, :]
+            h_s1, h_s2, m_s1, m_s2, sal_gate = self.fused_stack(h_in, m_s1, m_s2, hu_st, full_context_t[:, -1:])
             
             # Dynamic dt scaling via Entropy Predictor (Exact Alignment with forward_sequence)
-            predicted_entropy = self.entropy_predictor(h_s1_last)
+            predicted_entropy = self.entropy_predictor(h_s1)
             dynamic_dt_scale = 0.40 + 1.20 * predicted_entropy
-            h_s2_last = h_s2_last * dynamic_dt_scale
+            h_s2 = h_s2 * dynamic_dt_scale
 
             # Hierarchical Volitional Override in generation
-            effective_hu_st, gamma_override, allostatic_strain = self.will_engine(h_s2_last, hu_st)
+            effective_hu_st, gamma_override, allostatic_strain = self.will_engine(h_s2, hu_st)
 
             # EXP-136 Neo-Cortical Quad-Vector Grand Synthesis
-            entropy_s1, boundary_gate = self.entropy_macro_gate(h_s1_last)
-            h_s2_gated = h_s2_last * (0.50 + 1.00 * boundary_gate.unsqueeze(-1))
+            entropy_s1, boundary_gate = self.entropy_macro_gate(h_s1)
+            h_s2_gated = h_s2 * (0.50 + 1.00 * boundary_gate.unsqueeze(-1))
 
-            h_thalamic, routing_weights = self.thalamic_router(h_s1_last, h_s2_gated, effective_hu_st)
-            # FastWeightHebbianPlasticity must evaluate across the FULL sequence context window
-            # so that causal_decay_mask accumulates past fast-weight associations identically to forward_sequence!
-            y_fast_seq = self.fast_weight_hebbian(h_s1, effective_hu_st)
-            y_fast = y_fast_seq[:, -1:, :]
-            weighted_error, error_magnitude = self.predictive_residual_router(h_s1_last, h_s2_gated, effective_hu_st)
+            h_thalamic, routing_weights = self.thalamic_router(h_s1, h_s2_gated, effective_hu_st)
+            y_fast = self.fast_weight_hebbian(h_s1, effective_hu_st)
+            weighted_error, error_magnitude = self.predictive_residual_router(h_s1, h_s2_gated, effective_hu_st)
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             # Full cortical laminar combination matching forward_sequence
-            h_combined = h_thalamic + 0.20 * y_fast + weighted_error + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
+            h_combined = h_thalamic + 0.20 * y_fast + weighted_error + topdown_prior
 
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, effective_hu_st)
@@ -1632,7 +1608,7 @@ class CoREAgent(nn.Module):
                 self.somatic_byte_penalty = somatic_byte_penalty
 
             early_step_factor = math.exp(-step / 4.0)
-            logits = raw_logits - somatic_byte_penalty - 0.25 * refractory_trace
+            logits = raw_logits - somatic_byte_penalty - 2.20 * refractory_trace
             logits[0, 257] = logits[0, 257] - 15.0 * early_step_factor
 
             p_dist = F.softmax(logits, dim=-1)
@@ -1720,10 +1696,12 @@ class CoREAgent(nn.Module):
                 consecutive_newlines = 0
                 
             # Incremental UTF-8 byte decoding
-            try:
+            if 32 <= next_token_id <= 126 or next_token_id in [9, 10, 13]:
                 token_char = utf8_decoder.decode(bytes([next_token_id]))
-            except Exception:
-                token_char = '' if next_token_id in [256, 257] else chr(next_token_id) if 32 <= next_token_id <= 126 else ' '
+            elif 128 <= next_token_id <= 255:
+                token_char = utf8_decoder.decode(bytes([next_token_id]))
+            else:
+                token_char = ' '
             
             yield {
                 "status": "token",

@@ -310,7 +310,7 @@ def get_lr_multiplier(current_step: int) -> float:
     cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
     return max(0.0333, cosine_decay)
 
-lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=start_step - 1 if start_step > 0 else -1)
+lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier)
 
 moving_mean_fe = 0.15
 moving_var_fe = 0.01

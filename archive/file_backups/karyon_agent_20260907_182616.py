@@ -1604,10 +1604,7 @@ class CoREAgent(nn.Module):
             h_s2_gated = h_s2_last * (0.50 + 1.00 * boundary_gate.unsqueeze(-1))
 
             h_thalamic, routing_weights = self.thalamic_router(h_s1_last, h_s2_gated, effective_hu_st)
-            # FastWeightHebbianPlasticity must evaluate across the FULL sequence context window
-            # so that causal_decay_mask accumulates past fast-weight associations identically to forward_sequence!
-            y_fast_seq = self.fast_weight_hebbian(h_s1, effective_hu_st)
-            y_fast = y_fast_seq[:, -1:, :]
+            y_fast = self.fast_weight_hebbian(h_s1_last, effective_hu_st)
             weighted_error, error_magnitude = self.predictive_residual_router(h_s1_last, h_s2_gated, effective_hu_st)
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
@@ -1632,7 +1629,7 @@ class CoREAgent(nn.Module):
                 self.somatic_byte_penalty = somatic_byte_penalty
 
             early_step_factor = math.exp(-step / 4.0)
-            logits = raw_logits - somatic_byte_penalty - 0.25 * refractory_trace
+            logits = raw_logits - somatic_byte_penalty - 2.20 * refractory_trace
             logits[0, 257] = logits[0, 257] - 15.0 * early_step_factor
 
             p_dist = F.softmax(logits, dim=-1)
@@ -1720,10 +1717,12 @@ class CoREAgent(nn.Module):
                 consecutive_newlines = 0
                 
             # Incremental UTF-8 byte decoding
-            try:
+            if 32 <= next_token_id <= 126 or next_token_id in [9, 10, 13]:
                 token_char = utf8_decoder.decode(bytes([next_token_id]))
-            except Exception:
-                token_char = '' if next_token_id in [256, 257] else chr(next_token_id) if 32 <= next_token_id <= 126 else ' '
+            elif 128 <= next_token_id <= 255:
+                token_char = utf8_decoder.decode(bytes([next_token_id]))
+            else:
+                token_char = ' '
             
             yield {
                 "status": "token",

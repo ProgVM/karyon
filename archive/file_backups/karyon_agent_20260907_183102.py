@@ -1604,10 +1604,7 @@ class CoREAgent(nn.Module):
             h_s2_gated = h_s2_last * (0.50 + 1.00 * boundary_gate.unsqueeze(-1))
 
             h_thalamic, routing_weights = self.thalamic_router(h_s1_last, h_s2_gated, effective_hu_st)
-            # FastWeightHebbianPlasticity must evaluate across the FULL sequence context window
-            # so that causal_decay_mask accumulates past fast-weight associations identically to forward_sequence!
-            y_fast_seq = self.fast_weight_hebbian(h_s1, effective_hu_st)
-            y_fast = y_fast_seq[:, -1:, :]
+            y_fast = self.fast_weight_hebbian(h_s1_last, effective_hu_st)
             weighted_error, error_magnitude = self.predictive_residual_router(h_s1_last, h_s2_gated, effective_hu_st)
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
