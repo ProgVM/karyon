@@ -1246,12 +1246,8 @@ public:
     int64_t select_volitional_action(torch::Tensor h_current, float curiosity, float energy) {
         torch::NoGradGuard no_grad;
         auto logits = action_head->forward(h_current);
-        // Action 0: EXPRESS_OUTPUT (Favored when energy is adequate and prompt requires direct expression)
-        logits.select(1, 0).add_(1.0f * (energy - 0.40f));
-        // Action 1: THINK_DEEPER_SANDBOX (Favored when epistemic curiosity is elevated)
-        logits.select(1, 1).add_(2.0f * std::max(0.0f, curiosity - 0.50f));
-        // Action 2: INITIATE_SLEEP_CONSOLIDATION (Favored when somatic energy is depleted)
-        logits.select(1, 2).add_(3.0f * std::max(0.0f, 0.35f - energy));
+        logits.select(1, 1).add_(1.5f * curiosity);
+        logits.select(1, 2).add_(2.0f * std::max(0.0f, 0.40f - energy));
         return logits.argmax(-1).item<int64_t>();
     }
 };

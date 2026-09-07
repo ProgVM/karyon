@@ -81,7 +81,7 @@ struct HomeostaticUnit {
         auto stability = state.select(1, 2).unsqueeze(1);
         auto health    = state.select(1, 3).unsqueeze(1);
 
-        energy = torch::clamp(energy - action_cost + 0.0005f, 0.0f, 1.0f);
+        energy = torch::clamp(energy - action_cost + 0.0015f, 0.0f, 1.0f);
         curiosity = torch::clamp(curiosity + 0.2f * prediction_error - 0.02f, 0.0f, 1.0f);
 
         auto inactive_mask = (cog_action == 1) | (cog_action == 2);
@@ -1234,8 +1234,6 @@ public:
 
     VolitionalActionEvaluatorImpl(int64_t hidden_dim = 512, std::string device_str = "cpu") {
         action_head = register_module("action_head", torch::nn::Linear(hidden_dim, 3));
-        torch::nn::init::zeros_(action_head->weight);
-        torch::nn::init::zeros_(action_head->bias);
         if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
             this->to(torch::kCUDA);
         }
@@ -1246,12 +1244,8 @@ public:
     int64_t select_volitional_action(torch::Tensor h_current, float curiosity, float energy) {
         torch::NoGradGuard no_grad;
         auto logits = action_head->forward(h_current);
-        // Action 0: EXPRESS_OUTPUT (Favored when energy is adequate and prompt requires direct expression)
-        logits.select(1, 0).add_(1.0f * (energy - 0.40f));
-        // Action 1: THINK_DEEPER_SANDBOX (Favored when epistemic curiosity is elevated)
-        logits.select(1, 1).add_(2.0f * std::max(0.0f, curiosity - 0.50f));
-        // Action 2: INITIATE_SLEEP_CONSOLIDATION (Favored when somatic energy is depleted)
-        logits.select(1, 2).add_(3.0f * std::max(0.0f, 0.35f - energy));
+        logits.select(1, 1).add_(1.5f * curiosity);
+        logits.select(1, 2).add_(2.0f * std::max(0.0f, 0.40f - energy));
         return logits.argmax(-1).item<int64_t>();
     }
 };

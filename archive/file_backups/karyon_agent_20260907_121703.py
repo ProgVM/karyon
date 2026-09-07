@@ -1509,7 +1509,7 @@ class CoREAgent(nn.Module):
             h_s1, h_s2, m_s1, m_s2, sal_gate = self.fused_stack(h_in, m_s1, m_s2, hu_st, c_in)
         
         rolling_token_ids = prompt_tokens[0].tolist()
-        energy_action_cost = torch.tensor([[getattr(config.homeo, 'motor_speech_cost_per_patch', 0.0040)]], device=self.device)
+        energy_action_cost = torch.tensor([[getattr(config.homeo, 'motor_speech_cost_per_patch', 0.0015)]], device=self.device)
         zero_pred_err = torch.tensor([[0.0]], device=self.device)
         cog_action = torch.tensor([[0]], dtype=torch.int64, device=self.device)
 

@@ -39,7 +39,7 @@ if karyon_cpp is None:
         if os.path.exists(path) and path not in sys.path:
             sys.path.insert(0, path)
             
-    for candidate_name in ["karyon_cpp_ext_v29"]:
+    for candidate_name in ["karyon_cpp_ext_v29", "karyon_cpp_ext_v28", "karyon_core_ext", "karyon_cpp_ext_v27"]:
         try:
             mod = importlib.import_module(candidate_name)
             if _is_valid_karyon_cpp_module(mod):
