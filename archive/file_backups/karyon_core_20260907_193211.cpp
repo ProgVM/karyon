@@ -600,7 +600,7 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
 
         // Initial State Decay
         auto ones_initial = torch::ones({batch_size, num_heads, 1}, x_seq.options());
-        auto decay_initial_list = (num_chunks > 1) ? torch::cat({ones_initial, torch::exp(torch::clamp(lambda_chunks_flat.slice(2, 0, -1), -20.0f, 0.0f))}, 2) : ones_initial;
+        auto decay_initial_list = (num_chunks > 1) ? torch::cat({ones_initial, torch::exp(lambda_chunks_flat.slice(2, 0, -1))}, 2) : ones_initial;
         auto decay_initial = decay_initial_list.unsqueeze(-1).unsqueeze(-1); // (B, num_heads, num_chunks, 1, 1)
 
         auto M_initial_decayed = decay_initial * m_prev.unsqueeze(2);
@@ -617,18 +617,15 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
         // M_all contains state entering each chunk. For the last chunk (index num_chunks - 1),
         // state entering is M_all.slice(2, -1).
         // To compute the state LEAVING the last chunk, decay it across the last chunk and add last chunk update U.
-        auto alpha_last_chunk = torch::exp(torch::clamp(log_alpha_chunks.slice(1, -1), -20.0f, 0.0f)).squeeze(-1).squeeze(-1).permute({0, 2, 1}).unsqueeze(-1).unsqueeze(-1); // (B, num_heads, 1, 1, 1)
+        auto alpha_last_chunk = torch::exp(log_alpha_chunks.slice(1, -1)).squeeze(-1).squeeze(-1).permute({0, 2, 1}).unsqueeze(-1).unsqueeze(-1); // (B, num_heads, 1, 1, 1)
         auto m_enter_last = M_all.slice(2, -1); // (B, num_heads, 1, head_k, head_v)
         auto U_last = U.slice(2, -1); // (B, num_heads, 1, head_k, head_v)
         auto m_next = m_enter_last * alpha_last_chunk + U_last;
         auto m_curr = torch::clamp(m_next.squeeze(2), -10000.0f, 10000.0f);
         auto y_total = (y_intra + y_inter).permute({0, 1, 3, 2, 4}).reshape({batch_size * seq_len, num_heads * head_v});
-        y_total = torch::nan_to_num(y_total, 0.0f);
-        y_total = torch::clamp(y_total, -65000.0f, 65000.0f);
         auto y_normed = head_norm->forward(y_total.to(torch::kFloat32)).to(orig_dtype); // Normalized in float32 for absolute numerical stability
         auto y_gated = y_normed * z_full;
         auto h_seq = norm->forward(out_proj->forward(y_gated)).view({batch_size, seq_len, out_dim});
-        h_seq = torch::nan_to_num(h_seq, 0.0f);
 
         if (pad_len > 0) {
             h_seq = h_seq.slice(1, pad_len);

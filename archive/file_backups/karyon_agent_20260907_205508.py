@@ -1559,11 +1559,9 @@ class CoREAgent(nn.Module):
 
         for step in range(max_generated_tokens):
             # Dynamically unroll full rolling context to ensure unbroken position & receptive field embeddings
-            # Keep start_pos strictly 0 to preserve the exact absolute coordinate system used during forward_sequence training!
-            # Use full rolling context up to max sequence budget (512 bytes) so the model never loses the prompt!
-            full_context_t = torch.tensor([rolling_token_ids[-512:]], dtype=torch.long, device=self.device)
+            full_context_t = torch.tensor([rolling_token_ids[-128:]], dtype=torch.long, device=self.device)
             ctx_len = full_context_t.size(1)
-            full_context_emb = self.pos_embeddings(full_context_t, start_pos=0, apply_rf=True)
+            full_context_emb = self.pos_embeddings(full_context_t, start_pos=max(0, total_prompt_len + step - ctx_len), apply_rf=True)
             
             # Pass full context window through Gateway + in_proj + fused_stack to maintain continuous conv receptive fields
             ctx_unrolled = {'text': full_context_emb.contiguous().view(1 * ctx_len, -1).float()}
