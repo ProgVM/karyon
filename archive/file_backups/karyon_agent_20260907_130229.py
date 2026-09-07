@@ -929,7 +929,7 @@ class CoREAgent(nn.Module):
         seen = set()
         params = []
         raw_params = list(self.parameters())
-        for submodule in [self.fused_stack, self.gateway, self.world_model, self.output_gateway, self.attractor_head, self.critic, getattr(self, 'efe_action_evaluator', None), getattr(self, 'local_plasticity', None), getattr(self, 'predictive_self_model', None)]:
+        for submodule in [self.fused_stack, self.gateway, self.world_model, self.output_gateway, self.attractor_head, self.critic, getattr(self, 'efe_action_evaluator', None), getattr(self, 'local_plasticity', None)]:
             if submodule is not None and hasattr(submodule, 'parameters'):
                 raw_params.extend(list(submodule.parameters()))
         for p in raw_params:
@@ -945,7 +945,7 @@ class CoREAgent(nn.Module):
         for name, p in self.named_parameters():
             sd[name] = p.detach().cpu()
         # 2. Capture all C++ submodule parameters (LibTorch / PyBind11 extensions, deduplicated)
-        for sub_name in ['gateway', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic', 'efe_action_evaluator', 'local_plasticity', 'predictive_self_model']:
+        for sub_name in ['gateway', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic', 'efe_action_evaluator', 'local_plasticity']:
             sub = getattr(self, sub_name, None)
             if sub is not None and hasattr(sub, 'named_parameters'):
                 for p_name, p in sub.named_parameters():
@@ -963,7 +963,7 @@ class CoREAgent(nn.Module):
         target_device = torch.device(device)
         py_params = dict(self.named_parameters())
         sub_params = {}
-        for sub_name in ['gateway', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic', 'efe_action_evaluator', 'local_plasticity', 'predictive_self_model']:
+        for sub_name in ['gateway', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic', 'efe_action_evaluator', 'local_plasticity']:
             sub = getattr(self, sub_name, None)
             if sub is not None and hasattr(sub, 'named_parameters'):
                 for p_name, p in sub.named_parameters():

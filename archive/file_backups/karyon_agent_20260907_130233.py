@@ -963,7 +963,7 @@ class CoREAgent(nn.Module):
         target_device = torch.device(device)
         py_params = dict(self.named_parameters())
         sub_params = {}
-        for sub_name in ['gateway', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic', 'efe_action_evaluator', 'local_plasticity', 'predictive_self_model']:
+        for sub_name in ['gateway', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic', 'efe_action_evaluator', 'local_plasticity']:
             sub = getattr(self, sub_name, None)
             if sub is not None and hasattr(sub, 'named_parameters'):
                 for p_name, p in sub.named_parameters():

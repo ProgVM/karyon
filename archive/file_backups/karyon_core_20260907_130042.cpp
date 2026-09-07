@@ -1550,12 +1550,4 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
              py::arg("pre_act"), py::arg("post_err"), py::arg("na_t"), py::arg("da_t"))
         .def_readwrite("W_base", &LocalNeuromodulatedPlasticityImpl::W_base)
         .def_readwrite("W_fast", &LocalNeuromodulatedPlasticityImpl::W_fast);
-
-    py::class_<PredictiveSelfModelImpl, torch::nn::Module, std::shared_ptr<PredictiveSelfModelImpl>>(m, "PredictiveSelfModel")
-        .def(py::init<int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 512, py::arg("homeo_dim") = 6, py::arg("device") = "cpu")
-        .def("forward", &PredictiveSelfModelImpl::forward, py::arg("h_t"), py::arg("actual_u_t") = torch::Tensor())
-        .def("__call__", &PredictiveSelfModelImpl::forward, py::arg("h_t"), py::arg("actual_u_t") = torch::Tensor())
-        .def("parameters", [](std::shared_ptr<PredictiveSelfModelImpl> m) { return m->parameters(); })
-        .def("named_parameters", [](std::shared_ptr<PredictiveSelfModelImpl> m) { return m->named_parameters(); });
 }

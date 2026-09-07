@@ -127,35 +127,26 @@ def run_ashby_friston_vitality_test():
     # PILLAR 5: Somatic Metabolism & Affective Allostasis (M_allostasis)
     # -------------------------------------------------------------------------
     logger.info("\n--- Pillar 5: Somatic Metabolism & Affective Allostasis (M_allostasis) ---")
-    # Verify strict conservation laws:
-    # 1. Motor speech execution consumes somatic energy (speech_start -> speech_end drain)
-    # 2. Perceptive listening / resting recharges somatic energy (Magistretti Astrocyte-Neuron Shuttle)
-    entity.hu.state[0, 1] = 0.70
-    pre_listen_nrg = entity.hu.state[0, 1].item()
+    # Verify strict conservation law: motor generation consumes energy
+    entity.hu.state[0, 1] = 0.85
+    initial_energy = entity.hu.state[0, 1].item()
     
-    speech_start_nrg = 0.0
-    speech_end_nrg = 0.0
+    # Motor speech action drains energy
+    list(entity.interact("Describe the thermodynamic principle of active inference.", max_tokens=30))
+    post_gen_energy = entity.hu.state[0, 1].item()
     
-    events = entity.interact("Describe the thermodynamic principle of active inference.", max_tokens=30)
-    for ev in events:
-        if ev["status"] == "speech_start":
-            speech_start_nrg = entity.hu.state[0, 1].item()
-        elif ev["status"] in ("speech_end", "exhausted"):
-            speech_end_nrg = entity.hu.state[0, 1].item()
-            
-    # Check dynamics:
-    # Perceptive boost: speech_start_nrg > pre_listen_nrg
-    # Motor drain: speech_end_nrg < speech_start_nrg
+    # Perceptive rest recovers energy
+    long_input = "Active inference posits that biological agents minimize variational free energy to maintain homeostatic ultrastability."
+    list(entity.interact(long_input, max_tokens=5))
+    restored_energy = entity.hu.state[0, 1].item()
+    
     m_allostasis = 0.0
-    perceptive_boost = speech_start_nrg > pre_listen_nrg
-    motor_drain = speech_end_nrg < speech_start_nrg
-    
-    if perceptive_boost:
+    if post_gen_energy < initial_energy:
         m_allostasis += 0.5
-    if motor_drain:
+    if restored_energy > post_gen_energy:
         m_allostasis += 0.5
         
-    logger.info(f"Metabolism: Pre-Listen={pre_listen_nrg:.4f} | Post-Listen/Pre-Speech={speech_start_nrg:.4f} | Post-Speech={speech_end_nrg:.4f} | Score: {m_allostasis:.4f}")
+    logger.info(f"Energy: Initial={initial_energy:.4f} | Post-Gen={post_gen_energy:.4f} | Restored={restored_energy:.4f} | Score: {m_allostasis:.4f}")
 
     # -------------------------------------------------------------------------
     # PILLAR 6: 1-Shot Fast Mapping & Sleep Replay (P_plasticity)

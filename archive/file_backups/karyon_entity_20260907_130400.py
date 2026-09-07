@@ -135,7 +135,7 @@ class KaryonEntity:
                 h_s_tmp = self.h_slow.clone()
                 
                 for idx, token_id in enumerate(user_tokens):
-                    t_emb = self.brain.pos_embeddings(token_id.to(self.device).unsqueeze(0).unsqueeze(0), start_pos=idx, apply_rf=False)
+                    t_emb = self.brain.pos_embeddings(token_id.unsqueeze(0).unsqueeze(0), start_pos=idx, apply_rf=False)
                     s_in = {
                         'text': t_emb.squeeze(1),
                         'vision': torch.zeros(1, self.config.net.vision_dim, device=self.device),
@@ -228,22 +228,3 @@ class KaryonEntity:
             pruning_percentile=pruning_percentile
         )
         return pruned_weights
-
-    def introspect(self) -> Dict[str, Any]:
-        """
-        Executes a self-reflective introspective scan using the Predictive Interoceptive Self-Model (PISM).
-        Returns predicted self-state, actual somatic state, self-prediction error, and interoceptive fidelity.
-        """
-        with torch.no_grad():
-            u_pred, self_err = self.brain.predictive_self_model(self.h_fast, self.hu.state)
-            u_act = self.hu.state
-            fidelity = float(1.0 - self_err.mean().item())
-            
-            names = ["curiosity", "energy", "stability", "health", "noradrenaline", "dopamine"]
-            report = {
-                "predicted_state": {names[i]: float(u_pred[0, i].item()) for i in range(6)},
-                "actual_state": {names[i]: float(u_act[0, i].item()) for i in range(6)},
-                "self_prediction_error": float(self_err.mean().item()),
-                "interoceptive_fidelity": max(0.0, min(1.0, fidelity))
-            }
-            return report

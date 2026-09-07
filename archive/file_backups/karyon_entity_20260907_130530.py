@@ -135,7 +135,7 @@ class KaryonEntity:
                 h_s_tmp = self.h_slow.clone()
                 
                 for idx, token_id in enumerate(user_tokens):
-                    t_emb = self.brain.pos_embeddings(token_id.to(self.device).unsqueeze(0).unsqueeze(0), start_pos=idx, apply_rf=False)
+                    t_emb = self.brain.pos_embeddings(token_id.unsqueeze(0).unsqueeze(0), start_pos=idx, apply_rf=False)
                     s_in = {
                         'text': t_emb.squeeze(1),
                         'vision': torch.zeros(1, self.config.net.vision_dim, device=self.device),

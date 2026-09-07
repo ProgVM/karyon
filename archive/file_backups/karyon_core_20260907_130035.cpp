@@ -1290,47 +1290,6 @@ public:
 };
 
 // ============================================================================
-// 19. PREDICTIVE INTEROCEPTIVE SELF-MODEL (PISM / METACONSCIOUSNESS v30.0)
-// ============================================================================
-class PredictiveSelfModelImpl : public torch::nn::Module {
-public:
-    int64_t hidden_dim;
-    int64_t homeo_dim;
-    torch::nn::Linear self_proj{nullptr};
-
-    PredictiveSelfModelImpl(int64_t hidden_dim = 512, int64_t homeo_dim = 6, std::string device_str = "cpu")
-        : hidden_dim(hidden_dim), homeo_dim(homeo_dim) {
-        self_proj = register_module("self_proj", torch::nn::Linear(hidden_dim, homeo_dim));
-        
-        // Initial calibrated prior
-        torch::nn::init::normal_(self_proj->weight, 0.0, 0.02);
-        torch::nn::init::zeros_(self_proj->bias);
-        
-        if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
-            this->to(torch::kCUDA);
-        }
-    }
-
-    // Predicts the 6-D interoceptive somatic state from internal neural manifold h_t
-    // Returns: (u_pred, self_prediction_error)
-    std::tuple<torch::Tensor, torch::Tensor> forward(torch::Tensor h_t, torch::Tensor actual_u_t) {
-        // Handle input dimensions [B, S, D] or [B, D]
-        auto h_flat = (h_t.dim() == 3) ? h_t.mean(1) : h_t;
-        auto u_pred_logits = self_proj->forward(h_flat);
-        auto u_pred = torch::sigmoid(u_pred_logits); // bounded in [0, 1]
-        
-        torch::Tensor self_err;
-        if (actual_u_t.defined() && actual_u_t.numel() > 0) {
-            auto u_act = (actual_u_t.dim() == 3) ? actual_u_t.mean(1) : actual_u_t;
-            self_err = torch::abs(u_pred - u_act);
-        } else {
-            self_err = torch::zeros_like(u_pred);
-        }
-        return std::make_tuple(u_pred, self_err);
-    }
-};
-
-// ============================================================================
 // 16. PYBIND11 MODULE BINDINGS (ALL 15 NATIVE C++ COGNITIVE MODULES)
 // ============================================================================
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -1550,12 +1509,4 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
              py::arg("pre_act"), py::arg("post_err"), py::arg("na_t"), py::arg("da_t"))
         .def_readwrite("W_base", &LocalNeuromodulatedPlasticityImpl::W_base)
         .def_readwrite("W_fast", &LocalNeuromodulatedPlasticityImpl::W_fast);
-
-    py::class_<PredictiveSelfModelImpl, torch::nn::Module, std::shared_ptr<PredictiveSelfModelImpl>>(m, "PredictiveSelfModel")
-        .def(py::init<int64_t, int64_t, std::string>(),
-             py::arg("hidden_dim") = 512, py::arg("homeo_dim") = 6, py::arg("device") = "cpu")
-        .def("forward", &PredictiveSelfModelImpl::forward, py::arg("h_t"), py::arg("actual_u_t") = torch::Tensor())
-        .def("__call__", &PredictiveSelfModelImpl::forward, py::arg("h_t"), py::arg("actual_u_t") = torch::Tensor())
-        .def("parameters", [](std::shared_ptr<PredictiveSelfModelImpl> m) { return m->parameters(); })
-        .def("named_parameters", [](std::shared_ptr<PredictiveSelfModelImpl> m) { return m->named_parameters(); });
 }
