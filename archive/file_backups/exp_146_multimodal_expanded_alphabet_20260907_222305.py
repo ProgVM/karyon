@@ -123,36 +123,53 @@ def run_experiment_146():
         B, S = input_ids.size()
         total_tokens_processed += B * S
         
+        # Zero recurrent states
+        m_s1 = torch.zeros(B, agent.num_heads, agent.head_k, agent.head_v, device=device_str)
+        m_s2 = torch.zeros(B, agent.num_heads, agent.head_k, agent.head_v, device=device_str)
+        h_fast = torch.zeros(B, agent.hidden_dim, device=device_str)
+        h_slow = torch.zeros(B, agent.hidden_dim, device=device_str)
+        u_t = hu.state.expand(B, -1).contiguous()
+        
         # Forward sequence through 2-Stage Cascaded Cortical Stack + Hopfield + World Model
         (
-            total_loss, speech_loss_val, fe_loss_val,
-            w_pred, h_curr_fast, w_current_slice, volitional_logits_flat
-        ) = agent.forward_sequence(
-            input_seq=input_ids,
-            target_seq=target_ids,
-            hu_batch=hu,
-            criterion_speech=criterion,
-            episodic_memory=mem,
-            chunk_size=64
+            h_fast_next, h_slow_next, actions, cog_actions,
+            text_logits, fe, attn_weights, w_t, w_pred,
+            value_est, epistemic_entropy, eff_dt
+        ) = agent(
+            text_tokens=input_ids,
+            m_s1_prev=m_s1,
+            m_s2_prev=m_s2,
+            h_fast_prev=h_fast,
+            h_slow_prev=h_slow,
+            u_t=u_t,
+            return_entropy=True
         )
         
-        total_loss.backward()
+        # Compute Cross-Entropy Loss across unified V=1024 manifold
+        loss = criterion(text_logits.view(-1, agent.text_gen_dim), target_ids.reshape(-1))
+        
+        # Total Active Inference Objective: Task Loss + Variational Free Energy F_t
+        total_objective = loss + 0.10 * fe.mean()
+        
+        total_objective.backward()
         torch.nn.utils.clip_grad_norm_(agent.parameters(), max_norm=1.0)
         optimizer.step()
         
         # Homeostatic state update
         hu.update(
             action_cost=torch.tensor([0.01], device=device_str),
-            pred_err=torch.tensor([fe_loss_val], device=device_str),
-            ext_err=torch.tensor([speech_loss_val * 0.05], device=device_str),
-            cog_action=torch.zeros(1, 3, device=device_str)
+            pred_err=fe.detach().mean().unsqueeze(0),
+            ext_err=torch.tensor([loss.item() * 0.05], device=device_str),
+            cog_action=cog_actions.mean(dim=0, keepdim=True).detach()
         )
         
-        fe_history.append(fe_loss_val)
-        loss_history.append(speech_loss_val)
+        fe_val = float(fe.mean().item())
+        loss_val = float(loss.item())
+        fe_history.append(fe_val)
+        loss_history.append(loss_val)
         
         if (step + 1) % 5 == 0 or step == 0:
-            logger.info(f"Step {step+1:02d}/30 | Loss: {speech_loss_val:.4f} | Free Energy F_t: {fe_loss_val:.6f} | PPL: {math.exp(min(speech_loss_val, 20.0)):.2f} | DA: {hu.state[0,5].item():.3f} | NA: {hu.state[0,4].item():.3f}")
+            logger.info(f"Step {step+1:02d}/30 | Loss: {loss_val:.4f} | Free Energy F_t: {fe_val:.6f} | PPL: {math.exp(min(loss_val, 20.0)):.2f} | DA: {hu.state[0,5].item():.3f} | NA: {hu.state[0,4].item():.3f}")
 
     total_time_sec = time.time() - t0_stream
     tok_per_sec = total_tokens_processed / max(total_time_sec, 1e-4)
