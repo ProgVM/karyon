@@ -511,9 +511,9 @@ def run_single_pass_training():
                 hu=hu,
                 num_replay_cycles=3,
                 downscaling_factor=0.03,
-                eval_inputs=None,
-                eval_targets=None,
-                criterion_speech=None
+                eval_inputs=input_seq,
+                eval_targets=target_seq,
+                criterion_speech=criterion_speech
             )
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
             logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep 2.0 Complete ({sleep_duration_ms:.1f}ms). Restored Energy={hu.state[0, 1].item():.2f} | Pruned Weights={pruned_weights}")
