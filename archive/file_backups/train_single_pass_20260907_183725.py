@@ -305,18 +305,10 @@ WARMUP_STEPS = 50
 
 def get_lr_multiplier(current_step: int) -> float:
     if current_step < WARMUP_STEPS:
-        base_mult = float(current_step + 1) / float(WARMUP_STEPS)
-    else:
-        progress = float(current_step - WARMUP_STEPS) / float(max(1, TOTAL_TRAINING_STEPS - WARMUP_STEPS))
-        cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
-        base_mult = max(0.0333, cosine_decay)
-        
-    # Resume warmup safety (Axis A): if we resumed, warm up lr over 50 steps from start_step
-    if start_step > 0 and current_step >= start_step and current_step < start_step + 50:
-        resume_warmup_factor = float(current_step - start_step + 1) / 50.0
-        return base_mult * resume_warmup_factor
-        
-    return base_mult
+        return float(current_step + 1) / float(WARMUP_STEPS)
+    progress = float(current_step - WARMUP_STEPS) / float(max(1, TOTAL_TRAINING_STEPS - WARMUP_STEPS))
+    cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
+    return max(0.0333, cosine_decay)
 
 for group in optimizer.param_groups:
     group['initial_lr'] = group['lr']
@@ -408,18 +400,13 @@ def run_single_pass_training():
                     input_seq, target_seq, hu, criterion_speech, episodic_memory=episodic_mem,
                     loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE, use_checkpointing=False
                 )
-        except (torch.OutOfMemoryError, RuntimeError) as e:
-            if "out of memory" in str(e) or isinstance(e, torch.OutOfMemoryError):
-                logger.warning(f"⚠️ [Step {batch_idx+1}] CUDA OOM intercepted. Purging VRAM cache and retrying...")
-                if 'total_loss_tensor' in locals():
-                    del total_loss_tensor
-                gc.collect()
-                if device_str == 'cuda':
-                    torch.cuda.empty_cache()
-                optimizer.zero_grad()
-                continue
-            else:
-                raise e
+        except torch.OutOfMemoryError:
+            logger.warning(f"⚠️ [Step {batch_idx+1}] CUDA OOM intercepted. Purging VRAM cache and retrying...")
+            gc.collect()
+            if device_str == 'cuda':
+                torch.cuda.empty_cache()
+            optimizer.zero_grad()
+            continue
 
         t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
