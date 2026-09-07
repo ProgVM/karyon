@@ -154,10 +154,10 @@ def run_experiment_146():
         
         # Homeostatic state update
         hu_batch.update(
-            torch.tensor([0.01] * batch_size, device=device_str),
-            torch.tensor([fe_loss_val] * batch_size, device=device_str),
-            torch.tensor([speech_loss_val * 0.05] * batch_size, device=device_str),
-            torch.zeros(batch_size, 3, device=device_str)
+            action_cost=torch.tensor([0.01] * batch_size, device=device_str),
+            pred_err=torch.tensor([fe_loss_val] * batch_size, device=device_str),
+            ext_err=torch.tensor([speech_loss_val * 0.05] * batch_size, device=device_str),
+            cog_action=torch.zeros(batch_size, 3, device=device_str)
         )
         
         fe_history.append(fe_loss_val)

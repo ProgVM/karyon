@@ -89,9 +89,18 @@ def run_experiment_146():
     text_suffix = "\nSynthetic Speech Response: Audio-Visual alignment successfully verified.\n"
     suffix_bytes = list(text_suffix.encode('utf-8'))
     
-    sample_seq = prefix_bytes + audio_tokens + vision_tokens + suffix_bytes
+    # Pad/crop to exact multiple of chunk_size=64 plus 1 (for next-token shift)
+    # Target exact sequence length S = 385 tokens (384 inputs + 1 target shift, 384 = 6 * 64)
+    target_len = 385
+    raw_seq = prefix_bytes + audio_tokens + vision_tokens + suffix_bytes
+    if len(raw_seq) < target_len:
+        raw_seq = raw_seq + [32] * (target_len - len(raw_seq))
+    else:
+        raw_seq = raw_seq[:target_len]
+        
+    sample_seq = raw_seq
     seq_len = len(sample_seq)
-    logger.info(f"Constructed multimodal interleaved sequence of length S={seq_len} tokens across unified V=1024 manifold.")
+    logger.info(f"Constructed multimodal interleaved sequence of length S={seq_len} tokens (exact multiple of chunk_size=64 plus 1) across unified V=1024 manifold.")
 
     # Create batch tensor
     batch_size = 4
@@ -145,10 +154,10 @@ def run_experiment_146():
         
         # Homeostatic state update
         hu_batch.update(
-            action_cost=torch.tensor([0.01] * batch_size, device=device_str),
-            pred_err=torch.tensor([fe_loss_val] * batch_size, device=device_str),
-            ext_err=torch.tensor([speech_loss_val * 0.05] * batch_size, device=device_str),
-            cog_action=torch.zeros(batch_size, 3, device=device_str)
+            torch.tensor([0.01] * batch_size, device=device_str),
+            torch.tensor([fe_loss_val] * batch_size, device=device_str),
+            torch.tensor([speech_loss_val * 0.05] * batch_size, device=device_str),
+            torch.zeros(batch_size, 3, device=device_str)
         )
         
         fe_history.append(fe_loss_val)
