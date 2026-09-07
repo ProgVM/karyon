@@ -521,7 +521,7 @@ def run_single_pass_training():
             if device_str == 'cuda':
                 torch.cuda.empty_cache()
 
-        if (batch_idx + 1) % 50 == 0:
+        if (batch_idx + 1) % 200 == 0:
             gc.collect()
             if device_str == 'cuda':
                 torch.cuda.empty_cache()

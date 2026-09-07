@@ -399,7 +399,7 @@ def run_single_pass_training():
         input_seq = batch_tokens[:, :-1]
         target_seq = batch_tokens[:, 1:]
 
-        optimizer.zero_grad(set_to_none=True)
+        optimizer.zero_grad()
         
         t_exec_start = time.perf_counter()
         try:
@@ -413,15 +413,10 @@ def run_single_pass_training():
                 logger.warning(f"⚠️ [Step {batch_idx+1}] CUDA OOM intercepted. Purging VRAM cache and retrying...")
                 if 'total_loss_tensor' in locals():
                     del total_loss_tensor
-                if 'm_curr' in locals():
-                    del m_curr
-                if 'h_curr' in locals():
-                    del h_curr
                 gc.collect()
                 if device_str == 'cuda':
                     torch.cuda.empty_cache()
-                optimizer.zero_grad(set_to_none=True)
-                time.sleep(0.5)
+                optimizer.zero_grad()
                 continue
             else:
                 raise e
@@ -429,15 +424,8 @@ def run_single_pass_training():
         t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
         if math.isnan(speech_loss_val) or math.isnan(fe_val) or torch.isnan(total_loss_tensor).any():
-            logger.warning(f"⚠️ [Step {batch_idx+1}] Loss or Free Energy is NaN. Checking parameter integrity...")
-            optimizer.zero_grad(set_to_none=True)
-            has_nan_weights = any(torch.isnan(p).any() for p in agent_brain.parameters())
-            if has_nan_weights:
-                logger.error(f"🚨 [Step {batch_idx+1}] Model weights contain NaNs! Initiating emergency rollback to last clean checkpoint...")
-                h_fast, h_slow, saved_epoch, saved_story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
-                gc.collect()
-                if device_str == 'cuda':
-                    torch.cuda.empty_cache()
+            logger.warning(f"⚠️ [Step {batch_idx+1}] Loss or Free Energy is NaN. Skipping backward step & resetting somatic state.")
+            optimizer.zero_grad()
             if torch.isnan(hu.state).any():
                 hu.state = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], dtype=torch.float32, device=device).repeat((current_batch_size, 1))
             continue
@@ -521,7 +509,7 @@ def run_single_pass_training():
             if device_str == 'cuda':
                 torch.cuda.empty_cache()
 
-        if (batch_idx + 1) % 50 == 0:
+        if (batch_idx + 1) % 200 == 0:
             gc.collect()
             if device_str == 'cuda':
                 torch.cuda.empty_cache()
