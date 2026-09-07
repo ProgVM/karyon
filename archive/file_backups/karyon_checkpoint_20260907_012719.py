@@ -321,7 +321,6 @@ def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu', v
     """
     Loads agent weights, memory, homeostasis, and persistent states from .kcore container.
     Seamlessly supports both v5.0 (compressed + SHA-256) and legacy v4.2/v1.0 containers.
-    Handles self-executable polyglot sheath headers by dynamically locating the binary payload.
     """
     if not os.path.exists(filepath):
         print(f"[KCORE Checkpoint] Container file '{filepath}' not found. Initializing base state.")
@@ -330,57 +329,50 @@ def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu', v
         return h_fast, h_slow, 0, 0
 
     with open(filepath, 'rb') as f:
-        data = f.read()
+        magic = f.read(8)
+        if magic[:5] != b'KCORE':
+            print(f"[KCORE Checkpoint] File '{filepath}' is not a valid .kcore container.")
+            return torch.zeros(1, agent.hidden_dim, device=device), torch.zeros(1, agent.hidden_dim, device=device), 0, 0
 
-    # Locate the real binary payload magic offset
-    sig_v5 = b"KC" + b"ORE" + bytes([5, 0, 0])
-    sig_v1 = b"KC" + b"ORE" + bytes([1, 0, 0])
-    magic_offset = data.rfind(sig_v5)
-    if magic_offset == -1:
-        magic_offset = data.rfind(sig_v1)
+        is_v5 = (magic == KCORE_MAGIC_V5)
 
-    if magic_offset == -1:
-        print(f"[KCORE Checkpoint] File '{filepath}' is not a valid .kcore container (magic signature not found).")
-        return torch.zeros(1, agent.hidden_dim, device=device), torch.zeros(1, agent.hidden_dim, device=device), 0, 0
+        header_raw = f.read(24)
+        header_size, num_sections, total_file_size, flags = struct.unpack('<IIQQ', header_raw)
 
-    magic = data[magic_offset:magic_offset+8]
-    is_v5 = (magic == KCORE_MAGIC_V5)
+        sections = []
+        for _ in range(num_sections):
+            sec_raw = f.read(64)
+            s_type, s_flags, offset, size, align = struct.unpack('<IIQQQ', sec_raw[:32])
+            s_name = sec_raw[32:].rstrip(b'\x00').decode('utf-8', errors='replace')
+            sections.append({
+                "type": s_type,
+                "flags": s_flags,
+                "offset": offset,
+                "size": size,
+                "name": s_name
+            })
 
-    header_raw = data[magic_offset+8:magic_offset+32]
-    header_size, num_sections, total_file_size, flags = struct.unpack('<IIQQ', header_raw)
+        # 1. Manifest
+        sec_manifest = next(s for s in sections if s["type"] == 1)
+        f.seek(sec_manifest["offset"])
+        manifest_raw = f.read(sec_manifest["size"])
+        if sec_manifest["flags"] & FLAG_ZLIB_COMPRESSED:
+            manifest_raw = zlib.decompress(manifest_raw)
+        manifest = json.loads(manifest_raw.decode('utf-8'))
 
-    sections = []
-    for i in range(num_sections):
-        sec_offset = magic_offset + 32 + i * 64
-        sec_raw = data[sec_offset:sec_offset+64]
-        s_type, s_flags, offset, size, align = struct.unpack('<IIQQQ', sec_raw[:32])
-        s_name = sec_raw[32:].rstrip(b'\x00').decode('utf-8', errors='replace')
-        sections.append({
-            "type": s_type,
-            "flags": s_flags,
-            "offset": magic_offset + offset,
-            "size": size,
-            "name": s_name
-        })
+        # 2. Weights
+        sec_weights = next(s for s in sections if s["type"] == 3)
+        f.seek(sec_weights["offset"])
+        weights_data = f.read(sec_weights["size"])
+        if sec_weights["flags"] & FLAG_ZLIB_COMPRESSED:
+            weights_data = zlib.decompress(weights_data)
 
-    # 1. Manifest
-    sec_manifest = next(s for s in sections if s["type"] == 1)
-    manifest_raw = data[sec_manifest["offset"]:sec_manifest["offset"] + sec_manifest["size"]]
-    if sec_manifest["flags"] & FLAG_ZLIB_COMPRESSED:
-        manifest_raw = zlib.decompress(manifest_raw)
-    manifest = json.loads(manifest_raw.decode('utf-8'))
-
-    # 2. Weights
-    sec_weights = next(s for s in sections if s["type"] == 3)
-    weights_data = data[sec_weights["offset"]:sec_weights["offset"] + sec_weights["size"]]
-    if sec_weights["flags"] & FLAG_ZLIB_COMPRESSED:
-        weights_data = zlib.decompress(weights_data)
-
-    # 3. States
-    sec_state = next(s for s in sections if s["type"] == 4)
-    state_data = data[sec_state["offset"]:sec_state["offset"] + sec_state["size"]]
-    if sec_state["flags"] & FLAG_ZLIB_COMPRESSED:
-        state_data = zlib.decompress(state_data)
+        # 3. States
+        sec_state = next(s for s in sections if s["type"] == 4)
+        f.seek(sec_state["offset"])
+        state_data = f.read(sec_state["size"])
+        if sec_state["flags"] & FLAG_ZLIB_COMPRESSED:
+            state_data = zlib.decompress(state_data)
 
     # 4. Cryptographic SHA-256 Verification (v5.0 Containers)
     if is_v5 and verify_integrity and "integrity" in manifest:
