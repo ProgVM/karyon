@@ -26,6 +26,7 @@ logger.info("Welcome to Closed-Loop Social Active Inference Session with Karyon-
 logger.info("Type 'exit' to save state and close.")
 logger.info("Type 'sleep' to trigger deep allostatic sleep & morphogenesis.")
 logger.info("Press [Enter] with empty input to let Karyon think spontaneously (Inner Monologue / Spontaneous Turn).")
+logger.info("Press [Enter] with empty input to let Karyon think spontaneously (Inner Monologue / Spontaneous Turn).")
 
 def render_affective_dashboard(hu_state, affective_state):
     curiosity, energy, stability, health, na, da = hu_state[0].tolist()
@@ -93,7 +94,6 @@ while True:
         logger.info(f"  Self-Learning Complete | Initial FE: {self_learning_results['initial_free_energy']:.4f} | Final FE: {self_learning_results['final_free_energy']:.4f}")
 
     # Stream interaction through KaryonEntity
-    karyon_tokens = []
     for event in entity.interact(user_input, max_tokens=120, temperature=0.45, top_p=0.90):
         status = event["status"]
         if status == "speech_start":
@@ -103,40 +103,10 @@ while True:
                 print("Karyon: ", end="", flush=True)
         elif status == "token":
             print(event["text"], end="", flush=True)
-            karyon_tokens.append(event["text"])
         elif status == "exhausted":
             print(event["text"], end="", flush=True)
-            karyon_tokens.append(event["text"])
         elif status == "speech_end":
             print()
-            karyon_response_str = "".join(karyon_tokens)
             with torch.no_grad():
                 affective_state = entity.brain.affective_core.compute_affective_state(entity.hu.state, free_energy=0.05)
                 render_affective_dashboard(entity.hu.state, affective_state)
-                
-                # Active Session Transparency Logging (KEP Protocol)
-                curiosity, energy, stability, health, na, da = entity.hu.state[0].tolist()
-                log_entry = {
-                    "timestamp": time.time(),
-                    "time_iso": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "is_spontaneous": is_spontaneous,
-                    "user_input": user_input,
-                    "karyon_response": karyon_response_str,
-                    "somatic_state": {
-                        "curiosity": round(curiosity, 4),
-                        "energy": round(energy, 4),
-                        "stability": round(stability, 4),
-                        "health": round(health, 4),
-                        "noradrenaline": round(na, 4),
-                        "dopamine": round(da, 4)
-                    },
-                    "affective_state": {
-                        "valence": round(affective_state["valence"], 4),
-                        "arousal": round(affective_state["arousal"], 4),
-                        "dominance": round(affective_state["dominance"], 4),
-                        "panksepp": {k: round(v, 4) for k, v in affective_state["panksepp"].items()}
-                    }
-                }
-                os.makedirs("logs", exist_ok=True)
-                with open("logs/active_dialogue_session.jsonl", "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
