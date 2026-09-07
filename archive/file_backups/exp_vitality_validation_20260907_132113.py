@@ -55,7 +55,7 @@ def run_ashby_friston_vitality_test():
             h_f, h_s, _, _, _, _, _, _, _, _, _, _ = entity.brain(s_in, h_f, h_s, u_state)
             trajectories.append(h_f.mean().item())
             
-    unique_vals = len(set(round(x, 8) for x in trajectories))
+    unique_vals = len(set(round(x, 6) for x in trajectories))
     variance = np.var(trajectories)
     s_stochastic = min(unique_vals / 50.0, 1.0) if variance > 1e-8 else 0.0
     logger.info(f"Unique states: {unique_vals}/50 | Variance: {variance:.8f} | Score: {s_stochastic:.4f}")
