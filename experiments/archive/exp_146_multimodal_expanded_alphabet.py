@@ -113,6 +113,9 @@ def run_experiment_146():
     t0_stream = time.time()
     total_tokens_processed = 0
 
+    # Expand Homeostatic Unit batch size to match training batch size
+    hu_batch = HomeostaticUnit(batch_size=batch_size, device=device_str)
+
     for step in range(30):
         optimizer.zero_grad()
         
@@ -130,7 +133,7 @@ def run_experiment_146():
         ) = agent.forward_sequence(
             input_seq=input_ids,
             target_seq=target_ids,
-            hu_batch=hu,
+            hu_batch=hu_batch,
             criterion_speech=criterion,
             episodic_memory=mem,
             chunk_size=64
@@ -141,18 +144,18 @@ def run_experiment_146():
         optimizer.step()
         
         # Homeostatic state update
-        hu.update(
-            action_cost=torch.tensor([0.01], device=device_str),
-            pred_err=torch.tensor([fe_loss_val], device=device_str),
-            ext_err=torch.tensor([speech_loss_val * 0.05], device=device_str),
-            cog_action=torch.zeros(1, 3, device=device_str)
+        hu_batch.update(
+            action_cost=torch.tensor([0.01] * batch_size, device=device_str),
+            pred_err=torch.tensor([fe_loss_val] * batch_size, device=device_str),
+            ext_err=torch.tensor([speech_loss_val * 0.05] * batch_size, device=device_str),
+            cog_action=torch.zeros(batch_size, 3, device=device_str)
         )
         
         fe_history.append(fe_loss_val)
         loss_history.append(speech_loss_val)
         
         if (step + 1) % 5 == 0 or step == 0:
-            logger.info(f"Step {step+1:02d}/30 | Loss: {speech_loss_val:.4f} | Free Energy F_t: {fe_loss_val:.6f} | PPL: {math.exp(min(speech_loss_val, 20.0)):.2f} | DA: {hu.state[0,5].item():.3f} | NA: {hu.state[0,4].item():.3f}")
+            logger.info(f"Step {step+1:02d}/30 | Loss: {speech_loss_val:.4f} | Free Energy F_t: {fe_loss_val:.6f} | PPL: {math.exp(min(speech_loss_val, 20.0)):.2f} | DA: {hu_batch.state[0,5].item():.3f} | NA: {hu_batch.state[0,4].item():.3f}")
 
     total_time_sec = time.time() - t0_stream
     tok_per_sec = total_tokens_processed / max(total_time_sec, 1e-4)
