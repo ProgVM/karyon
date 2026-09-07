@@ -958,69 +958,6 @@ class CoREAgent(nn.Module):
     def evaluate_mental_sandbox(self, h_prev: torch.Tensor, w_curr: torch.Tensor, num_steps: int = 3) -> Tuple[torch.Tensor, float]:
         return self.world_model.evaluate_counterfactual_rollout(h_prev, w_curr, num_steps)
 
-    def register_new_sensory_channels_and_expand_alphabet(self, new_vocab_size: int) -> None:
-        """
-        Dynamically expands the model's alphabet/vocabulary size and hot-reloads all dependent
-        sub-modules (embeddings, attractor heads, gating, and motor heads) on the fly
-        without losing any pre-trained weights or parameters (KEP Principle 10 & 12).
-        """
-        if new_vocab_size <= self.text_gen_dim:
-            return
-        
-        # 1. Expand base positional embeddings
-        self.pos_embeddings.expand_alphabet(new_vocab_size)
-        
-        # 2. Re-initialize tokenizer with new vocabulary capacity
-        self.tokenizer = ByteTokenizer(vocab_size=new_vocab_size)
-        self.text_gen_dim = new_vocab_size
-        
-        # 3. Hot-expand the Attractor Head
-        old_attractors = self.attractor_head.attractor_basins.data
-        old_visitation = self.attractor_head.visitation_trace.data
-        
-        # Re-instantiate attractor head with expanded vocab size
-        self.attractor_head = DesaturatedHopfieldAttractorHead(
-            hidden_dim=self.hidden_dim,
-            vocab_size=new_vocab_size,
-            num_attractors=self.config.net.num_attractors,
-            device=self.device_str
-        )
-        # Restore pre-trained attractor basins
-        with torch.no_grad():
-            self.attractor_head.attractor_basins.data.copy_(old_attractors)
-            self.attractor_head.visitation_trace.data.copy_(old_visitation)
-            
-        # 4. Hot-expand the Entropy Macro Gate
-        old_entropy_head_w = self.entropy_macro_gate.entropy_head.weight.data
-        old_entropy_head_b = self.entropy_macro_gate.entropy_head.bias.data
-        
-        self.entropy_macro_gate = EntropyMacroGating(
-            self.hidden_dim, 
-            vocab_size=new_vocab_size, 
-            device_str=self.device_str
-        )
-        with torch.no_grad():
-            self.entropy_macro_gate.entropy_head.weight.data[:old_entropy_head_w.size(0)].copy_(old_entropy_head_w)
-            self.entropy_macro_gate.entropy_head.bias.data[:old_entropy_head_b.size(0)].copy_(old_entropy_head_b)
-            
-        # 5. Hot-expand the Volitional Motor Head
-        old_efe_motor_w = self.volitional_head.efe_motor_proj.weight.data
-        old_efe_motor_b = self.volitional_head.efe_motor_proj.bias.data
-        
-        self.volitional_head = VolitionalActiveInferenceMotorHead(
-            hidden_dim=self.hidden_dim,
-            text_dim=self.text_dim,
-            vocab_size=new_vocab_size,
-            gamma_volition=self.volitional_head.gamma_volition,
-            device_str=self.device_str
-        )
-        with torch.no_grad():
-            self.volitional_head.efe_motor_proj.weight.data.copy_(old_efe_motor_w)
-            self.volitional_head.efe_motor_proj.bias.data.copy_(old_efe_motor_b)
-            
-        # Force garbage collection and VRAM cache defragmentation
-        torch.cuda.empty_cache()
-
     def _sync_fused_stack_parameters(self):
         """Synchronizes Python stage1/stage2/boundary/pw_lper weights into native C++ fused_stack."""
         if hasattr(self, 'fused_stack') and hasattr(self.fused_stack, 'named_parameters'):
