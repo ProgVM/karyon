@@ -1688,31 +1688,28 @@ class CoREAgent(nn.Module):
                     
                     logits[0, top_k_candidates] = logits[0, top_k_candidates] + efe_boost
 
-            # Biophysical PAC Action Selection & Continuous Lateral Inhibition
-            # In intra-morphemic ballistic phase (Low entropy H <= 0.65 / High Gamma), execute direct MAP
-            # On boundary bifurcation (High entropy H > 0.65 / Theta reset), use Somatic Precision & Wiener noise
-            if entropy_val <= 0.65:
-                # Fast Ballistic Motor Execution (Zero-noise MAP)
-                next_token_id = int(torch.argmax(logits, dim=-1))
+            scaled_logits = logits / max(temp, 1e-4)
+            sorted_logits, sorted_indices = torch.sort(scaled_logits, descending=True, dim=-1)
+            cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+            to_remove = cumulative_probs > top_p_val
+            to_remove[..., 1:] = to_remove[..., :-1].clone()
+            to_remove[..., 0] = False
+            indices_to_remove = to_remove.scatter(1, sorted_indices, to_remove)
+            scaled_logits[indices_to_remove] = -1e9
+
+            # Action Selection: Greedy MAP when confident (temp < 0.15), Stochastic Nucleus sampling on word boundaries
+            if temp < 0.15:
+                next_token_id = int(torch.argmax(scaled_logits, dim=-1))
             else:
-                # Phasic Active Inference Action Selection with Somatic Precision Scaling
-                # No artificial Top-K/Top-P masks: continuous lateral inhibition via Boltzmann-Gibbs distribution
-                somatic_precision = (1.0 + 1.5 * effective_hu_st[0, 5].item()) / max(temp, 0.05)
-                scaled_logits = logits * (somatic_precision * 0.25)
-                
-                # Add thermodynamic synaptic Wiener noise to logits at concept boundary
-                wiener_noise = torch.randn_like(scaled_logits) * (0.15 * (1.0 - effective_hu_st[0, 2].item())) # Scaled by instability
-                perturbed_logits = scaled_logits + wiener_noise
-                
-                probs = F.softmax(perturbed_logits, dim=-1)
+                probs = F.softmax(scaled_logits, dim=-1)
                 probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
                 prob_sum = probs.sum(dim=-1, keepdim=True)
                 if (prob_sum <= 0).any():
-                    next_token_id = int(torch.argmax(logits, dim=-1))
+                    probs = torch.full_like(probs, 1.0 / 258)
                 else:
                     probs = probs / prob_sum
-                    next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
-                    next_token_id = int(next_token)
+                next_token = torch.multinomial(probs, num_samples=1).squeeze(0)
+                next_token_id = int(next_token)
 
             if step % 4 == 0:
                 hu.update(energy_action_cost, zero_pred_err, zero_pred_err, cog_action)
