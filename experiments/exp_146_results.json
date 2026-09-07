@@ -1,0 +1,14 @@
+{
+  "exp_id": "EXP-146",
+  "verdict": "\ud83d\udfe2 POSITIVE",
+  "initial_loss": 7.779960632324219,
+  "final_loss": 1.259502649307251,
+  "loss_delta": 6.520457983016968,
+  "initial_fe": 0.8501992225646973,
+  "final_fe": 0.40304064750671387,
+  "fe_reduction_pct": 52.59456409629405,
+  "cos_sim_preservation": 1.0,
+  "throughput_tok_per_sec": 10388.93023278315,
+  "peak_vram_mb": 1602.08984375,
+  "alphabet_expansion_ms": 21.88873291015625
+}

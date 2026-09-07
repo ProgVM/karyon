@@ -153,11 +153,12 @@ def run_experiment_146():
         optimizer.step()
         
         # Homeostatic state update
+        # cog_action must be of shape [batch_size, 1] to match inactivity mask logic in C++
         hu_batch.update(
-            torch.tensor([0.01] * batch_size, device=device_str),
-            torch.tensor([fe_loss_val] * batch_size, device=device_str),
-            torch.tensor([speech_loss_val * 0.05] * batch_size, device=device_str),
-            torch.zeros(batch_size, 3, device=device_str)
+            torch.tensor([0.01] * batch_size, device=device_str).unsqueeze(1),
+            torch.tensor([fe_loss_val] * batch_size, device=device_str).unsqueeze(1),
+            torch.tensor([speech_loss_val * 0.05] * batch_size, device=device_str).unsqueeze(1),
+            torch.zeros(batch_size, 1, device=device_str)
         )
         
         fe_history.append(fe_loss_val)
