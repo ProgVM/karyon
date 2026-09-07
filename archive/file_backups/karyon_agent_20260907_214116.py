@@ -1661,32 +1661,23 @@ class CoREAgent(nn.Module):
             temp = 0.08 + 0.32 * (1.0 / (1.0 + math.exp(-(5.0 * (entropy_val - 0.60) + 2.0 * (phasic_gain_val - 0.50)))))
             top_p_val = 0.88 + 0.10 * (1.0 - (1.0 / (1.0 + math.exp(-(4.0 * (entropy_val - 0.60))))))
 
-            # System 2 Active Inference Parallel Mental Sandbox (MCTS/Active Search on High Entropy Boundaries H > 0.70)
+            # System 2 Parallel Mental Sandbox Integration on High Entropy Boundaries (H > 0.70)
             if entropy_val > 0.70 and hasattr(self, 'world_model') and self.world_model is not None:
                 with torch.no_grad():
-                    # 1. Select top-8 candidate tokens from primary volitional logits
-                    top_k_candidates = torch.topk(logits, k=min(8, logits.size(-1)), dim=-1).indices[0] # [K]
-                    cand_embs = self.pos_embeddings.byte_embed(top_k_candidates) # [K, 256]
-                    
-                    num_cand = cand_embs.size(0)
-                    h_sim = h_relaxed.expand(num_cand, -1).contiguous() # [K, H]
-                    w_sim = cand_embs # [K, 256]
-                    
-                    efe_accum = torch.zeros(num_cand, 1, device=self.device)
-                    # 2. Rollout K candidate branches 3 steps into future in parallel
-                    for rollout_step in range(3):
-                        w_pred, _, fe_step, _ = self.world_model(h_sim, h_sim, w_sim)
-                        efe_accum += fe_step
-                        w_sim = w_pred
-                    
-                    # 3. Apply Active Inference Free Energy (EFE) bonus/penalty to candidate logits
-                    # Lower EFE = less surprise/higher epistemic alignment -> boost logit
-                    efe_scores = efe_accum.squeeze(-1) # [K]
-                    min_efe = efe_scores.min().item()
-                    efe_boost = 0.50 * (efe_scores.mean() - efe_scores) # Positive boost for low EFE
-                    efe_boost = torch.clamp(efe_boost, -4.0, 4.0)
-                    
-                    logits[0, top_k_candidates] = logits[0, top_k_candidates] + efe_boost
+                    w_curr_gen = w_t
+                    if hasattr(self.world_model, 'parallel_rollout_search'):
+                        best_thought_h, min_efe_t, _ = self.world_model.parallel_rollout_search(
+                            h_relaxed, w_curr_gen, steps=3
+                        )
+                        min_efe = float(min_efe_t.mean().item())
+                        h_relaxed = best_thought_h
+                    else:
+                        best_thought_h, min_efe = self.world_model.evaluate_counterfactual_rollout(
+                            h_relaxed, w_curr_gen, num_steps=3
+                        )
+                    # Modulate logits smoothly by Expected Free Energy from Sandbox rollout
+                    efe_penalty = torch.clamp(torch.tensor(min_efe, device=self.device) * 0.10, 0.0, 3.0)
+                    logits = logits - efe_penalty
 
             scaled_logits = logits / max(temp, 1e-4)
             sorted_logits, sorted_indices = torch.sort(scaled_logits, descending=True, dim=-1)
