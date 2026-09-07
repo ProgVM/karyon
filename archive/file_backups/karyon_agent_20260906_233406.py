@@ -606,14 +606,11 @@ class FastWeightHebbianPlasticity(nn.Module):
             causal_decay_mask = torch.tril(decay_mask).unsqueeze(0)
             attn_sim = torch.bmm(Q, K.transpose(1, 2)) / math.sqrt(self.key_dim)
             attn_decayed = attn_sim * causal_decay_mask * eta
-            # Clamp attn_decayed to prevent FP16 / FP32 explosion
-            attn_decayed = torch.clamp(attn_decayed, min=-10.0, max=10.0)
             y_fast = torch.bmm(attn_decayed, V)
         else:
             # Single step: instantaneous projection
             attn_sim = torch.bmm(Q, K.transpose(1, 2)) / math.sqrt(self.key_dim)
-            attn_decayed = torch.clamp(attn_sim * eta, min=-10.0, max=10.0)
-            y_fast = torch.bmm(attn_decayed, V)
+            y_fast = torch.bmm(attn_sim * eta, V)
             
         out = self.out_proj(y_fast)
         return out.squeeze(1) if is_2d else out
@@ -796,10 +793,10 @@ class CoREAgent(nn.Module):
         self.local_plasticity = LocalNeuromodulatedPlasticity(in_features=self.hidden_dim, out_features=self.hidden_dim, lr=0.08, device=self.device_str)
 
         # 11. Neo-Cortical Quad-Vector Grand Synthesis (EXP-136 Validated 🟢)
-        self.entropy_macro_gate = EntropyMacroGating(self.hidden_dim, vocab_size=self.text_gen_dim, device_str=self.device_str)
-        self.thalamic_router = ThalamocorticalGate(self.hidden_dim, homeo_dim=config.net.homeo_dim, device_str=self.device_str)
-        self.fast_weight_hebbian = FastWeightHebbianPlasticity(self.hidden_dim, device_str=self.device_str)
-        self.predictive_residual_router = PredictiveResidualRouting(self.hidden_dim, homeo_dim=config.net.homeo_dim, device_str=self.device_str)
+        self.v1_entropy_gate = Vector1EntropyMacroGating(self.hidden_dim, vocab_size=self.text_gen_dim, device_str=self.device_str)
+        self.v2_thalamic_router = Vector2ThalamocorticalGate(self.hidden_dim, homeo_dim=config.net.homeo_dim, device_str=self.device_str)
+        self.v3_fast_hebbian = Vector3FastWeightHebbian(self.hidden_dim, device_str=self.device_str)
+        self.v4_predictive_residual = Vector4PredictiveResidualRouting(self.hidden_dim, homeo_dim=config.net.homeo_dim, device_str=self.device_str)
 
     def execute_sleep_consolidation_2(self, hu: HomeostaticUnit, episodic_mem: BatchedEpisodicMemory, num_replay_cycles: int = 5) -> Dict[str, float]:
         """
@@ -871,12 +868,12 @@ class CoREAgent(nn.Module):
             effective_u_t, gamma_override, allostatic_strain = self.will_engine(h_s2_out, u_t)
 
             # EXP-136 Neo-Cortical Quad-Vector Grand Synthesis
-            entropy_s1, boundary_gate = self.entropy_macro_gate(h_s1_out)
+            entropy_s1, boundary_gate = self.v1_entropy_gate(h_s1_out)
             h_s2_gated = h_s2_out * (0.50 + 1.00 * boundary_gate.unsqueeze(-1))
 
-            h_thalamic, routing_weights = self.thalamic_router(h_s1_out, h_s2_gated, effective_u_t)
-            y_fast = self.fast_weight_hebbian(h_s1_out, effective_u_t)
-            weighted_error, error_magnitude = self.predictive_residual_router(h_s1_out, h_s2_gated, effective_u_t)
+            h_thalamic, routing_weights = self.v2_thalamic_router(h_s1_out, h_s2_gated, effective_u_t)
+            y_fast = self.v3_fast_hebbian(h_s1_out, effective_u_t)
+            weighted_error, error_magnitude = self.v4_predictive_residual(h_s1_out, h_s2_gated, effective_u_t)
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             h_combined = h_thalamic + 0.20 * y_fast + weighted_error + 0.15 * topdown_prior
@@ -903,24 +900,28 @@ class CoREAgent(nn.Module):
     def evaluate_mental_sandbox(self, h_prev: torch.Tensor, w_curr: torch.Tensor, num_steps: int = 3) -> Tuple[torch.Tensor, float]:
         return self.world_model.evaluate_counterfactual_rollout(h_prev, w_curr, num_steps)
 
-    def _sync_fused_stack_parameters(self):
-        """Synchronizes Python stage1/stage2/boundary/pw_lper weights into native C++ fused_stack."""
-        if hasattr(self, 'fused_stack') and hasattr(self.fused_stack, 'named_parameters'):
-            f_params = dict(self.fused_stack.named_parameters())
-            for prefix, sub in [('stage1', getattr(self, 'stage1', None)), 
-                                ('stage2', getattr(self, 'stage2', None)), 
-                                ('boundary_detector', getattr(self, 'boundary_detector', None)), 
-                                ('pw_lper', getattr(self, 'pw_lper', None))]:
-                if sub is not None and hasattr(sub, 'named_parameters'):
-                    for name, p in sub.named_parameters():
-                        target_key = f"{prefix}.{name}"
-                        if target_key in f_params:
-                            self._safe_copy_param(f_params[target_key].data, p.data)
-
     def get_all_parameters(self) -> List[nn.Parameter]:
         seen = set()
         params = []
-        raw_params = list(self.parameters())
+        raw_params = (
+            list(self.pos_embeddings.parameters()) + 
+            list(self.in_proj.parameters()) +
+            list(self.boundary_detector.parameters()) +
+            list(self.pw_lper.parameters()) +
+            list(self.pw_hpc_generator.parameters()) +
+            list(self.will_engine.parameters()) +
+            list(self.entropy_predictor.parameters()) +
+            list(self.topdown_prior_proj.parameters()) +
+            list(self.fact_gate.parameters()) +
+            list(self.episodic_sensory_proj.parameters()) +
+            list(self.motor_text_proj.parameters()) +
+            list(self.volitional_head.parameters()) +
+            list(self.reflex_circuit.parameters()) +
+            list(self.v1_entropy_gate.parameters()) +
+            list(self.v2_thalamic_router.parameters()) +
+            list(self.v3_fast_hebbian.parameters()) +
+            list(self.v4_predictive_residual.parameters())
+        )
         for submodule in [self.fused_stack, self.gateway, self.stage1, self.stage2, self.world_model, self.output_gateway, self.attractor_head, self.critic]:
             if hasattr(submodule, 'parameters'):
                 raw_params.extend(list(submodule.parameters()))
@@ -931,16 +932,51 @@ class CoREAgent(nn.Module):
         return params
 
     def get_complete_state_dict(self) -> Dict[str, torch.Tensor]:
-        sd = {}
-        # 1. Capture all Python named parameters
-        for name, p in self.named_parameters():
-            sd[name] = p.detach().cpu()
-        # 2. Capture all C++ submodule parameters (LibTorch / PyBind11 extensions)
-        for sub_name in ['gateway', 'stage1', 'stage2', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic']:
-            sub = getattr(self, sub_name, None)
-            if sub is not None and hasattr(sub, 'named_parameters'):
-                for p_name, p in sub.named_parameters():
-                    sd[f"{sub_name}.{p_name}"] = p.detach().cpu()
+        sd = {
+            'in_proj.weight': self.in_proj.weight.detach().cpu(),
+            'in_proj.bias': self.in_proj.bias.detach().cpu(),
+            'episodic_sensory_proj.weight': self.episodic_sensory_proj.weight.detach().cpu(),
+            'episodic_sensory_proj.bias': self.episodic_sensory_proj.bias.detach().cpu()
+        }
+        for name, param in self.pos_embeddings.named_parameters():
+            sd[f"pos_embeddings.{name}"] = param.detach().cpu()
+
+        for name, param in self.boundary_detector.named_parameters():
+            sd[f"boundary_detector.{name}"] = param.detach().cpu()
+
+        for name, param in self.pw_lper.named_parameters():
+            sd[f"pw_lper.{name}"] = param.detach().cpu()
+
+        for name, param in self.pw_hpc_generator.named_parameters():
+            sd[f"pw_hpc_generator.{name}"] = param.detach().cpu()
+
+        for name, param in self.will_engine.named_parameters():
+            sd[f"will_engine.{name}"] = param.detach().cpu()
+
+        for name, param in self.entropy_predictor.named_parameters():
+            sd[f"entropy_predictor.{name}"] = param.detach().cpu()
+
+        for name, param in self.topdown_prior_proj.named_parameters():
+            sd[f"topdown_prior_proj.{name}"] = param.detach().cpu()
+
+        for name, param in self.fact_gate.named_parameters():
+            sd[f"fact_gate.{name}"] = param.detach().cpu()
+
+        for name, param in self.motor_text_proj.named_parameters():
+            sd[f"motor_text_proj.{name}"] = param.detach().cpu()
+
+        for name, param in self.volitional_head.named_parameters():
+            sd[f"volitional_head.{name}"] = param.detach().cpu()
+
+        for name, param in self.reflex_circuit.named_parameters():
+            sd[f"reflex_circuit.{name}"] = param.detach().cpu()
+
+        for sub_name, sub in [('gateway', self.gateway), ('stage1', self.stage1), ('stage2', self.stage2), 
+                              ('world_model', self.world_model), ('output_gateway', self.output_gateway), 
+                              ('attractor_head', self.attractor_head), ('critic', self.critic)]:
+            if hasattr(sub, 'named_parameters'):
+                for p_name, p_val in sub.named_parameters():
+                    sd[f"{sub_name}.{p_name}"] = p_val.detach().cpu()
         return sd
 
     def _safe_copy_param(self, target_tensor: torch.Tensor, source_tensor: torch.Tensor):
@@ -952,100 +988,83 @@ class CoREAgent(nn.Module):
 
     def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor], device: str = 'cpu'):
         target_device = torch.device(device)
-        py_params = dict(self.named_parameters())
-        sub_params = {}
-        for sub_name in ['gateway', 'stage1', 'stage2', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic']:
-            sub = getattr(self, sub_name, None)
-            if sub is not None and hasattr(sub, 'named_parameters'):
-                for p_name, p in sub.named_parameters():
-                    sub_params[f"{sub_name}.{p_name}"] = p
-
         for name, tensor in state_dict.items():
             tensor = tensor.to(target_device)
-            if name in py_params:
-                self._safe_copy_param(py_params[name].data, tensor)
-            elif name in sub_params:
-                self._safe_copy_param(sub_params[name].data, tensor)
+            if name == "text_embeddings.weight":
+                self._safe_copy_param(self.pos_embeddings.byte_embed.weight.data, tensor)
+            elif name.startswith("pos_embeddings."):
+                p_name = name.replace("pos_embeddings.", "")
+                for sub_p_name, sub_p in self.pos_embeddings.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("boundary_detector."):
+                p_name = name.replace("boundary_detector.", "")
+                for sub_p_name, sub_p in self.boundary_detector.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("pw_lper.") or name.startswith("topdown_pred_net."):
+                clean_name = name.replace("topdown_pred_net.", "pw_lper.topdown_pred_net.")
+                p_name = clean_name.replace("pw_lper.", "")
+                for sub_p_name, sub_p in self.pw_lper.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("pw_hpc_generator."):
+                p_name = name.replace("pw_hpc_generator.", "")
+                for sub_p_name, sub_p in self.pw_hpc_generator.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("will_engine."):
+                p_name = name.replace("will_engine.", "")
+                for sub_p_name, sub_p in self.will_engine.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("entropy_predictor."):
+                p_name = name.replace("entropy_predictor.", "")
+                for sub_p_name, sub_p in self.entropy_predictor.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("topdown_prior_proj."):
+                p_name = name.replace("topdown_prior_proj.", "")
+                for sub_p_name, sub_p in self.topdown_prior_proj.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("fact_gate."):
+                p_name = name.replace("fact_gate.", "")
+                for sub_p_name, sub_p in self.fact_gate.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("reflex_circuit."):
+                p_name = name.replace("reflex_circuit.", "")
+                for sub_p_name, sub_p in self.reflex_circuit.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("volitional_head."):
+                p_name = name.replace("volitional_head.", "")
+                for sub_p_name, sub_p in self.volitional_head.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
+            elif name.startswith("in_proj."):
+                p_name = name.replace("in_proj.", "")
+                if hasattr(self.in_proj, p_name):
+                    self._safe_copy_param(getattr(self.in_proj, p_name).data, tensor)
+            elif name.startswith("episodic_sensory_proj."):
+                p_name = name.replace("episodic_sensory_proj.", "")
+                if hasattr(self.episodic_sensory_proj, p_name):
+                    self._safe_copy_param(getattr(self.episodic_sensory_proj, p_name).data, tensor)
+            elif name.startswith("motor_text_proj."):
+                p_name = name.replace("motor_text_proj.", "")
+                for sub_p_name, sub_p in self.motor_text_proj.named_parameters():
+                    if sub_p_name == p_name:
+                        self._safe_copy_param(sub_p.data, tensor)
             else:
-                # Fallback mapping for older state_dict conventions
-                if name == "text_embeddings.weight":
-                    self._safe_copy_param(self.pos_embeddings.byte_embed.weight.data, tensor)
-                elif name.startswith("pos_embeddings."):
-                    p_name = name.replace("pos_embeddings.", "")
-                    for sub_p_name, sub_p in self.pos_embeddings.named_parameters():
-                        if sub_p_name == p_name:
-                            self._safe_copy_param(sub_p.data, tensor)
-                elif name.startswith("boundary_detector."):
-                    p_name = name.replace("boundary_detector.", "")
-                    for sub_p_name, sub_p in self.boundary_detector.named_parameters():
-                        if sub_p_name == p_name:
-                            self._safe_copy_param(sub_p.data, tensor)
-                elif name.startswith("pw_lper.") or name.startswith("topdown_pred_net."):
-                    clean_name = name.replace("topdown_pred_net.", "pw_lper.topdown_pred_net.")
-                    p_name = clean_name.replace("pw_lper.", "")
-                    for sub_p_name, sub_p in self.pw_lper.named_parameters():
-                        if sub_p_name == p_name:
-                            self._safe_copy_param(sub_p.data, tensor)
-                elif name.startswith("pw_hpc_generator."):
-                    p_name = name.replace("pw_hpc_generator.", "")
-                    for sub_p_name, sub_p in self.pw_hpc_generator.named_parameters():
-                        if sub_p_name == p_name:
-                            self._safe_copy_param(sub_p.data, tensor)
-                elif name.startswith("will_engine."):
-                    p_name = name.replace("will_engine.", "")
-                    for sub_p_name, sub_p in self.will_engine.named_parameters():
-                        if sub_p_name == p_name:
-                            self._safe_copy_param(sub_p.data, tensor)
-                elif name.startswith("entropy_predictor."):
-                    p_name = name.replace("entropy_predictor.", "")
-                    for sub_p_name, sub_p in self.entropy_predictor.named_parameters():
-                        if sub_p_name == p_name:
-                            self._safe_copy_param(sub_p.data, tensor)
-                elif name.startswith("topdown_prior_proj."):
-                    p_name = name.replace("topdown_prior_proj.", "")
-                    for sub_p_name, sub_p in self.topdown_prior_proj.named_parameters():
-                        if sub_p_name == p_name:
-                            self._safe_copy_param(sub_p.data, tensor)
-                elif name.startswith("fact_gate."):
-                    p_name = name.replace("fact_gate.", "")
-                    for sub_p_name, sub_p in self.fact_gate.named_parameters():
-                        if sub_p_name == p_name:
-                            self._safe_copy_param(sub_p.data, tensor)
-                elif name.startswith("reflex_circuit."):
-                    p_name = name.replace("reflex_circuit.", "")
-                    for sub_p_name, sub_p in self.reflex_circuit.named_parameters():
-                        if sub_p_name == p_name:
-                            self._safe_copy_param(sub_p.data, tensor)
-                elif name.startswith("volitional_head."):
-                    p_name = name.replace("volitional_head.", "")
-                    for sub_p_name, sub_p in self.volitional_head.named_parameters():
-                        if sub_p_name == p_name:
-                            self._safe_copy_param(sub_p.data, tensor)
-                elif name.startswith("in_proj."):
-                    p_name = name.replace("in_proj.", "")
-                    if hasattr(self.in_proj, p_name):
-                        self._safe_copy_param(getattr(self.in_proj, p_name).data, tensor)
-                elif name.startswith("episodic_sensory_proj."):
-                    p_name = name.replace("episodic_sensory_proj.", "")
-                    if hasattr(self.episodic_sensory_proj, p_name):
-                        self._safe_copy_param(getattr(self.episodic_sensory_proj, p_name).data, tensor)
-                elif name.startswith("motor_text_proj."):
-                    p_name = name.replace("motor_text_proj.", "")
-                    for sub_p_name, sub_p in self.motor_text_proj.named_parameters():
-                        if sub_p_name == p_name:
-                            self._safe_copy_param(sub_p.data, tensor)
-                else:
-                    parts = name.split(".", 1)
-                    if len(parts) == 2:
-                        sub_name, param_name = parts[0], parts[1]
-                        sub = getattr(self, sub_name, None)
-                        if sub is not None and hasattr(sub, 'named_parameters'):
-                            for p_name, p_val in sub.named_parameters():
-                                if p_name == param_name or p_name.endswith(param_name):
-                                    self._safe_copy_param(p_val.data, tensor)
-
-        # Force sync stage1/stage2/boundary/pw_lper weights into native C++ fused_stack
-        self._sync_fused_stack_parameters()
+                parts = name.split(".", 1)
+                if len(parts) == 2:
+                    sub_name, param_name = parts[0], parts[1]
+                    sub = getattr(self, sub_name, None)
+                    if sub is not None and hasattr(sub, 'named_parameters'):
+                        for p_name, p_val in sub.named_parameters():
+                            if p_name == param_name or p_name.endswith(param_name):
+                                self._safe_copy_param(p_val.data, tensor)
 
     def encode_text(self, text: str) -> torch.Tensor:
         ids = self.tokenizer.encode(text)
@@ -1337,12 +1356,12 @@ class CoREAgent(nn.Module):
             eff_dt = torch.tensor(1.0, device=self.device)
 
             # EXP-136 Neo-Cortical Quad-Vector Grand Synthesis
-            entropy_s1, boundary_gate = self.entropy_macro_gate(h_s1)
+            entropy_s1, boundary_gate = self.v1_entropy_gate(h_s1)
             h_s2_gated = h_s2 * (0.50 + 1.00 * boundary_gate.unsqueeze(-1))
 
-            h_thalamic, routing_weights = self.thalamic_router(h_s1, h_s2_gated, effective_u_t)
-            y_fast = self.fast_weight_hebbian(h_s1, effective_u_t)
-            weighted_error, error_magnitude = self.predictive_residual_router(h_s1, h_s2_gated, effective_u_t)
+            h_thalamic, routing_weights = self.v2_thalamic_router(h_s1, h_s2_gated, effective_u_t)
+            y_fast = self.v3_fast_hebbian(h_s1, effective_u_t)
+            weighted_error, error_magnitude = self.v4_predictive_residual(h_s1, h_s2_gated, effective_u_t)
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             # Smooth continuous modulation via LC Phasic Gain
@@ -1422,12 +1441,12 @@ class CoREAgent(nn.Module):
             effective_u_t, gamma_override, allostatic_strain = self.will_engine(h_s2_out, u_t)
 
             # EXP-136 Neo-Cortical Quad-Vector Grand Synthesis
-            entropy_s1, boundary_gate = self.entropy_macro_gate(h_s1_out)
+            entropy_s1, boundary_gate = self.v1_entropy_gate(h_s1_out)
             h_s2_gated = h_s2_out * (0.50 + 1.00 * boundary_gate.unsqueeze(-1))
 
-            h_thalamic, routing_weights = self.thalamic_router(h_s1_out, h_s2_gated, effective_u_t)
-            y_fast = self.fast_weight_hebbian(h_s1_out, effective_u_t)
-            weighted_error, error_magnitude = self.predictive_residual_router(h_s1_out, h_s2_gated, effective_u_t)
+            h_thalamic, routing_weights = self.v2_thalamic_router(h_s1_out, h_s2_gated, effective_u_t)
+            y_fast = self.v3_fast_hebbian(h_s1_out, effective_u_t)
+            weighted_error, error_magnitude = self.v4_predictive_residual(h_s1_out, h_s2_gated, effective_u_t)
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             h_combined = h_thalamic + 0.20 * y_fast + weighted_error + 0.15 * topdown_prior
@@ -1539,12 +1558,12 @@ class CoREAgent(nn.Module):
             effective_hu_st, gamma_override, allostatic_strain = self.will_engine(h_s2, hu_st)
 
             # EXP-136 Neo-Cortical Quad-Vector Grand Synthesis
-            entropy_s1, boundary_gate = self.entropy_macro_gate(h_s1)
+            entropy_s1, boundary_gate = self.v1_entropy_gate(h_s1)
             h_s2_gated = h_s2 * (0.50 + 1.00 * boundary_gate.unsqueeze(-1))
 
-            h_thalamic, routing_weights = self.thalamic_router(h_s1, h_s2_gated, effective_hu_st)
-            y_fast = self.fast_weight_hebbian(h_s1, effective_hu_st)
-            weighted_error, error_magnitude = self.predictive_residual_router(h_s1, h_s2_gated, effective_hu_st)
+            h_thalamic, routing_weights = self.v2_thalamic_router(h_s1, h_s2_gated, effective_hu_st)
+            y_fast = self.v3_fast_hebbian(h_s1, effective_hu_st)
+            weighted_error, error_magnitude = self.v4_predictive_residual(h_s1, h_s2_gated, effective_hu_st)
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             # Full cortical laminar combination matching forward_sequence
