@@ -606,11 +606,14 @@ class FastWeightHebbianPlasticity(nn.Module):
             causal_decay_mask = torch.tril(decay_mask).unsqueeze(0)
             attn_sim = torch.bmm(Q, K.transpose(1, 2)) / math.sqrt(self.key_dim)
             attn_decayed = attn_sim * causal_decay_mask * eta
+            # Clamp attn_decayed to prevent FP16 / FP32 explosion
+            attn_decayed = torch.clamp(attn_decayed, min=-10.0, max=10.0)
             y_fast = torch.bmm(attn_decayed, V)
         else:
             # Single step: instantaneous projection
             attn_sim = torch.bmm(Q, K.transpose(1, 2)) / math.sqrt(self.key_dim)
-            y_fast = torch.bmm(attn_sim * eta, V)
+            attn_decayed = torch.clamp(attn_sim * eta, min=-10.0, max=10.0)
+            y_fast = torch.bmm(attn_decayed, V)
             
         out = self.out_proj(y_fast)
         return out.squeeze(1) if is_2d else out
