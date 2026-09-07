@@ -295,7 +295,7 @@ if start_step >= len(stream_loader):
 if start_step > 0:
     logger.info(f"⏩ [Resume Detected] Found saved checkpoint at step {start_step}/{len(stream_loader)}. Resuming stream seamlessly...")
 
-optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=2.5e-4, weight_decay=0.01)
+optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=5e-4, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
 scaler = torch.amp.GradScaler(hw_engine.device_type, enabled=(use_amp and autocast_dtype == torch.float16))
@@ -461,7 +461,7 @@ def run_single_pass_training():
             if scaler.is_enabled():
                 scaler.scale(total_loss_tensor).backward()
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=0.5)
+                torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=1.0)
                 
                 scale_before = scaler.get_scale()
                 scaler.step(optimizer)
@@ -472,7 +472,7 @@ def run_single_pass_training():
                     lr_scheduler.step()
             else:
                 total_loss_tensor.backward()
-                torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=0.5)
+                torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=1.0)
                 optimizer.step()
                 lr_scheduler.step()
                 

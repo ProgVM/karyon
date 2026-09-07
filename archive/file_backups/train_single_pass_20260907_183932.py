@@ -472,7 +472,7 @@ def run_single_pass_training():
                     lr_scheduler.step()
             else:
                 total_loss_tensor.backward()
-                torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=0.5)
+                torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=1.0)
                 optimizer.step()
                 lr_scheduler.step()
                 
