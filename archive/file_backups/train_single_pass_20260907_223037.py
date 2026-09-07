@@ -99,13 +99,11 @@ logger.info(f"Execution context: {device_str.upper()} (AMP Enabled: {use_amp}, D
 kcore_path = "karyon_soul.kcore"
 hf_repo_id = "progvmoff/karyon-v31-core"
 
-# Function to safely push checkpoint AND training logs to Hugging Face Hub
+# Function to safely push checkpoint to Hugging Face Hub
 def sync_checkpoint_to_hf(local_file: str, repo_id: str, commit_msg: str):
     try:
         api = HfApi()
-        logger.info(f"🤗 [HF Auto-Sync] Pushing checkpoint '{local_file}' & training logs to HuggingFace Hub: {repo_id}...")
-        
-        # 1. Upload .kcore binary checkpoint
+        logger.info(f"🤗 [HF Auto-Sync] Pushing checkpoint '{local_file}' to HuggingFace Hub: {repo_id}...")
         api.upload_file(
             path_or_fileobj=local_file,
             path_in_repo="karyon_soul.kcore",
@@ -113,21 +111,9 @@ def sync_checkpoint_to_hf(local_file: str, repo_id: str, commit_msg: str):
             repo_type="model",
             commit_message=commit_msg
         )
-        
-        # 2. Upload train.log if exists
-        log_file = "train.log"
-        if os.path.exists(log_file):
-            api.upload_file(
-                path_or_fileobj=log_file,
-                path_in_repo="logs/train.log",
-                repo_id=repo_id,
-                repo_type="model",
-                commit_message=f"changelog: update training execution log ({commit_msg})"
-            )
-            
-        logger.info(f"🤗 [HF Auto-Sync] Successfully uploaded '{local_file}' and 'train.log' to '{repo_id}'!")
+        logger.info(f"🤗 [HF Auto-Sync] Successfully uploaded '{local_file}' to '{repo_id}'!")
     except Exception as e:
-        logger.warning(f"⚠️ [HF Auto-Sync Warning] Failed to upload checkpoint/log to HuggingFace Hub: {e}")
+        logger.warning(f"⚠️ [HF Auto-Sync Warning] Failed to upload checkpoint to HuggingFace Hub: {e}")
 
 # =============================================================================
 # 1. MULTI-DOMAIN CONTINUOUS STREAM DATASET BUILDER
