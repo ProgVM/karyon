@@ -890,15 +890,7 @@ public:
         }
     }
 
-    void reset_visitation_trace() {
-        visitation_trace.zero_();
-    }
-
     std::tuple<torch::Tensor, torch::Tensor> relax_to_minima(torch::Tensor h_state, torch::Tensor u_t) {
-        if (torch::isnan(visitation_trace).any().item<bool>()) {
-            visitation_trace.zero_();
-        }
-
         torch::Tensor beta;
         if (u_t.defined() && u_t.numel() >= 6) {
             auto da_val = u_t.select(1, 5).view({-1, 1});
@@ -912,23 +904,17 @@ public:
         }
 
         auto sim = torch::matmul(h_state, attractor_basins.transpose(0, 1)) * (scale * beta);
-        sim = torch::nan_to_num(sim, 0.0f);
-        sim = torch::clamp(sim, -50.0f, 50.0f);
         
         // Biophysical Habituation: subtract visitation fatigue (synaptic depression & GABA decay)
-        auto fatigue_penalty = 1.20f * torch::nan_to_num(visitation_trace, 0.0f).unsqueeze(0);
+        auto fatigue_penalty = 1.20f * visitation_trace.unsqueeze(0);
         auto habituated_sim = sim - fatigue_penalty;
         
         auto attn_weights = torch::softmax(habituated_sim, -1);
-        attn_weights = torch::nan_to_num(attn_weights, 0.0f);
 
         // Update visitation trace: passive GABA decay (0.82) + active accumulation
         {
             torch::NoGradGuard no_grad;
-            auto next_trace = 0.82f * visitation_trace + attn_weights.detach().mean(0);
-            next_trace = torch::nan_to_num(next_trace, 0.0f);
-            next_trace = torch::clamp(next_trace, 0.0f, 10.0f);
-            visitation_trace.copy_(next_trace);
+            visitation_trace.copy_(0.82f * visitation_trace + attn_weights.detach().mean(0));
         }
 
         auto attractor_shift = torch::matmul(attn_weights, attractor_basins);
@@ -1506,8 +1492,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
              py::arg("hidden_dim") = 512, py::arg("vocab_size") = 258, py::arg("num_attractors") = 256, py::arg("device") = "cpu")
         .def_readwrite("attractor_basins", &DesaturatedHopfieldAttractorHeadImpl::attractor_basins)
-        .def_readwrite("visitation_trace", &DesaturatedHopfieldAttractorHeadImpl::visitation_trace)
-        .def("reset_visitation_trace", &DesaturatedHopfieldAttractorHeadImpl::reset_visitation_trace)
         .def("relax_to_minima", &DesaturatedHopfieldAttractorHeadImpl::relax_to_minima,
              py::arg("h_state"), py::arg("u_t") = torch::Tensor())
         .def("compute_pattern_separation_loss", &DesaturatedHopfieldAttractorHeadImpl::compute_pattern_separation_loss)

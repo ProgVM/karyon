@@ -1506,8 +1506,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, int64_t, int64_t, std::string>(),
              py::arg("hidden_dim") = 512, py::arg("vocab_size") = 258, py::arg("num_attractors") = 256, py::arg("device") = "cpu")
         .def_readwrite("attractor_basins", &DesaturatedHopfieldAttractorHeadImpl::attractor_basins)
-        .def_readwrite("visitation_trace", &DesaturatedHopfieldAttractorHeadImpl::visitation_trace)
-        .def("reset_visitation_trace", &DesaturatedHopfieldAttractorHeadImpl::reset_visitation_trace)
         .def("relax_to_minima", &DesaturatedHopfieldAttractorHeadImpl::relax_to_minima,
              py::arg("h_state"), py::arg("u_t") = torch::Tensor())
         .def("compute_pattern_separation_loss", &DesaturatedHopfieldAttractorHeadImpl::compute_pattern_separation_loss)
