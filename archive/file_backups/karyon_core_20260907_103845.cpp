@@ -451,7 +451,7 @@ struct ParallelLogDecaySSDLayerImpl : torch::nn::Module {
 
         auto betas = torch::exp(torch::linspace(std::log(max_beta), std::log(min_beta), num_heads, opts));
         auto alphas = 1.0f - betas;
-        auto logit_init = torch::log(alphas / torch::clamp(1.0f - alphas, 1e-7f, 1.0f)).view({1, 1, num_heads, 1});
+        auto logit_init = torch::log(alphas / (1.0f - alphas)).view({1, 1, num_heads, 1});
         decay_logits = register_parameter("decay_logits", logit_init);
 
         head_norm = register_module("head_norm", torch::nn::GroupNorm(torch::nn::GroupNormOptions(num_heads, num_heads * head_v)));
@@ -1428,10 +1428,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
              py::arg("hidden_dim") = 768, py::arg("expand_dim") = 3072, py::arg("num_heads") = 12,
              py::arg("head_k") = 64, py::arg("head_v") = 128, py::arg("chunk_size") = 64, py::arg("device") = "cpu")
-        .def_readonly("stage1", &FusedCascadedLaminarStackImpl::stage1)
-        .def_readonly("boundary_detector", &FusedCascadedLaminarStackImpl::boundary_detector)
-        .def_readonly("pw_lper", &FusedCascadedLaminarStackImpl::pw_lper)
-        .def_readonly("stage2", &FusedCascadedLaminarStackImpl::stage2)
         .def("forward", &FusedCascadedLaminarStackImpl::forward,
              py::arg("h_in"), py::arg("m_s1_prev"), py::arg("m_s2_prev"), py::arg("u_t"), py::arg("text_ids"))
         .def("parameters", [](std::shared_ptr<FusedCascadedLaminarStackImpl> m) { return m->parameters(); })

@@ -719,17 +719,6 @@ class CoREAgent(nn.Module):
 
         self.pw_hpc_generator = PrecisionWeightedTopDownGenerator(hidden_dim=self.hidden_dim, device_str=self.device_str)
 
-        # 3.1 Hierarchical Volitional Override Module (EXP-99 Validated)
-        self.will_engine = HierarchicalVolitionalOverrideModule(hidden_dim=self.hidden_dim, homeo_dim=config.net.homeo_dim, device_str=self.device_str)
-
-        # 3.2 Entropy Predictor for Dynamic dt Scaling (EXP-95 Validated)
-        self.entropy_predictor = nn.Sequential(
-            nn.Linear(self.hidden_dim, 64),
-            nn.SiLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
-        ).to(self.device)
-
         self.topdown_prior_proj = nn.Sequential(
             nn.Linear(self.hidden_dim, self.hidden_dim),
             nn.SiLU(),
@@ -927,13 +916,12 @@ class CoREAgent(nn.Module):
         seen = set()
         params = []
         raw_params = list(self.parameters())
-        for submodule in [self.fused_stack, self.gateway, self.world_model, self.output_gateway, self.attractor_head, self.critic, getattr(self, 'efe_action_evaluator', None), getattr(self, 'local_plasticity', None)]:
-            if submodule is not None and hasattr(submodule, 'parameters'):
+        for submodule in [self.fused_stack, self.gateway, self.stage1, self.stage2, self.world_model, self.output_gateway, self.attractor_head, self.critic]:
+            if hasattr(submodule, 'parameters'):
                 raw_params.extend(list(submodule.parameters()))
         for p in raw_params:
-            ptr = p.data_ptr() if hasattr(p, 'data_ptr') else id(p)
-            if ptr not in seen:
-                seen.add(ptr)
+            if p not in seen:
+                seen.add(p)
                 params.append(p)
         return params
 
@@ -942,8 +930,8 @@ class CoREAgent(nn.Module):
         # 1. Capture all Python named parameters
         for name, p in self.named_parameters():
             sd[name] = p.detach().cpu()
-        # 2. Capture all C++ submodule parameters (LibTorch / PyBind11 extensions, deduplicated)
-        for sub_name in ['gateway', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic', 'efe_action_evaluator', 'local_plasticity']:
+        # 2. Capture all C++ submodule parameters (LibTorch / PyBind11 extensions)
+        for sub_name in ['gateway', 'stage1', 'stage2', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic']:
             sub = getattr(self, sub_name, None)
             if sub is not None and hasattr(sub, 'named_parameters'):
                 for p_name, p in sub.named_parameters():
@@ -961,7 +949,7 @@ class CoREAgent(nn.Module):
         target_device = torch.device(device)
         py_params = dict(self.named_parameters())
         sub_params = {}
-        for sub_name in ['gateway', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic', 'efe_action_evaluator', 'local_plasticity']:
+        for sub_name in ['gateway', 'stage1', 'stage2', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic']:
             sub = getattr(self, sub_name, None)
             if sub is not None and hasattr(sub, 'named_parameters'):
                 for p_name, p in sub.named_parameters():
@@ -973,10 +961,6 @@ class CoREAgent(nn.Module):
                 self._safe_copy_param(py_params[name].data, tensor)
             elif name in sub_params:
                 self._safe_copy_param(sub_params[name].data, tensor)
-            elif name.startswith("stage1.") or name.startswith("stage2.") or name.startswith("boundary_detector.") or name.startswith("pw_lper."):
-                mapped_name = f"fused_stack.{name}"
-                if mapped_name in sub_params:
-                    self._safe_copy_param(sub_params[mapped_name].data, tensor)
             else:
                 # Fallback mapping for older state_dict conventions
                 if name == "text_embeddings.weight":

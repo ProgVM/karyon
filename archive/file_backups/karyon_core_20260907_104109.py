@@ -27,19 +27,18 @@ for mod_name, mod in list(sys.modules.items()):
             karyon_cpp = mod
             break
 
-# Step 2: Try importing candidate names directly from disk / cache (prefer newest compiled build)
+# Step 2: Try importing candidate names directly from disk / cache (prefer newest v28)
 if karyon_cpp is None:
     for path in [
-        "/kaggle/working/karyon/build/karyon_core_jit",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "build/karyon_core_jit"),
         "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v28",
         "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v27",
-        "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v26"
+        "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v26",
+        "/kaggle/working/karyon/build/karyon_core_jit"
     ]:
         if os.path.exists(path) and path not in sys.path:
-            sys.path.insert(0, path)
+            sys.path.append(path)
             
-    for candidate_name in ["karyon_core_ext", "karyon_cpp_ext_v28", "karyon_cpp_ext_v27", "karyon_cpp_ext_v26"]:
+    for candidate_name in ["karyon_cpp_ext_v28", "karyon_core_ext", "karyon_cpp_ext_v27", "karyon_cpp_ext_v26"]:
         try:
             mod = importlib.import_module(candidate_name)
             if _is_valid_karyon_cpp_module(mod):

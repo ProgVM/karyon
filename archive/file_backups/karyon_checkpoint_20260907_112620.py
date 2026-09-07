@@ -242,23 +242,8 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
     
     total_file_size = offset_state + size_state
 
-    # Check for polyglot executable sheath in existing file
-    sheath_header = b""
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, 'rb') as ef:
-                existing_lead = ef.read(16384)
-                if existing_lead.startswith(b"#!/bin/sh"):
-                    sig_idx = existing_lead.rfind(b"KC" + b"ORE")
-                    if sig_idx > 0:
-                        sheath_header = existing_lead[:sig_idx]
-        except Exception:
-            pass
-
     # Atomic Write to Disk
     with open(filepath, 'wb') as f:
-        if sheath_header:
-            f.write(sheath_header)
         f.write(KCORE_MAGIC_V5)
         f.write(struct.pack('<IIQQ', header_size, num_sections, total_file_size, 0))
         
@@ -279,12 +264,6 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
         f.write(weights_bytes)
         f.write(b'\x00' * pad_state)
         f.write(state_bytes)
-
-    if sheath_header:
-        try:
-            os.chmod(filepath, 0o755)
-        except Exception:
-            pass
 
     logic_saving_pct = (1.0 - len(compressed_logic_bytes) / max(len(raw_logic_bytes), 1)) * 100.0
     manifest_saving_pct = (1.0 - len(compressed_manifest_bytes) / max(len(raw_manifest_bytes), 1)) * 100.0

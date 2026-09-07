@@ -290,8 +290,6 @@ episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_conf
 
 h_fast, h_slow, saved_epoch, saved_story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 start_step = (saved_story_idx // BATCH_SIZE) if saved_story_idx else 0
-if start_step >= len(stream_loader):
-    start_step = 0 # Loop stream seamlessly upon completing full stream pass
 if start_step > 0:
     logger.info(f"⏩ [Resume Detected] Found saved checkpoint at step {start_step}/{len(stream_loader)}. Resuming stream seamlessly...")
 
@@ -531,10 +529,8 @@ def run_single_pass_training():
             sync_checkpoint_to_hf(kcore_path, hf_repo_id, commit_msg)
 
     # Final container save & HF sync
-    h_fast_save = h_fast if 'h_fast' in locals() else torch.zeros(1, agent_brain.hidden_dim, device=device)
-    h_slow_save = h_slow if 'h_slow' in locals() else torch.zeros(1, agent_brain.hidden_dim, device=device)
-    save_karyon(agent_brain, episodic_mem, hu, h_fast_save[0:1], h_slow_save[0:1], epoch=1, story_idx=len(stream_loader) * BATCH_SIZE, filepath=kcore_path)
-    sync_checkpoint_to_hf(kcore_path, hf_repo_id, f"feat(weights): single-pass stream complete - final loss={speech_loss_val if 'speech_loss_val' in locals() else 0.0:.4f}")
+    save_karyon(agent_brain, episodic_mem, hu, h_curr[0:1], h_curr[0:1], epoch=1, story_idx=len(stream_loader) * BATCH_SIZE, filepath=kcore_path)
+    sync_checkpoint_to_hf(kcore_path, hf_repo_id, f"feat(weights): single-pass stream complete - final loss={speech_loss_val:.4f}")
 
     logger.info(f"Single-Pass Continuous Stream Session Complete! Total Steps: {len(stream_loader)} | Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches} | Total Sleep Cycles: {total_sleep_cycles}.")
 

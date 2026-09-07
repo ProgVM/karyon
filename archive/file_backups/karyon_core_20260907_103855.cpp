@@ -1428,10 +1428,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, std::string>(),
              py::arg("hidden_dim") = 768, py::arg("expand_dim") = 3072, py::arg("num_heads") = 12,
              py::arg("head_k") = 64, py::arg("head_v") = 128, py::arg("chunk_size") = 64, py::arg("device") = "cpu")
-        .def_readonly("stage1", &FusedCascadedLaminarStackImpl::stage1)
-        .def_readonly("boundary_detector", &FusedCascadedLaminarStackImpl::boundary_detector)
-        .def_readonly("pw_lper", &FusedCascadedLaminarStackImpl::pw_lper)
-        .def_readonly("stage2", &FusedCascadedLaminarStackImpl::stage2)
         .def("forward", &FusedCascadedLaminarStackImpl::forward,
              py::arg("h_in"), py::arg("m_s1_prev"), py::arg("m_s2_prev"), py::arg("u_t"), py::arg("text_ids"))
         .def("parameters", [](std::shared_ptr<FusedCascadedLaminarStackImpl> m) { return m->parameters(); })

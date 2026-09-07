@@ -280,12 +280,6 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
         f.write(b'\x00' * pad_state)
         f.write(state_bytes)
 
-    if sheath_header:
-        try:
-            os.chmod(filepath, 0o755)
-        except Exception:
-            pass
-
     logic_saving_pct = (1.0 - len(compressed_logic_bytes) / max(len(raw_logic_bytes), 1)) * 100.0
     manifest_saving_pct = (1.0 - len(compressed_manifest_bytes) / max(len(raw_manifest_bytes), 1)) * 100.0
     print(f"[KCORE Checkpoint v5.0] Entity Soul persisted into container '{filepath}' "
