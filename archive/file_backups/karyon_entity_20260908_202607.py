@@ -152,35 +152,34 @@ class KaryonEntity:
                     self.memory.write(self.prev_karyon_representation.detach().float(), w_human.detach().float(), 3)
 
         # 3. Generate Speech Output via Thought Generator
-        with torch.no_grad():
-            thought_generator = self.brain.generate_thought_and_speech(
-                full_prompt,
-                m_state=torch.zeros(1, self.brain.num_heads, self.brain.head_k, self.brain.head_v, device=self.device),
-                h_state=self.h_fast,
-                hu=self.hu,
-                episodic_memory=self.memory,
-                config=self.config,
-                max_generated_tokens=max_tokens,
-                temperature=temperature,
-                top_p=top_p
-            )
-            
-            generated_tokens = []
-            generated_chars = []
-            
-            for event in thought_generator:
-                if event["status"] == "token":
-                    generated_tokens.append(event["token_id"])
-                    generated_chars.append(event["text"])
-                    yield event
-                elif event["status"] in ("speech_start", "thought_start", "thought_end"):
-                    yield event
-                elif event["status"] in ("exhausted", "speech_end"):
-                    h_st = event.get("h_state", self.h_fast)
-                    self.h_fast = h_st.squeeze(1) if (h_st is not None and h_st.dim() == 3) else h_st
-                    if "m_state" in event:
-                        self.h_slow = event["m_state"].view(1, -1)[:, :self.brain.hidden_dim]
-                    yield event
+        thought_generator = self.brain.generate_thought_and_speech(
+            full_prompt,
+            m_state=torch.zeros(1, self.brain.num_heads, self.brain.head_k, self.brain.head_v, device=self.device),
+            h_state=self.h_fast,
+            hu=self.hu,
+            episodic_memory=self.memory,
+            config=self.config,
+            max_generated_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p
+        )
+        
+        generated_tokens = []
+        generated_chars = []
+        
+        for event in thought_generator:
+            if event["status"] == "token":
+                generated_tokens.append(event["token_id"])
+                generated_chars.append(event["text"])
+                yield event
+            elif event["status"] in ("speech_start", "thought_start", "thought_end"):
+                yield event
+            elif event["status"] in ("exhausted", "speech_end"):
+                h_st = event.get("h_state", self.h_fast)
+                self.h_fast = h_st.squeeze(1) if (h_st is not None and h_st.dim() == 3) else h_st
+                if "m_state" in event:
+                    self.h_slow = event["m_state"].view(1, -1)[:, :self.brain.hidden_dim]
+                yield event
 
         response_text = "".join(generated_chars).strip()
         

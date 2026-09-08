@@ -1,0 +1,108 @@
+{
+  "exp_id": "EXP-152",
+  "verdict": "POSITIVE",
+  "metrics": {
+    "mean_turn_latency_ms": 2015.3735986665804,
+    "final_energy": 0.9699997901916504,
+    "final_health": 1.0,
+    "num_turns": 6
+  },
+  "dialogue_history": [
+    {
+      "turn": 1,
+      "user_input": "Hello Karyon, how are you feeling today?",
+      "speech_output": "\"The animal and an analogy and analyze and an analogy and an analogy and analyz",
+      "latency_ms": 2776.6363369992177,
+      "valence": -0.5360032021999359,
+      "arousal": 0.057524996995925906,
+      "somatic_state": {
+        "curiosity": 0.6000003814697266,
+        "energy": 0.4639967978000641,
+        "stability": 1.0,
+        "health": 1.0,
+        "noradrenaline": 0.007524996995925903,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "turn": 2,
+      "user_input": "What is your primary function as a continuous neural architecture?",
+      "speech_output": "\"The old shoe and show long should only one another and water and an analogy an",
+      "latency_ms": 1872.6591390004614,
+      "valence": -0.3020033836364746,
+      "arousal": 0.057524996995925906,
+      "somatic_state": {
+        "curiosity": 0.2000003606081009,
+        "energy": 0.6979966163635254,
+        "stability": 1.0,
+        "health": 1.0,
+        "noradrenaline": 0.007524996995925903,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "turn": 3,
+      "user_input": "Can you explain how Active Inference minimizes variational free energy?",
+      "speech_output": "A thing of an the three of values of animals of an animal into its original and",
+      "latency_ms": 2097.622384000715,
+      "valence": -0.048003554344177246,
+      "arousal": 0.05052500364836306,
+      "somatic_state": {
+        "curiosity": 0.0,
+        "energy": 0.9519964456558228,
+        "stability": 1.0,
+        "health": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "turn": 4,
+      "user_input": "Do you experience internal somatic states like curiosity and energy?",
+      "speech_output": "The odd of one's own that the world's third and anxiety of an analogy and anxie",
+      "latency_ms": 2155.5933019990334,
+      "valence": -0.03000020980834961,
+      "arousal": 0.05052500364836306,
+      "somatic_state": {
+        "curiosity": 0.0,
+        "energy": 0.9699997901916504,
+        "stability": 1.0,
+        "health": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "turn": 5,
+      "user_input": "",
+      "speech_output": "The only an analogy of objects or other animals that one of our own the answers",
+      "latency_ms": 1340.7937190004304,
+      "valence": -0.06000041961669922,
+      "arousal": 0.05052500364836306,
+      "somatic_state": {
+        "curiosity": 0.0,
+        "energy": 0.9399995803833008,
+        "stability": 1.0,
+        "health": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "turn": 6,
+      "user_input": "Thank you for this fascinating conversation!",
+      "speech_output": "A thoughtful way and often have an analogy and anxiety and offer one another co",
+      "latency_ms": 1848.9367109996238,
+      "valence": -0.03000020980834961,
+      "arousal": 0.05052500364836306,
+      "somatic_state": {
+        "curiosity": 0.0,
+        "energy": 0.9699997901916504,
+        "stability": 1.0,
+        "health": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      }
+    }
+  ]
+}
