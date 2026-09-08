@@ -1,0 +1,23 @@
+{
+  "exp_id": "EXP-151",
+  "verdict": "POSITIVE",
+  "metrics": {
+    "gaba_tok_per_sec": 102.05182322411133,
+    "top_p_tok_per_sec": 110.73842564078886,
+    "speedup_pct": -7.844253127505136,
+    "mean_gaba_ensemble_sparsity": 8.235,
+    "mean_top_p_ensemble": 28.3775
+  },
+  "gaba_samples": [
+    " how artificial and contains and other animals. and an a container that any animals and analyze and ",
+    " an analogy should analyze and a hotel and a chance are arranged and analyze and a handful and analy",
+    " and an total of any animals to analyze and analyze and a bathroom. consider and an analogy and anxi",
+    "def word_count(word):\n (''')\n ('A', 'B'), ('a', 'b', 'c')), ('b', 'c', 'd', 'e', 'o', 'u'], '', '', "
+  ],
+  "top_p_samples": [
+    " an analogy and analyze activity and analyze a data analytical tool has to analyze and a home that a",
+    " an a statement of an analogy and are analyze their analytical and analyze and analyze activity and ",
+    " Some animals and interactions and analyze and analyze actions and a banana and analyze and artifici",
+    "def is_palindrome(string):\n                                                                         "
+  ]
+}
