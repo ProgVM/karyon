@@ -1690,10 +1690,8 @@ class CoREAgent(nn.Module):
             # Dynamically unroll full rolling context to ensure unbroken position & receptive field embeddings
             # Keep start_pos strictly 0 to preserve the exact absolute coordinate system used during forward_sequence training!
             # Use full rolling context up to max sequence budget (4096/8192 bytes) so the model never loses long-horizon prompt context!
-            max_ctx_len = getattr(config.net, 'max_seq_len', 1024) if (config is not None and hasattr(config, 'net')) else 1024
-            # Restrict unrolled context during generation steps to prevent quadratic VRAM inflation and OOM
-            gen_ctx_limit = min(max_ctx_len, 512)
-            full_context_t = torch.tensor([rolling_token_ids[-gen_ctx_limit:]], dtype=torch.long, device=self.device)
+            max_ctx_len = getattr(config.net, 'max_seq_len', 4096) if (config is not None and hasattr(config, 'net')) else 4096
+            full_context_t = torch.tensor([rolling_token_ids[-max_ctx_len:]], dtype=torch.long, device=self.device)
             ctx_len = full_context_t.size(1)
             full_context_emb = self.pos_embeddings(full_context_t, start_pos=0, apply_rf=True)
             
@@ -1819,42 +1817,35 @@ class CoREAgent(nn.Module):
                     
                     logits[0, top_k_candidates] = logits[0, top_k_candidates] + efe_boost
 
-            # Biophysical PAC Action Selection & GABAergic Shunting Lateral Inhibition (EXP-151 Validated 🟢)
+            # Biophysical PAC Action Selection & Continuous Lateral Inhibition (KEP Rule #4 Compliant)
             # In intra-morphemic ballistic phase (Low entropy H <= 0.60 / High Gamma), execute direct MAP
-            # On boundary bifurcation (High entropy H > 0.60 / Theta reset), use GABAergic Shunting Lateral Inhibition
+            # On boundary bifurcation (High entropy H > 0.60 / Theta reset), use Somatic Precision & Top-p Nucleus Sampling
             if entropy_val <= 0.60:
                 # Fast Ballistic Motor Execution (Zero-noise MAP)
                 next_token_id = int(torch.argmax(logits, dim=-1))
             else:
-                # Phasic Active Inference Action Selection with GABAergic Shunting Lateral Inhibition
-                curiosity_val = float(effective_hu_st[0, 0].detach())
-                stability_val = float(effective_hu_st[0, 2].detach())
-                na_val = float(effective_hu_st[0, 4].detach())
-                da_val = float(effective_hu_st[0, 5].detach())
-
-                # 1. Neuromodulated GABA Shunting Inhibitory Window (Delta_GABA)
-                delta_gaba = 3.20 * (1.0 + 0.40 * curiosity_val) / (1.0 + 1.60 * da_val + 1.20 * na_val)
-                z_max = torch.max(logits, dim=-1, keepdim=True).values
-                shunting_threshold = z_max - delta_gaba
-
-                # 2. Subtractive/Shunting Mask: neurons below threshold are hyperpolarized by GABA
-                suprathreshold_mask = (logits >= shunting_threshold)
-
-                # 3. Phasic Locus Coeruleus (LC) Precision Gain Modulation
-                beta_eff = 2.80 * (1.0 + 1.80 * na_val + 1.20 * da_val)
-                scaled_logits = logits * beta_eff
-
-                # 4. Suprathreshold Synaptic Wiener Noise (confined strictly to uninhibited ensemble)
-                instability_scale = 0.08 * (1.0 - stability_val)
+                # Phasic Active Inference Action Selection with Top-p Nucleus Truncation (KEP Rule #4)
+                somatic_precision = (1.0 + 1.5 * float(effective_hu_st[0, 5].cpu().tolist())) / max(temp, 0.05)
+                scaled_logits = logits / max(temp, 0.05)
+                
+                # Add thermodynamic synaptic Wiener noise to logits at concept boundary (bounded by instability)
+                instability_scale = 0.08 * (1.0 - float(effective_hu_st[0, 2].cpu().tolist()))
                 if instability_scale > 0.001:
                     wiener_noise = torch.randn_like(scaled_logits) * instability_scale
-                    scaled_logits = scaled_logits + (wiener_noise * suprathreshold_mask.float())
-
-                # Hyperpolarize subthreshold neurons to -infinity (zero action potential firing rate)
-                shunted_logits = scaled_logits.masked_fill(~suprathreshold_mask, -1e9)
-
-                probs = F.softmax(shunted_logits, dim=-1)
+                    scaled_logits = scaled_logits + wiener_noise
+                
+                probs = F.softmax(scaled_logits, dim=-1)
                 probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
+
+                # Apply Top-p (Nucleus) Truncation to strictly eliminate invalid tail bytes
+                sorted_probs, sorted_indices = torch.sort(probs, descending=True)
+                cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
+                sorted_indices_to_remove = cumulative_probs > top_p_val
+                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
+                sorted_indices_to_remove[..., 0] = 0
+                indices_to_remove = sorted_indices_to_remove.scatter(dim=-1, index=sorted_indices, src=sorted_indices_to_remove)
+                probs = probs.masked_fill(indices_to_remove, 0.0)
+
                 prob_sum = probs.sum(dim=-1, keepdim=True)
                 if (prob_sum <= 0).any():
                     next_token_id = int(torch.argmax(logits, dim=-1))

@@ -925,10 +925,10 @@ public:
         auto attn_weights = torch::softmax(habituated_sim, -1);
         attn_weights = torch::nan_to_num(attn_weights, 0.0f);
 
-        // Update visitation trace: passive GABA decay (0.82) + active accumulation (EXP-130 / EXP-153)
+        // Update visitation trace: passive GABA decay (0.82) + active accumulation
         {
             torch::NoGradGuard no_grad;
-            auto next_trace = 0.72f * visitation_trace + 1.20f * attn_weights.detach().mean(0);
+            auto next_trace = 0.82f * visitation_trace + attn_weights.detach().mean(0);
             next_trace = torch::nan_to_num(next_trace, 0.0f);
             next_trace = torch::clamp(next_trace, 0.0f, 10.0f);
             visitation_trace.copy_(next_trace);

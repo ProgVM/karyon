@@ -224,11 +224,26 @@ public:
         auto volition_query = attention_query_layer->forward(h_prev).unsqueeze(1);
         auto norm_query = query_norm->forward(volition_query);
 
-        auto sim = (norm_query * norm_stacked).sum(-1) / std::sqrt(static_cast<float>(unified_dim));
-        auto stacked_masks = torch::cat(channel_masks, 1);
-        sim = sim + stacked_masks;
+        // Pairwise Cosine Similarity (Phase Alignment) between active sensory channels (EXP-155 Validated 🟢)
+        auto norm_for_sim = torch::nn::functional::normalize(
+            norm_stacked, 
+            torch::nn::functional::NormalizeFuncOptions().p(2).dim(-1)
+        );
+        auto similarity_matrix = torch::matmul(norm_for_sim, norm_for_sim.transpose(1, 2));
 
-        auto attention_weights = torch::softmax(sim, -1);
+        auto activity = norm_stacked.norm(2, {-1}, true);
+        auto activity_matrix = torch::matmul(activity, activity.transpose(1, 2));
+
+        auto resonance_matrix = similarity_matrix * activity_matrix;
+        auto eye = torch::eye(resonance_matrix.size(1), h_prev.options()).unsqueeze(0);
+        resonance_matrix = resonance_matrix * (1.0f - eye);
+        auto resonance_boost = resonance_matrix.sum(-1);
+
+        auto base_sim = (norm_query * norm_stacked).sum(-1) / std::sqrt(static_cast<float>(unified_dim));
+        auto stacked_masks = torch::cat(channel_masks, 1);
+        auto final_sim = base_sim + 0.35f * resonance_boost + stacked_masks;
+
+        auto attention_weights = torch::softmax(final_sim, -1);
         constexpr float eps = 1e-9f;
         auto epistemic_entropy = -torch::sum(attention_weights * torch::log(attention_weights + eps), -1, true);
 
@@ -864,7 +879,7 @@ struct FusedCascadedLaminarStackImpl : torch::nn::Module {
 };
 
 // ============================================================================
-// 13. DENSE MODERN HOPFIELD ATTRACTOR HEAD WITH BIOPHYSICAL HABITUATION (EXP-130)
+// 13. DENSE MODERN HOPFIELD ATTRACTOR HEAD WITH TSODYKS-MARKRAM SYNAPTIC DEPRESSION & AHP FATIGUE (EXP-153)
 // ============================================================================
 class DesaturatedHopfieldAttractorHeadImpl : public torch::nn::Module {
 public:
@@ -873,6 +888,9 @@ public:
     float scale;
     torch::Tensor attractor_basins;
     torch::Tensor visitation_trace;
+    torch::Tensor R_state;
+    torch::Tensor u_state;
+    torch::Tensor ahp_trace;
     torch::nn::LayerNorm norm{nullptr};
 
     DesaturatedHopfieldAttractorHeadImpl(int64_t hidden_dim = 512, int64_t vocab_size = 258, 
@@ -886,6 +904,9 @@ public:
         }
         attractor_basins = register_parameter("attractor_basins", torch::randn({num_attractors, hidden_dim}, opts) * 0.05f);
         visitation_trace = register_buffer("visitation_trace", torch::zeros({num_attractors}, opts));
+        R_state = register_buffer("R_state", torch::ones({num_attractors}, opts));
+        u_state = register_buffer("u_state", torch::full({num_attractors}, 0.20f, opts));
+        ahp_trace = register_buffer("ahp_trace", torch::zeros({num_attractors}, opts));
         norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
 
         if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
@@ -895,16 +916,32 @@ public:
 
     void reset_visitation_trace() {
         visitation_trace.zero_();
+        R_state.fill_(1.0f);
+        u_state.fill_(0.20f);
+        ahp_trace.zero_();
     }
 
     std::tuple<torch::Tensor, torch::Tensor> relax_to_minima(torch::Tensor h_state, torch::Tensor u_t) {
         if (torch::isnan(visitation_trace).any().item<bool>()) {
             visitation_trace.zero_();
         }
+        if (torch::isnan(R_state).any().item<bool>() || torch::isnan(u_state).any().item<bool>() || torch::isnan(ahp_trace).any().item<bool>()) {
+            R_state.fill_(1.0f);
+            u_state.fill_(0.20f);
+            ahp_trace.zero_();
+        }
 
         torch::Tensor beta;
+        float da_scalar = 0.20f;
+        float na_scalar = 0.10f;
+        float energy_scalar = 1.0f;
         if (u_t.defined() && u_t.numel() >= 6) {
             auto da_val = u_t.select(1, 5).view({-1, 1});
+            auto na_val = u_t.select(1, 4).view({-1, 1});
+            auto energy_val = u_t.select(1, 1).view({-1, 1});
+            da_scalar = da_val.mean().item<float>();
+            na_scalar = na_val.mean().item<float>();
+            energy_scalar = energy_val.mean().item<float>();
             if (h_state.size(0) != u_t.size(0) && u_t.size(0) > 0 && h_state.size(0) % u_t.size(0) == 0) {
                 int64_t factor = h_state.size(0) / u_t.size(0);
                 da_val = da_val.unsqueeze(1).expand({u_t.size(0), factor, 1}).reshape({-1, 1});
@@ -918,17 +955,39 @@ public:
         sim = torch::nan_to_num(sim, 0.0f);
         sim = torch::clamp(sim, -50.0f, 50.0f);
         
-        // Biophysical Habituation: subtract visitation fatigue (synaptic depression & GABA decay)
-        auto fatigue_penalty = 1.20f * torch::nan_to_num(visitation_trace, 0.0f).unsqueeze(0);
-        auto habituated_sim = sim - fatigue_penalty;
+        // Tsodyks-Markram Synaptic Depression Gain
+        auto g_eff = (R_state * u_state).unsqueeze(0) * (1.0f + 1.5f * da_scalar);
         
-        auto attn_weights = torch::softmax(habituated_sim, -1);
+        // Calcium-activated Potassium AHP Fatigue Penalty
+        auto ahp_penalty = 1.80f * torch::nan_to_num(ahp_trace, 0.0f).unsqueeze(0);
+        
+        auto fatigued_sim = sim * g_eff - ahp_penalty;
+        
+        auto attn_weights = torch::softmax(fatigued_sim * (1.0f + 1.2f * na_scalar), -1);
         attn_weights = torch::nan_to_num(attn_weights, 0.0f);
 
-        // Update visitation trace: passive GABA decay (0.82) + active accumulation (EXP-130 / EXP-153)
+        // Update Tsodyks-Markram states and visitation trace
         {
             torch::NoGradGuard no_grad;
-            auto next_trace = 0.72f * visitation_trace + 1.20f * attn_weights.detach().mean(0);
+            auto E_t = attn_weights.detach().mean(0);
+            
+            // Dynamic energy-dependent metabolic time constants (Magistretti 2015 - EXP-161 Validated 🟢)
+            float tau_rec = 12.0f * (1.50f - 0.80f * energy_scalar);
+            float tau_ahp = 15.0f * (1.50f - 0.80f * energy_scalar);
+
+            // dR/dt = (1 - R)/tau_rec - u * R * E
+            auto dR = (1.0f - R_state) / tau_rec - u_state * R_state * E_t;
+            R_state.copy_(torch::clamp(R_state + dR, 0.05f, 1.0f));
+
+            // du/dt = (U0 - u)/tau_fac + U0 * (1 - u) * E
+            auto du = (0.20f - u_state) / 8.0f + 0.20f * (1.0f - u_state) * E_t;
+            u_state.copy_(torch::clamp(u_state + du, 0.20f, 1.0f));
+
+            // dAHP/dt = -AHP / tau_ahp + 1.2 * E
+            auto dAHP = -ahp_trace / tau_ahp + 1.2f * E_t;
+            ahp_trace.copy_(torch::clamp(ahp_trace + dAHP, 0.0f, 5.0f));
+
+            auto next_trace = 0.82f * visitation_trace + E_t;
             next_trace = torch::nan_to_num(next_trace, 0.0f);
             next_trace = torch::clamp(next_trace, 0.0f, 10.0f);
             visitation_trace.copy_(next_trace);
@@ -1299,7 +1358,9 @@ public:
 
     void adapt_local_fast_weights(torch::Tensor pre_act, torch::Tensor post_err, float na_t, float da_t) {
         torch::NoGradGuard no_grad;
-        float neuromodulation = 0.20f + 0.80f * na_t + 0.50f * da_t;
+        // Noradrenergic Synaptic Gating (EXP-158 Validated 🟢): sharp threshold when NA > 0.15 (High Arousal/Surprise)
+        float na_gate = 1.0f / (1.0f + std::exp(-12.0f * (na_t - 0.15f)));
+        float neuromodulation = (0.20f + 0.80f * na_t + 0.50f * da_t) * na_gate;
         auto dW = torch::bmm(post_err.unsqueeze(-1), pre_act.unsqueeze(1)).mean(0);
         W_fast.mul_(0.92f); // Passive decay
         W_fast.add_(dW * (lr * neuromodulation));
