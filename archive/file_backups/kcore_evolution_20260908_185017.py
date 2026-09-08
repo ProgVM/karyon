@@ -632,14 +632,9 @@ class AutonomousSelfEvolutionOrchestrator:
         with torch.no_grad():
             h_fast_curr = getattr(self.agent, 'h_fast', torch.randn(1, self.agent.hidden_dim, device=self.device))
             u_st = hu.state if (hu is not None and hasattr(hu, 'state')) else None
-            mutation_out = self.reflective_channel(h_fast_curr, u_st)
-            if mutation_out.dim() > 1:
-                mutation_out = mutation_out[0]
-            raw_genes = mutation_out.cpu().tolist()
-            # Ensure scalar floats regardless of nesting
-            mutation_genes = [float(g if not isinstance(g, (list, tuple)) else g[0]) for g in raw_genes]
+            mutation_genes = self.reflective_channel(h_fast_curr, u_st).squeeze(0).cpu().tolist()
         
-        logger.info(f"🧠 [Level 4 Abstract Reflection] Self-Proposed Directional Mutation Vector: {[round(float(g), 4) for g in mutation_genes]}")
+        logger.info(f"🧠 [Level 4 Abstract Reflection] Self-Proposed Directional Mutation Vector: {[round(g, 4) for g in mutation_genes]}")
         results["level_4"] = {
             "mutation_genes": mutation_genes,
             "status": "VALIDATED_AND_COUPLED_TO_LEVEL_3"
