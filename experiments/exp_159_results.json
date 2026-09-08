@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-159",
+  "verdict": "POSITIVE",
+  "metrics": {
+    "pre_sleep_energy": 0.25,
+    "post_sleep_energy": 1.0,
+    "pruned_synapses": 273432,
+    "post_sleep_recall_sim": 0.05976109579205513,
+    "post_sleep_fe": 1.7639516592025757,
+    "sleep_duration_sec": 2.970979873000033
+  }
+}

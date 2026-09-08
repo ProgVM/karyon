@@ -28,7 +28,6 @@ Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 
 import time
 import math
-import gc
 from typing import Generator, Dict, Any, List, Tuple, Optional
 import torch
 import torch.nn as nn
