@@ -934,14 +934,11 @@ public:
         torch::Tensor beta;
         float da_scalar = 0.20f;
         float na_scalar = 0.10f;
-        float energy_scalar = 1.0f;
         if (u_t.defined() && u_t.numel() >= 6) {
             auto da_val = u_t.select(1, 5).view({-1, 1});
             auto na_val = u_t.select(1, 4).view({-1, 1});
-            auto energy_val = u_t.select(1, 1).view({-1, 1});
             da_scalar = da_val.mean().item<float>();
             na_scalar = na_val.mean().item<float>();
-            energy_scalar = energy_val.mean().item<float>();
             if (h_state.size(0) != u_t.size(0) && u_t.size(0) > 0 && h_state.size(0) % u_t.size(0) == 0) {
                 int64_t factor = h_state.size(0) / u_t.size(0);
                 da_val = da_val.unsqueeze(1).expand({u_t.size(0), factor, 1}).reshape({-1, 1});
@@ -971,12 +968,8 @@ public:
             torch::NoGradGuard no_grad;
             auto E_t = attn_weights.detach().mean(0);
             
-            // Dynamic energy-dependent metabolic time constants (Magistretti 2015 - EXP-161 Validated 🟢)
-            float tau_rec = 12.0f * (1.50f - 0.80f * energy_scalar);
-            float tau_ahp = 15.0f * (1.50f - 0.80f * energy_scalar);
-
             // dR/dt = (1 - R)/tau_rec - u * R * E
-            auto dR = (1.0f - R_state) / tau_rec - u_state * R_state * E_t;
+            auto dR = (1.0f - R_state) / 12.0f - u_state * R_state * E_t;
             R_state.copy_(torch::clamp(R_state + dR, 0.05f, 1.0f));
 
             // du/dt = (U0 - u)/tau_fac + U0 * (1 - u) * E
@@ -984,7 +977,7 @@ public:
             u_state.copy_(torch::clamp(u_state + du, 0.20f, 1.0f));
 
             // dAHP/dt = -AHP / tau_ahp + 1.2 * E
-            auto dAHP = -ahp_trace / tau_ahp + 1.2f * E_t;
+            auto dAHP = -ahp_trace / 15.0f + 1.2f * E_t;
             ahp_trace.copy_(torch::clamp(ahp_trace + dAHP, 0.0f, 5.0f));
 
             auto next_trace = 0.82f * visitation_trace + E_t;

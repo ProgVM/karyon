@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-161",
+  "verdict": "POSITIVE",
+  "metrics": {
+    "r_depleted": 0.9951180219650269,
+    "r_recovered_high_energy": 0.9943512678146362,
+    "r_recovered_low_energy": 0.9930362105369568,
+    "metabolic_recovery_delta": 0.0013150572776794434
+  }
+}

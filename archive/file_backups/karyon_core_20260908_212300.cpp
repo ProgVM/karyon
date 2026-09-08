@@ -972,8 +972,8 @@ public:
             auto E_t = attn_weights.detach().mean(0);
             
             // Dynamic energy-dependent metabolic time constants (Magistretti 2015 - EXP-161 Validated 🟢)
-            float tau_rec = 12.0f * (1.50f - 0.80f * energy_scalar);
-            float tau_ahp = 15.0f * (1.50f - 0.80f * energy_scalar);
+            float tau_rec = 12.0f * (1.50f - 0.80f * energy_val);
+            float tau_ahp = 15.0f * (1.50f - 0.80f * energy_val);
 
             // dR/dt = (1 - R)/tau_rec - u * R * E
             auto dR = (1.0f - R_state) / tau_rec - u_state * R_state * E_t;
