@@ -42,7 +42,7 @@ from kcore_evolution import (
 )
 from karyon_logger import get_logger
 
-logger = get_logger("EXP-150-EvolutionInTraining")
+logger = get_logger()
 
 
 class PackedStreamDataset(Dataset):
