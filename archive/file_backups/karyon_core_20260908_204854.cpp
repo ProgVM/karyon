@@ -224,26 +224,11 @@ public:
         auto volition_query = attention_query_layer->forward(h_prev).unsqueeze(1);
         auto norm_query = query_norm->forward(volition_query);
 
-        // Pairwise Cosine Similarity (Phase Alignment) between active sensory channels (EXP-155 Validated 🟢)
-        auto norm_for_sim = torch::nn::functional::normalize(
-            norm_stacked, 
-            torch::nn::functional::NormalizeFuncOptions().p(2).dim(-1)
-        );
-        auto similarity_matrix = torch::matmul(norm_for_sim, norm_for_sim.transpose(1, 2));
-
-        auto activity = norm_stacked.norm(2, {-1}, true);
-        auto activity_matrix = torch::matmul(activity, activity.transpose(1, 2));
-
-        auto resonance_matrix = similarity_matrix * activity_matrix;
-        auto eye = torch::eye(resonance_matrix.size(1), h_prev.options()).unsqueeze(0);
-        resonance_matrix = resonance_matrix * (1.0f - eye);
-        auto resonance_boost = resonance_matrix.sum(-1);
-
-        auto base_sim = (norm_query * norm_stacked).sum(-1) / std::sqrt(static_cast<float>(unified_dim));
+        auto sim = (norm_query * norm_stacked).sum(-1) / std::sqrt(static_cast<float>(unified_dim));
         auto stacked_masks = torch::cat(channel_masks, 1);
-        auto final_sim = base_sim + 0.35f * resonance_boost + stacked_masks;
+        sim = sim + stacked_masks;
 
-        auto attention_weights = torch::softmax(final_sim, -1);
+        auto attention_weights = torch::softmax(sim, -1);
         constexpr float eps = 1e-9f;
         auto epistemic_entropy = -torch::sum(attention_weights * torch::log(attention_weights + eps), -1, true);
 

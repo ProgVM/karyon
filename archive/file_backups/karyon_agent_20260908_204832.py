@@ -191,23 +191,8 @@ class DynamicSensoryGateway(nn.Module):
         volition_query = self.attention_query_layer(h_prev.float() if h_prev.dtype != torch.float32 else h_prev).unsqueeze(1)
         norm_query = self.query_norm(volition_query)
 
-        # Pairwise Cosine Similarity (Phase Alignment) between active sensory channels (EXP-155 Validated 🟢)
-        norm_for_sim = F.normalize(norm_stacked, p=2, dim=-1) # [B, N, D]
-        similarity_matrix = torch.matmul(norm_for_sim, norm_for_sim.transpose(1, 2)) # [B, N, N]
-
-        # Activity magnitudes
-        activity = norm_stacked.norm(p=2, dim=-1, keepdim=True) # [B, N, 1]
-        activity_matrix = torch.matmul(activity, activity.transpose(1, 2)) # [B, N, N]
-
-        # Mutual Cross-Modal Co-Activation Resonance
-        resonance_matrix = similarity_matrix * activity_matrix # [B, N, N]
-        eye = torch.eye(resonance_matrix.size(1), device=self.device).unsqueeze(0)
-        resonance_matrix = resonance_matrix * (1.0 - eye)
-        resonance_boost = resonance_matrix.sum(dim=-1) # [B, N]
-
-        base_sim = (norm_query * norm_stacked).sum(dim=-1) / math.sqrt(self.unified_dim)
-        final_sim = base_sim + 0.35 * resonance_boost
-        attention_weights = F.softmax(final_sim, dim=-1)
+        sim = (norm_query * norm_stacked).sum(dim=-1) / math.sqrt(self.unified_dim)
+        attention_weights = F.softmax(sim, dim=-1)
 
         eps = 1e-9
         epistemic_entropy = -torch.sum(attention_weights * torch.log(attention_weights + eps), dim=-1, keepdim=True)

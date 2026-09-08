@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-155",
+  "verdict": "POSITIVE",
+  "metrics": {
+    "baseline_aligned_entropy": 1.4497814178466797,
+    "proposed_aligned_entropy": 0.4987683892250061,
+    "entropy_reduction_aligned": 0.9510130286216736,
+    "baseline_misaligned_entropy": 1.408965826034546,
+    "proposed_misaligned_entropy": 0.5926172137260437,
+    "entropy_change_misaligned": -0.8163486123085022
+  }
+}
