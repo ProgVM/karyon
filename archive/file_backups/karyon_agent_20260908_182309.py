@@ -1827,7 +1827,7 @@ class CoREAgent(nn.Module):
                 scaled_logits = logits * (somatic_precision * 0.25)
                 
                 # Add thermodynamic synaptic Wiener noise to logits at concept boundary
-                wiener_noise = torch.randn_like(scaled_logits) * (0.15 * (1.0 - float(effective_hu_st[0, 2].cpu().tolist()))) # Scaled by instability
+                wiener_noise = torch.randn_like(scaled_logits) * (0.15 * (1.0 - effective_hu_st[0, 2].item())) # Scaled by instability
                 perturbed_logits = scaled_logits + wiener_noise
                 
                 probs = F.softmax(perturbed_logits, dim=-1)

@@ -114,21 +114,18 @@ def sync_checkpoint_to_hf(local_file: str, repo_id: str, commit_msg: str):
             commit_message=commit_msg
         )
         
-        # 2. Upload train.log if exists in either root or logs/ directory
-        candidate_logs = ["train.log", "logs/train.log"]
-        for log_candidate in candidate_logs:
-            if os.path.exists(log_candidate) and os.path.getsize(log_candidate) > 0:
-                api.upload_file(
-                    path_or_fileobj=log_candidate,
-                    path_in_repo="logs/train.log",
-                    repo_id=repo_id,
-                    repo_type="model",
-                    commit_message=f"changelog: update training execution log ({commit_msg})"
-                )
-                logger.info(f"🤗 [HF Auto-Sync] Uploaded training log '{log_candidate}' to '{repo_id}:logs/train.log'")
-                break
+        # 2. Upload train.log if exists
+        log_file = "train.log"
+        if os.path.exists(log_file):
+            api.upload_file(
+                path_or_fileobj=log_file,
+                path_in_repo="logs/train.log",
+                repo_id=repo_id,
+                repo_type="model",
+                commit_message=f"changelog: update training execution log ({commit_msg})"
+            )
             
-        logger.info(f"🤗 [HF Auto-Sync] Checkpoint sync cycle complete for '{repo_id}'!")
+        logger.info(f"🤗 [HF Auto-Sync] Successfully uploaded '{local_file}' and 'train.log' to '{repo_id}'!")
     except Exception as e:
         logger.warning(f"⚠️ [HF Auto-Sync Warning] Failed to upload checkpoint/log to HuggingFace Hub: {e}")
 
@@ -543,7 +540,7 @@ def run_single_pass_training():
             if device_str == 'cuda':
                 torch.cuda.empty_cache()
         batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
-        tokens_per_sec = (current_batch_size * (seq_len - 1)) / max(batch_total_ms / 1000.0, 1e-6)
+        tokens_per_sec = (current_batch_size * (seq_len - 1)) / (batch_total_ms / 1000.0)
 
         if (batch_idx + 1) % 25 == 0 or batch_idx == len(stream_loader) - 1:
             perplexity = math.exp(min(speech_loss_val, 20.0))

@@ -543,7 +543,7 @@ def run_single_pass_training():
             if device_str == 'cuda':
                 torch.cuda.empty_cache()
         batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
-        tokens_per_sec = (current_batch_size * (seq_len - 1)) / max(batch_total_ms / 1000.0, 1e-6)
+        tokens_per_sec = (current_batch_size * (seq_len - 1)) / (batch_total_ms / 1000.0)
 
         if (batch_idx + 1) % 25 == 0 or batch_idx == len(stream_loader) - 1:
             perplexity = math.exp(min(speech_loss_val, 20.0))

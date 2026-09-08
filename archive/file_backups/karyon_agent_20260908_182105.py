@@ -213,24 +213,20 @@ class AffectiveCoreUnit(nn.Module):
         self.device = torch.device(dev_clean)
 
     def compute_affective_state(self, u_t: torch.Tensor, free_energy: float = 0.0, value_est: float = 0.0) -> dict:
-        u_mean = u_t.mean(dim=0).cpu().tolist() if u_t.numel() > 0 else [0.5, 1.0, 1.0, 1.0, 0.0, 0.0]
-        curiosity = u_mean[0] if len(u_mean) > 0 else 0.5
-        energy    = u_mean[1] if len(u_mean) > 1 else 1.0
-        stability = u_mean[2] if len(u_mean) > 2 else 1.0
-        health    = u_mean[3] if len(u_mean) > 3 else 1.0
-        na        = u_mean[4] if len(u_mean) > 4 else 0.0
-        da        = u_mean[5] if len(u_mean) > 5 else 0.0
-
-        fe_safe = free_energy if not math.isnan(free_energy) else 0.0
-        val_safe = value_est if not math.isnan(value_est) else 0.0
+        curiosity = u_t[:, 0].mean().item()
+        energy    = u_t[:, 1].mean().item()
+        stability = u_t[:, 2].mean().item()
+        health    = u_t[:, 3].mean().item()
+        na        = u_t[:, 4].mean().item()
+        da        = u_t[:, 5].mean().item()
 
         # Russell Affective Coordinates
         valence   = da - (1.0 - energy) - (1.0 - health)
-        arousal   = na + min(1.0, max(0.0, fe_safe))
-        dominance = stability + max(-1.0, min(1.0, val_safe))
+        arousal   = na + min(1.0, max(0.0, free_energy if not math.isnan(free_energy) else 0.0))
+        dominance = stability + max(-1.0, min(1.0, value_est))
 
         # Panksepp Primary Affective Drives
-        seeking_drive = max(0.0, curiosity + da - max(0.0, fe_safe))
+        seeking_drive = max(0.0, curiosity + da - max(0.0, free_energy if not math.isnan(free_energy) else 0.0))
         fear_drive    = max(0.0, arousal * (1.0 - stability))
         rage_drive    = max(0.0, (1.0 - energy) * (1.0 - dominance))
         panic_drive   = max(0.0, (1.0 - health) * (1.0 - stability))
@@ -272,11 +268,8 @@ class ReflexAndHabitCircuit(nn.Module):
         ).to(self.device)
 
     def check_unconditioned_reflex(self, u_t: torch.Tensor, free_energy: float) -> bool:
-        if u_t.numel() == 0:
-            return False
-        u_min = u_t.min(dim=0).values.cpu().tolist()
-        energy = u_min[1] if len(u_min) > 1 else 1.0
-        health = u_min[3] if len(u_min) > 3 else 1.0
+        energy = u_t[:, 1].min().item()
+        health = u_t[:, 3].min().item()
         fe_check = free_energy if not math.isnan(free_energy) else 0.0
         return (energy < 0.15 or health < 0.20 or fe_check > 0.85)
 
@@ -1052,19 +1045,7 @@ class CoREAgent(nn.Module):
         seen = set()
         params = []
         raw_params = list(self.parameters())
-        all_submodules = [
-            self.fused_stack, self.gateway, self.world_model, self.output_gateway,
-            self.attractor_head, self.critic, getattr(self, 'efe_action_evaluator', None),
-            getattr(self, 'local_plasticity', None), getattr(self, 'predictive_self_model', None),
-            getattr(self, 'stage1', None), getattr(self, 'stage2', None),
-            getattr(self, 'boundary_detector', None), getattr(self, 'pw_lper', None),
-            getattr(self, 'entropy_macro_gate', None), getattr(self, 'thalamic_router', None),
-            getattr(self, 'fast_weight_hebbian', None), getattr(self, 'predictive_residual_router', None),
-            getattr(self, 'pw_hpc_generator', None), getattr(self, 'will_engine', None),
-            getattr(self, 'reflex_circuit', None), getattr(self, 'affective_core', None),
-            getattr(self, 'lc_gain', None), getattr(self, 'volitional_head', None)
-        ]
-        for submodule in all_submodules:
+        for submodule in [self.fused_stack, self.gateway, self.world_model, self.output_gateway, self.attractor_head, self.critic, getattr(self, 'efe_action_evaluator', None), getattr(self, 'local_plasticity', None), getattr(self, 'predictive_self_model', None)]:
             if submodule is not None and hasattr(submodule, 'parameters'):
                 raw_params.extend(list(submodule.parameters()))
         for p in raw_params:
@@ -1080,13 +1061,7 @@ class CoREAgent(nn.Module):
         for name, p in self.named_parameters():
             sd[name] = p.detach().cpu()
         # 2. Capture all C++ submodule parameters (LibTorch / PyBind11 extensions, deduplicated)
-        for sub_name in [
-            'gateway', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head',
-            'critic', 'efe_action_evaluator', 'local_plasticity', 'predictive_self_model',
-            'stage1', 'stage2', 'boundary_detector', 'pw_lper', 'entropy_macro_gate',
-            'thalamic_router', 'fast_weight_hebbian', 'predictive_residual_router',
-            'pw_hpc_generator', 'will_engine', 'reflex_circuit', 'affective_core', 'lc_gain', 'volitional_head'
-        ]:
+        for sub_name in ['gateway', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic', 'efe_action_evaluator', 'local_plasticity', 'predictive_self_model']:
             sub = getattr(self, sub_name, None)
             if sub is not None and hasattr(sub, 'named_parameters'):
                 for p_name, p in sub.named_parameters():
@@ -1104,13 +1079,7 @@ class CoREAgent(nn.Module):
         target_device = torch.device(device)
         py_params = dict(self.named_parameters())
         sub_params = {}
-        for sub_name in [
-            'gateway', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head',
-            'critic', 'efe_action_evaluator', 'local_plasticity', 'predictive_self_model',
-            'stage1', 'stage2', 'boundary_detector', 'pw_lper', 'entropy_macro_gate',
-            'thalamic_router', 'fast_weight_hebbian', 'predictive_residual_router',
-            'pw_hpc_generator', 'will_engine', 'reflex_circuit', 'affective_core', 'lc_gain', 'volitional_head'
-        ]:
+        for sub_name in ['gateway', 'fused_stack', 'world_model', 'output_gateway', 'attractor_head', 'critic', 'efe_action_evaluator', 'local_plasticity', 'predictive_self_model']:
             sub = getattr(self, sub_name, None)
             if sub is not None and hasattr(sub, 'named_parameters'):
                 for p_name, p in sub.named_parameters():
@@ -1769,8 +1738,8 @@ class CoREAgent(nn.Module):
 
             # Continuous Active Inference PAC Decoding (Modulated by LC Phasic Gain & Local Surprise)
             # Fetch scalar values in a single step to avoid multiple GPU-CPU synchronizations
-            entropy_val = float(entropy.mean().cpu().tolist())
-            phasic_gain_val = float(phasic_gain.mean().cpu().tolist())
+            entropy_val = entropy.item()
+            phasic_gain_val = phasic_gain.squeeze().item()
 
             # Event-Related Phase Reset (ERPR) & Biophysical PAC Decoding
             # On entropy peaks (word/concept boundaries H > 0.65), trigger a phase-reset that
@@ -1808,7 +1777,7 @@ class CoREAgent(nn.Module):
                     # 3. Apply Active Inference Free Energy (EFE) bonus/penalty to candidate logits
                     # Lower EFE = less surprise/higher epistemic alignment -> boost logit
                     efe_scores = efe_accum.squeeze(-1) # [K]
-                    min_efe = float(efe_scores.min().cpu().tolist())
+                    min_efe = efe_scores.min().item()
                     efe_boost = 0.50 * (efe_scores.mean() - efe_scores) # Positive boost for low EFE
                     efe_boost = torch.clamp(efe_boost, -4.0, 4.0)
                     
@@ -1823,11 +1792,11 @@ class CoREAgent(nn.Module):
             else:
                 # Phasic Active Inference Action Selection with Somatic Precision Scaling
                 # No artificial Top-K/Top-P masks: continuous lateral inhibition via Boltzmann-Gibbs distribution
-                somatic_precision = (1.0 + 1.5 * float(effective_hu_st[0, 5].cpu().tolist())) / max(temp, 0.05)
+                somatic_precision = (1.0 + 1.5 * effective_hu_st[0, 5].item()) / max(temp, 0.05)
                 scaled_logits = logits * (somatic_precision * 0.25)
                 
                 # Add thermodynamic synaptic Wiener noise to logits at concept boundary
-                wiener_noise = torch.randn_like(scaled_logits) * (0.15 * (1.0 - float(effective_hu_st[0, 2].cpu().tolist()))) # Scaled by instability
+                wiener_noise = torch.randn_like(scaled_logits) * (0.15 * (1.0 - effective_hu_st[0, 2].item())) # Scaled by instability
                 perturbed_logits = scaled_logits + wiener_noise
                 
                 probs = F.softmax(perturbed_logits, dim=-1)

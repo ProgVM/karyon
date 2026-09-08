@@ -1769,8 +1769,8 @@ class CoREAgent(nn.Module):
 
             # Continuous Active Inference PAC Decoding (Modulated by LC Phasic Gain & Local Surprise)
             # Fetch scalar values in a single step to avoid multiple GPU-CPU synchronizations
-            entropy_val = float(entropy.mean().cpu().tolist())
-            phasic_gain_val = float(phasic_gain.mean().cpu().tolist())
+            entropy_val = entropy.item()
+            phasic_gain_val = phasic_gain.squeeze().item()
 
             # Event-Related Phase Reset (ERPR) & Biophysical PAC Decoding
             # On entropy peaks (word/concept boundaries H > 0.65), trigger a phase-reset that
@@ -1808,7 +1808,7 @@ class CoREAgent(nn.Module):
                     # 3. Apply Active Inference Free Energy (EFE) bonus/penalty to candidate logits
                     # Lower EFE = less surprise/higher epistemic alignment -> boost logit
                     efe_scores = efe_accum.squeeze(-1) # [K]
-                    min_efe = float(efe_scores.min().cpu().tolist())
+                    min_efe = efe_scores.min().item()
                     efe_boost = 0.50 * (efe_scores.mean() - efe_scores) # Positive boost for low EFE
                     efe_boost = torch.clamp(efe_boost, -4.0, 4.0)
                     
@@ -1823,11 +1823,11 @@ class CoREAgent(nn.Module):
             else:
                 # Phasic Active Inference Action Selection with Somatic Precision Scaling
                 # No artificial Top-K/Top-P masks: continuous lateral inhibition via Boltzmann-Gibbs distribution
-                somatic_precision = (1.0 + 1.5 * float(effective_hu_st[0, 5].cpu().tolist())) / max(temp, 0.05)
+                somatic_precision = (1.0 + 1.5 * effective_hu_st[0, 5].item()) / max(temp, 0.05)
                 scaled_logits = logits * (somatic_precision * 0.25)
                 
                 # Add thermodynamic synaptic Wiener noise to logits at concept boundary
-                wiener_noise = torch.randn_like(scaled_logits) * (0.15 * (1.0 - float(effective_hu_st[0, 2].cpu().tolist()))) # Scaled by instability
+                wiener_noise = torch.randn_like(scaled_logits) * (0.15 * (1.0 - effective_hu_st[0, 2].item())) # Scaled by instability
                 perturbed_logits = scaled_logits + wiener_noise
                 
                 probs = F.softmax(perturbed_logits, dim=-1)
