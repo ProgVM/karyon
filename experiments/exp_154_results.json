@@ -1,0 +1,9 @@
+{
+  "exp_id": "EXP-154",
+  "verdict": "POSITIVE",
+  "metrics": {
+    "oom_crashes": 0,
+    "tok_per_sec": 24794.7,
+    "hf_sync_active": true
+  }
+}
