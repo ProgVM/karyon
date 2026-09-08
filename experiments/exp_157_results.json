@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-157",
+  "verdict": "NEUTRAL",
+  "metrics": {
+    "layernorm_max": 4.615274906158447,
+    "layernorm_min": -4.602074146270752,
+    "divnorm_max": 4.613481044769287,
+    "divnorm_min": -4.566965579986572,
+    "outlier_suppression_gain_pct": 0.03886792066852823
+  }
+}
