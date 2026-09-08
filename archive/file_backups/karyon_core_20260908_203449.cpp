@@ -864,7 +864,7 @@ struct FusedCascadedLaminarStackImpl : torch::nn::Module {
 };
 
 // ============================================================================
-// 13. DENSE MODERN HOPFIELD ATTRACTOR HEAD WITH TSODYKS-MARKRAM SYNAPTIC DEPRESSION & AHP FATIGUE (EXP-153)
+// 13. DENSE MODERN HOPFIELD ATTRACTOR HEAD WITH BIOPHYSICAL HABITUATION (EXP-130)
 // ============================================================================
 class DesaturatedHopfieldAttractorHeadImpl : public torch::nn::Module {
 public:
@@ -873,9 +873,6 @@ public:
     float scale;
     torch::Tensor attractor_basins;
     torch::Tensor visitation_trace;
-    torch::Tensor R_state;
-    torch::Tensor u_state;
-    torch::Tensor ahp_trace;
     torch::nn::LayerNorm norm{nullptr};
 
     DesaturatedHopfieldAttractorHeadImpl(int64_t hidden_dim = 512, int64_t vocab_size = 258, 
@@ -889,9 +886,6 @@ public:
         }
         attractor_basins = register_parameter("attractor_basins", torch::randn({num_attractors, hidden_dim}, opts) * 0.05f);
         visitation_trace = register_buffer("visitation_trace", torch::zeros({num_attractors}, opts));
-        R_state = register_buffer("R_state", torch::ones({num_attractors}, opts));
-        u_state = register_buffer("u_state", torch::full({num_attractors}, 0.20f, opts));
-        ahp_trace = register_buffer("ahp_trace", torch::zeros({num_attractors}, opts));
         norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({hidden_dim})));
 
         if (device_str.find("cuda") != std::string::npos && torch::cuda::is_available()) {
@@ -901,29 +895,16 @@ public:
 
     void reset_visitation_trace() {
         visitation_trace.zero_();
-        R_state.fill_(1.0f);
-        u_state.fill_(0.20f);
-        ahp_trace.zero_();
     }
 
     std::tuple<torch::Tensor, torch::Tensor> relax_to_minima(torch::Tensor h_state, torch::Tensor u_t) {
         if (torch::isnan(visitation_trace).any().item<bool>()) {
             visitation_trace.zero_();
         }
-        if (torch::isnan(R_state).any().item<bool>() || torch::isnan(u_state).any().item<bool>() || torch::isnan(ahp_trace).any().item<bool>()) {
-            R_state.fill_(1.0f);
-            u_state.fill_(0.20f);
-            ahp_trace.zero_();
-        }
 
         torch::Tensor beta;
-        float da_scalar = 0.20f;
-        float na_scalar = 0.10f;
         if (u_t.defined() && u_t.numel() >= 6) {
             auto da_val = u_t.select(1, 5).view({-1, 1});
-            auto na_val = u_t.select(1, 4).view({-1, 1});
-            da_scalar = da_val.mean().item<float>();
-            na_scalar = na_val.mean().item<float>();
             if (h_state.size(0) != u_t.size(0) && u_t.size(0) > 0 && h_state.size(0) % u_t.size(0) == 0) {
                 int64_t factor = h_state.size(0) / u_t.size(0);
                 da_val = da_val.unsqueeze(1).expand({u_t.size(0), factor, 1}).reshape({-1, 1});
@@ -937,35 +918,17 @@ public:
         sim = torch::nan_to_num(sim, 0.0f);
         sim = torch::clamp(sim, -50.0f, 50.0f);
         
-        // Tsodyks-Markram Synaptic Depression Gain
-        auto g_eff = (R_state * u_state).unsqueeze(0) * (1.0f + 1.5f * da_scalar);
+        // Biophysical Habituation: subtract visitation fatigue (synaptic depression & GABA decay)
+        auto fatigue_penalty = 1.20f * torch::nan_to_num(visitation_trace, 0.0f).unsqueeze(0);
+        auto habituated_sim = sim - fatigue_penalty;
         
-        // Calcium-activated Potassium AHP Fatigue Penalty
-        auto ahp_penalty = 1.80f * torch::nan_to_num(ahp_trace, 0.0f).unsqueeze(0);
-        
-        auto fatigued_sim = sim * g_eff - ahp_penalty;
-        
-        auto attn_weights = torch::softmax(fatigued_sim * (1.0f + 1.2f * na_scalar), -1);
+        auto attn_weights = torch::softmax(habituated_sim, -1);
         attn_weights = torch::nan_to_num(attn_weights, 0.0f);
 
-        // Update Tsodyks-Markram states and visitation trace
+        // Update visitation trace: passive GABA decay (0.82) + active accumulation
         {
             torch::NoGradGuard no_grad;
-            auto E_t = attn_weights.detach().mean(0);
-            
-            // dR/dt = (1 - R)/tau_rec - u * R * E
-            auto dR = (1.0f - R_state) / 12.0f - u_state * R_state * E_t;
-            R_state.copy_(torch::clamp(R_state + dR, 0.05f, 1.0f));
-
-            // du/dt = (U0 - u)/tau_fac + U0 * (1 - u) * E
-            auto du = (0.20f - u_state) / 8.0f + 0.20f * (1.0f - u_state) * E_t;
-            u_state.copy_(torch::clamp(u_state + du, 0.20f, 1.0f));
-
-            // dAHP/dt = -AHP / tau_ahp + 1.2 * E
-            auto dAHP = -ahp_trace / 15.0f + 1.2f * E_t;
-            ahp_trace.copy_(torch::clamp(ahp_trace + dAHP, 0.0f, 5.0f));
-
-            auto next_trace = 0.82f * visitation_trace + E_t;
+            auto next_trace = 0.82f * visitation_trace + attn_weights.detach().mean(0);
             next_trace = torch::nan_to_num(next_trace, 0.0f);
             next_trace = torch::clamp(next_trace, 0.0f, 10.0f);
             visitation_trace.copy_(next_trace);

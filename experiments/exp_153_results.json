@@ -1,0 +1,24 @@
+{
+  "exp_id": "EXP-153",
+  "verdict": "POSITIVE",
+  "metrics": {
+    "baseline_ttr": 0.6878019323671498,
+    "proposed_tm_ttr": 0.8209150326797385,
+    "ttr_gain_pct": 19.353405980478218,
+    "baseline_3gram_rep_rate": 0.058779761904761904,
+    "proposed_3gram_rep_rate": 0.0,
+    "rep_reduction_pct": 100.0
+  },
+  "baseline_samples": [
+    "\"The animal of any animals and the analysis and themes and analyze and analyze and analyze and anal",
+    "\"The story and an online and an antivirus or other animals come on one another and one of any tools",
+    "1. Poor and other options: Poor and an analogy and one another and an container of an online that s",
+    "Nouns of water is on an online and an online and any other one of the oven the one of one's own tha"
+  ],
+  "proposed_samples": [
+    " they would this company and analyze of information has completed and investment and analyze availab",
+    " John also allows are what activity available, and any animals and to their activity and analyze ave",
+    " to continue and any animals are on an activity and avoid their analytics are available and avoid wa",
+    "\"\"\"\nParser: Summarize how artificial and anxiety of they and have aoming and anomaly could analyze a"
+  ]
+}

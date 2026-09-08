@@ -1685,7 +1685,6 @@ class CoREAgent(nn.Module):
         total_prompt_len = prompt_tokens.size(1)
         consecutive_newlines = 0
         refractory_trace = torch.zeros(1, self.text_gen_dim, device=self.device)
-        self.attractor_head.reset_visitation_trace()
 
         for step in range(max_generated_tokens):
             # Dynamically unroll full rolling context to ensure unbroken position & receptive field embeddings
