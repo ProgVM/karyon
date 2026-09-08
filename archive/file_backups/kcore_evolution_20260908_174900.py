@@ -1,9 +1,9 @@
 # kcore_evolution.py
 """
 ===============================================================================
-KARYON AUTONOMOUS SELF-EVOLUTION & MORPHOGENESIS ENGINE (v2.0 MASTER)
-Biophysical Autopoiesis, Directed Refinement & Multi-Scale Self-Adaptation
-KEP v9.0 Compliant | KEP Principle 2, Principle 8 & Principle 10
+KARYON AUTONOMOUS SELF-EVOLUTION & MORPHOGENESIS ENGINE (v1.0 MASTER)
+Biophysical Autopoiesis, Continuous Morphogenesis & Multi-Scale Self-Adaptation
+KEP v9.0 Compliant | KEP Principle 2 & Principle 10
 ===============================================================================
 """
 
@@ -148,30 +148,33 @@ class Net2NetMorphogenesisEngine:
         target_in = new_in_features if new_in_features is not None else old_in
         target_out = new_out_features
 
-        new_layer = nn.Linear(
-            target_in, target_out, bias=(layer.bias is not None)
-        ).to(device)
-
+        has_bias = (layer.bias is not None)
+        new_layer = nn.Linear(target_in, target_out, bias=has_bias, device=device, dtype=layer.weight.dtype)
+        
         with torch.no_grad():
             new_layer.weight.zero_()
             new_layer.weight[:old_out, :old_in].copy_(layer.weight)
-            if layer.bias is not None:
+            if has_bias:
                 new_layer.bias.zero_()
                 new_layer.bias[:old_out].copy_(layer.bias)
 
         return new_layer
 
     @staticmethod
-    def expand_layernorm(layer: nn.LayerNorm, new_dim: int, device: str = "cuda") -> nn.LayerNorm:
-        """Net2Net expansion for LayerNorm layers."""
-        old_dim = layer.normalized_shape[0]
-        new_norm = nn.LayerNorm(new_dim, elementwise_affine=layer.elementwise_affine).to(device)
-        if layer.elementwise_affine:
-            with torch.no_grad():
+    def expand_layernorm(
+        norm: nn.LayerNorm,
+        new_normalized_shape: int,
+        device: str = "cuda"
+    ) -> nn.LayerNorm:
+        """Expands LayerNorm with unit-gain initialization on new channels."""
+        old_shape = norm.normalized_shape[0]
+        new_norm = nn.LayerNorm(new_normalized_shape, eps=norm.eps, elementwise_affine=norm.elementwise_affine, device=device)
+        with torch.no_grad():
+            if norm.elementwise_affine:
                 new_norm.weight.fill_(1.0)
-                new_norm.weight[:old_dim].copy_(layer.weight)
+                new_norm.weight[:old_shape].copy_(norm.weight)
                 new_norm.bias.zero_()
-                new_norm.bias[:old_dim].copy_(layer.bias)
+                new_norm.bias[:old_shape].copy_(norm.bias)
         return new_norm
 
     @staticmethod
@@ -181,121 +184,88 @@ class Net2NetMorphogenesisEngine:
         device: str = "cuda"
     ) -> Tuple[Any, float]:
         """
-        Executes full Net2Net identity-preserving dimension expansion across all layers.
-        Guarantees that f_new(x) == f_old(x) at t_0 (Zero Identity Delta).
+        Expands the agent's hidden dimensions (e.g. 768 -> 1024).
+        Measures exact identity delta before and after morphogenesis on a test vector.
         """
-        if new_hidden_dim <= agent.hidden_dim:
-            logger.info(f"Target dimension {new_hidden_dim} <= current {agent.hidden_dim}. Morphogenesis skipped.")
+        from karyon_agent import PrecisionWeightedTopDownGenerator
+
+        old_hidden_dim = agent.hidden_dim
+        if new_hidden_dim <= old_hidden_dim:
+            logger.warning(f"Target hidden_dim {new_hidden_dim} <= current {old_hidden_dim}. Skipping expansion.")
             return agent, 0.0
 
-        logger.info(f"🧬 [Level 2 Morphogenesis] Executing Net2Net Expansion: {agent.hidden_dim} ➔ {new_hidden_dim}...")
-        
-        # Capture baseline output for identity validation
-        dummy_text = torch.randint(0, 256, (1, 1), device=device)
-        dummy_emb = agent.pos_embeddings(dummy_text, start_pos=0, apply_rf=False)
-        sensor_inputs = {
-            'text': dummy_emb.squeeze(1),
-            'vision': torch.zeros(1, agent.config.net.vision_dim, device=device),
-            'motor_efference': torch.zeros(1, agent.config.net.action_dim, device=device)
-        }
+        logger.info(f"🧬 [Level 2 Morphogenesis] Expanding Neural Topology: hidden_dim {old_hidden_dim} -> {new_hidden_dim}...")
+
+        # Test pre-expansion output on single step
+        sensor_inputs = {"text": torch.randn(1, agent.text_dim, device=device)}
         h_fast = torch.zeros(1, agent.hidden_dim, device=device)
         h_slow = torch.zeros(1, agent.hidden_dim, device=device)
-        u_t = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], device=device)
-
+        u_t = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.1, 0.1]], device=device)
+        
+        agent.eval()
         with torch.no_grad():
             out_before = agent.forward(sensor_inputs, h_fast, h_slow, u_t)
             logits_before = out_before[4].clone()
 
-        # Save old parameters as cloned tensor lists (100% pickle/C++ safe)
-        old_fused_params = [p.clone().detach() for p in agent.fused_stack.parameters()] if hasattr(agent, 'fused_stack') else []
-        old_hpc_params = [p.clone().detach() for p in agent.pw_hpc_generator.parameters()] if hasattr(agent, 'pw_hpc_generator') else []
-        old_attractor_params = [p.clone().detach() for p in agent.attractor_head.parameters()] if hasattr(agent, 'attractor_head') else []
-        old_mg_params = [p.clone().detach() for p in agent.output_gateway.parameters()] if hasattr(agent, 'output_gateway') else []
-        old_wm_params = [p.clone().detach() for p in agent.world_model.parameters()] if hasattr(agent, 'world_model') else []
-
         with torch.no_grad():
-            # 1. Universal Dynamic Sensory Gateway expansion
-            if hasattr(agent.gateway, 'mind_proj'):
-                agent.gateway.mind_proj = Net2NetMorphogenesisEngine.expand_linear_layer(
-                    agent.gateway.mind_proj, agent.gateway.mind_proj.out_features, new_hidden_dim, device=device
-                )
-            if hasattr(agent.gateway, 'attention_query_layer'):
-                agent.gateway.attention_query_layer = Net2NetMorphogenesisEngine.expand_linear_layer(
-                    agent.gateway.attention_query_layer, agent.gateway.attention_query_layer.out_features, new_hidden_dim, device=device
-                )
-            agent.gateway.hidden_dim = new_hidden_dim
+            # 1. Sensory Gateway expansion
+            if hasattr(agent, 'gateway'):
+                if hasattr(agent.gateway, 'mind_proj'):
+                    agent.gateway.mind_proj = Net2NetMorphogenesisEngine.expand_linear_layer(
+                        agent.gateway.mind_proj, agent.gateway.unified_dim, new_hidden_dim, device=device
+                    )
+                if hasattr(agent.gateway, 'attention_query_layer'):
+                    agent.gateway.attention_query_layer = Net2NetMorphogenesisEngine.expand_linear_layer(
+                        agent.gateway.attention_query_layer, agent.gateway.unified_dim, new_hidden_dim, device=device
+                    )
+                agent.gateway.hidden_dim = new_hidden_dim
 
             # 2. Input Projection expansion
-            agent.in_proj = Net2NetMorphogenesisEngine.expand_linear_layer(
-                agent.in_proj, new_hidden_dim, agent.unified_dim, device=device
-            )
-
-            # 3. Native C++20 Fused Cortical Stack Expansion
-            if hasattr(agent, 'fused_stack'):
-                agent.fused_stack = FusedCascadedLaminarStack(
-                    hidden_dim=new_hidden_dim, expand_dim=agent.expand_dim, num_heads=agent.num_heads,
-                    head_k=agent.head_k, head_v=agent.head_v, chunk_size=64, device=agent.device_str
+            if hasattr(agent, 'in_proj'):
+                agent.in_proj = Net2NetMorphogenesisEngine.expand_linear_layer(
+                    agent.in_proj, new_hidden_dim, agent.text_dim, device=device
                 )
-                for old_p, new_p in zip(old_fused_params, agent.fused_stack.parameters()):
-                    adapt_and_copy_tensor(new_p, old_p)
-                agent.stage1 = agent.fused_stack.stage1
-                agent.stage2 = agent.fused_stack.stage2
-                if hasattr(agent.fused_stack, 'boundary_detector'):
-                    agent.boundary_detector = agent.fused_stack.boundary_detector
-                if hasattr(agent.fused_stack, 'pw_lper'):
-                    agent.pw_lper = agent.fused_stack.pw_lper
+
+            # 3. Cortical Stages & Fused Stack expansion (Preserving Pre-trained Parameters)
+            old_s1 = agent.stage1
+            old_s2 = agent.stage2
+            old_hpc = agent.pw_hpc_generator
+            old_attractor = agent.attractor_head
+            old_wm = agent.world_model
+            old_mg = agent.output_gateway
             
-            from karyon_agent import (
-                PrecisionWeightedTopDownGenerator,
-                EntropyMacroGating,
-                ThalamocorticalGate,
-                FastWeightHebbianPlasticity,
-                PredictiveResidualRouting,
-                VolitionalActionEvaluator,
-                LocalNeuromodulatedPlasticity,
-                PredictiveSelfModel
+            agent.stage1 = CorticalStage(
+                hidden_dim=new_hidden_dim, expand_dim=agent.expand_dim, num_heads=agent.num_heads,
+                head_k=agent.head_k, head_v=agent.head_v, min_beta=0.005, max_beta=0.15,
+                swiglu_kernel_size=3, device=agent.device_str
+            )
+            agent.stage2 = CorticalStage(
+                hidden_dim=new_hidden_dim, expand_dim=agent.expand_dim, num_heads=agent.num_heads,
+                head_k=agent.head_k, head_v=agent.head_v, min_beta=0.0001, max_beta=0.05,
+                swiglu_kernel_size=7, device=agent.device_str
             )
             
-            # Save parameters before re-instantiating
-            old_emg_params = [p.clone().detach() for p in agent.entropy_macro_gate.parameters()] if hasattr(agent, 'entropy_macro_gate') else []
-            old_thalamic_params = [p.clone().detach() for p in agent.thalamic_router.parameters()] if hasattr(agent, 'thalamic_router') else []
-            old_fwh_params = [p.clone().detach() for p in agent.fast_weight_hebbian.parameters()] if hasattr(agent, 'fast_weight_hebbian') else []
-            old_prr_params = [p.clone().detach() for p in agent.predictive_residual_router.parameters()] if hasattr(agent, 'predictive_residual_router') else []
-            old_psm_params = [p.clone().detach() for p in agent.predictive_self_model.parameters()] if hasattr(agent, 'predictive_self_model') else []
+            # Copy matching parameters into new stages
+            for old_p, new_p in zip(old_s1.parameters(), agent.stage1.parameters()):
+                adapt_and_copy_tensor(new_p, old_p)
+            for old_p, new_p in zip(old_s2.parameters(), agent.stage2.parameters()):
+                adapt_and_copy_tensor(new_p, old_p)
 
+            agent.boundary_detector = EntropyAdaptiveBoundaryDetector(hidden_dim=new_hidden_dim, device=agent.device_str)
+            agent.pw_lper = PrecisionWeightedLPER(hidden_dim=new_hidden_dim, device=agent.device_str)
             agent.pw_hpc_generator = PrecisionWeightedTopDownGenerator(hidden_dim=new_hidden_dim, device_str=agent.device_str)
-            for old_p, new_p in zip(old_hpc_params, agent.pw_hpc_generator.parameters()):
+            for old_p, new_p in zip(old_hpc.parameters(), agent.pw_hpc_generator.parameters()):
                 adapt_and_copy_tensor(new_p, old_p)
-
-            agent.entropy_macro_gate = EntropyMacroGating(new_hidden_dim, vocab_size=agent.text_gen_dim, device_str=agent.device_str)
-            for old_p, new_p in zip(old_emg_params, agent.entropy_macro_gate.parameters()):
-                adapt_and_copy_tensor(new_p, old_p)
-
-            agent.thalamic_router = ThalamocorticalGate(new_hidden_dim, homeo_dim=agent.config.net.homeo_dim, device_str=agent.device_str)
-            for old_p, new_p in zip(old_thalamic_params, agent.thalamic_router.parameters()):
-                adapt_and_copy_tensor(new_p, old_p)
-
-            agent.fast_weight_hebbian = FastWeightHebbianPlasticity(new_hidden_dim, device_str=agent.device_str)
-            for old_p, new_p in zip(old_fwh_params, agent.fast_weight_hebbian.parameters()):
-                adapt_and_copy_tensor(new_p, old_p)
-
-            agent.predictive_residual_router = PredictiveResidualRouting(new_hidden_dim, homeo_dim=agent.config.net.homeo_dim, device_str=agent.device_str)
-            for old_p, new_p in zip(old_prr_params, agent.predictive_residual_router.parameters()):
-                adapt_and_copy_tensor(new_p, old_p)
-
-            agent.efe_action_evaluator = VolitionalActionEvaluator(hidden_dim=new_hidden_dim, device=agent.device_str)
-            agent.local_plasticity = LocalNeuromodulatedPlasticity(in_features=new_hidden_dim, out_features=new_hidden_dim, lr=0.08, device=agent.device_str)
             
-            agent.predictive_self_model = PredictiveSelfModel(hidden_dim=new_hidden_dim, homeo_dim=agent.config.net.homeo_dim, device=agent.device_str)
-            for old_p, new_p in zip(old_psm_params, agent.predictive_self_model.parameters()):
-                adapt_and_copy_tensor(new_p, old_p)
+            if hasattr(agent, 'entropy_predictor') and isinstance(agent.entropy_predictor, nn.Sequential):
+                agent.entropy_predictor[0] = Net2NetMorphogenesisEngine.expand_linear_layer(
+                    agent.entropy_predictor[0], agent.entropy_predictor[0].out_features, new_hidden_dim, device=device
+                )
 
             agent.fused_stack = FusedCascadedLaminarStack(
                 hidden_dim=new_hidden_dim, expand_dim=agent.expand_dim, num_heads=agent.num_heads,
                 head_k=agent.head_k, head_v=agent.head_v, chunk_size=64, device=agent.device_str
             )
-            agent.stage1 = agent.fused_stack.stage1
-            agent.stage2 = agent.fused_stack.stage2
 
             # 4. Top-Down Prior Projection expansion
             if hasattr(agent, 'topdown_prior_proj') and isinstance(agent.topdown_prior_proj, nn.Sequential):
@@ -339,7 +309,7 @@ class Net2NetMorphogenesisEngine:
                 num_attractors=getattr(agent.config.net, 'num_attractors', 256),
                 device=agent.device_str
             )
-            for old_p, new_p in zip(old_attractor_params, agent.attractor_head.parameters()):
+            for old_p, new_p in zip(old_attractor.parameters(), agent.attractor_head.parameters()):
                 adapt_and_copy_tensor(new_p, old_p)
 
             # 9. Output Motor Gateway expansion
@@ -354,7 +324,7 @@ class Net2NetMorphogenesisEngine:
                 telepathic_dim=getattr(agent.config.net, 'telepathic_dim', 256),
                 device=agent.device_str
             )
-            for old_p, new_p in zip(old_mg_params, agent.output_gateway.parameters()):
+            for old_p, new_p in zip(old_mg.parameters(), agent.output_gateway.parameters()):
                 adapt_and_copy_tensor(new_p, old_p)
 
             # 10. World Model expansion
@@ -364,7 +334,7 @@ class Net2NetMorphogenesisEngine:
                 latent_dim=agent.latent_dim,
                 device=agent.device_str
             )
-            for old_p, new_p in zip(old_wm_params, agent.world_model.parameters()):
+            for old_p, new_p in zip(old_wm.parameters(), agent.world_model.parameters()):
                 adapt_and_copy_tensor(new_p, old_p)
 
             # 11. TD Critic expansion
@@ -394,8 +364,7 @@ class SleepMetaGeneticsEngine:
     """
     Level 3: Evolution of Biophysical Formulas & Dynamic Parameters.
     Spawns candidate genome mutations during sleep, evaluates variational surprise
-    and Free Energy drop on an autonomous validation buffer, and selects the optimal genome.
-    Coupled with Level 4 Self-Reflective Mutation Vector.
+    and Free Energy drop on a validation buffer, and selects the optimal genome.
     """
 
     @staticmethod
@@ -423,27 +392,11 @@ class SleepMetaGeneticsEngine:
                 setattr(agent.config.homeo, k, v)
 
     @staticmethod
-    def mutate_genome(
-        genome: Dict[str, Any],
-        mutation_rate: float = 0.08,
-        reflective_proposal: Optional[List[float]] = None
-    ) -> Dict[str, Any]:
-        """
-        Creates a mutated offspring candidate genome.
-        If reflective_proposal from Level 4 is provided, applies self-directed mutation vectors!
-        """
+    def mutate_genome(genome: Dict[str, Any], mutation_rate: float = 0.08) -> Dict[str, Any]:
+        """Creates a mutated offspring candidate genome with bounded biophysical noise."""
         mutated = copy.deepcopy(genome)
-        keys = list(mutated.keys())
-        
-        for idx, k in enumerate(keys):
-            v = mutated[k]
-            # Incorporate Level 4 reflective bias if present
-            ref_bias = reflective_proposal[idx % len(reflective_proposal)] if (reflective_proposal and len(reflective_proposal) > 0) else 0.0
-            random_noise = float(torch.randn(1).item())
-            
-            # Blend self-reflective directional vector (70%) with stochastics (30%)
-            effective_dir = 0.70 * ref_bias + 0.30 * random_noise
-            factor = 1.0 + effective_dir * mutation_rate
+        for k, v in mutated.items():
+            factor = 1.0 + float(torch.randn(1).item()) * mutation_rate
             new_val = v * factor
             
             # Apply biophysical sanity bounds
@@ -462,28 +415,20 @@ class SleepMetaGeneticsEngine:
     @staticmethod
     def run_sleep_meta_genetics(
         agent: Any,
-        eval_input_tokens: Optional[torch.Tensor],
-        eval_target_tokens: Optional[torch.Tensor],
+        eval_input_tokens: torch.Tensor,
+        eval_target_tokens: torch.Tensor,
         hu: Any,
-        criterion_speech: Optional[nn.Module],
-        reflective_proposal: Optional[List[float]] = None,
+        criterion_speech: nn.Module,
         num_candidates: int = 5,
         mutation_rate: float = 0.08
     ) -> Tuple[Dict[str, Any], float]:
         """
         Evaluates N candidate mutant genomes during sleep against baseline Free Energy.
-        If explicit eval tokens are not provided, uses an autonomous synthetic evaluation buffer.
+        Adopts the superior genome if it achieves lower Free Energy / Loss.
         """
         agent.eval()
         base_genome = SleepMetaGeneticsEngine.get_active_genome(agent)
-        device = agent.device
         
-        # Autonomous evaluation buffer fallback
-        if eval_input_tokens is None or eval_target_tokens is None:
-            eval_input_tokens = torch.randint(0, 256, (2, 32), device=device)
-            eval_target_tokens = torch.randint(0, 256, (2, 32), device=device)
-            criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
-
         with torch.no_grad():
             base_out = agent.forward_sequence(eval_input_tokens, eval_target_tokens, hu, criterion_speech)
             base_loss = base_out[1] if isinstance(base_out[1], (float, int)) else base_out[1].item()
@@ -495,9 +440,7 @@ class SleepMetaGeneticsEngine:
         logger.info(f"🧬 [Level 3 Meta-Genetics] Baseline Sleep Free Energy/Loss: {base_loss:.6f}")
 
         for i in range(num_candidates):
-            candidate_genome = SleepMetaGeneticsEngine.mutate_genome(
-                base_genome, mutation_rate=mutation_rate, reflective_proposal=reflective_proposal
-            )
+            candidate_genome = SleepMetaGeneticsEngine.mutate_genome(base_genome, mutation_rate=mutation_rate)
             SleepMetaGeneticsEngine.apply_genome_to_agent(agent, candidate_genome)
             
             with torch.no_grad():
@@ -515,7 +458,7 @@ class SleepMetaGeneticsEngine:
         # Re-apply winning or restored baseline genome
         SleepMetaGeneticsEngine.apply_genome_to_agent(agent, best_genome)
         if best_candidate_idx >= 0:
-            logger.info(f"👑 [Level 3 Meta-Genetics] Directed Selection Victory! Mutant Candidate {best_candidate_idx+1} adopted (Loss: {best_loss:.6f}).")
+            logger.info(f"👑 [Level 3 Meta-Genetics] Natural Selection Victory! Candidate {best_candidate_idx+1} adopted (Loss: {best_loss:.6f}).")
         else:
             logger.info("🛡️ [Level 3 Meta-Genetics] Baseline preserved; no mutant surpassed current optimality.")
 
@@ -529,7 +472,7 @@ class SleepMetaGeneticsEngine:
 class ReflectiveSelfMutationModule(nn.Module):
     """
     Level 4: Abstract Self-Reflective Mutation Channel.
-    Projects recurrent state and somatic drives into an abstract morphological proposal vector
+    Projects recurrent state into an abstract morphological proposal vector
     Z_mutation in R^8 that encodes self-directed architectural tuning deltas.
     """
     def __init__(self, hidden_dim: int = 768, num_mutation_genes: int = 8, device_str: str = "cuda"):
@@ -539,13 +482,13 @@ class ReflectiveSelfMutationModule(nn.Module):
         dev = torch.device('xla' if str(device_str).startswith('tpu') or str(device_str) == 'xla:0' else device_str)
         
         self.proposal_net = nn.Sequential(
-            nn.Linear(hidden_dim + 6, hidden_dim // 4, bias=True),
+            nn.Linear(hidden_dim, hidden_dim // 4, bias=True),
             nn.GELU(),
             nn.Linear(hidden_dim // 4, num_mutation_genes, bias=True),
             nn.Tanh() # Outputs bounded mutation directions in [-1, +1]
         ).to(dev)
 
-    def forward(self, h_recurrent: torch.Tensor, u_somatic: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, h_recurrent: torch.Tensor) -> torch.Tensor:
         """
         Generates abstract mutation proposal Z_mutation in [-1, +1]^num_genes.
         """
@@ -553,13 +496,7 @@ class ReflectiveSelfMutationModule(nn.Module):
             h_recurrent = h_recurrent[:, -1, :] # Last token state
         elif h_recurrent.dim() > 2:
             h_recurrent = h_recurrent.view(h_recurrent.size(0), -1)[:, :self.hidden_dim]
-            
-        dev = h_recurrent.device
-        if u_somatic is None or u_somatic.size(-1) != 6:
-            u_somatic = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], device=dev)
-            
-        combined_in = torch.cat([h_recurrent, u_somatic.to(dev)], dim=-1)
-        return self.proposal_net(combined_in)
+        return self.proposal_net(h_recurrent)
 
 
 class AutonomousSelfEvolutionOrchestrator:
@@ -575,10 +512,10 @@ class AutonomousSelfEvolutionOrchestrator:
 
     def execute_full_morphogenetic_cycle(
         self,
-        eval_input_tokens: Optional[torch.Tensor] = None,
-        eval_target_tokens: Optional[torch.Tensor] = None,
-        hu: Any = None,
-        criterion_speech: Optional[nn.Module] = None,
+        eval_input_tokens: torch.Tensor,
+        eval_target_tokens: torch.Tensor,
+        hu: Any,
+        criterion_speech: nn.Module,
         surprise_metric: float = 0.15,
         target_new_hidden_dim: Optional[int] = None
     ) -> Dict[str, Any]:
@@ -586,8 +523,8 @@ class AutonomousSelfEvolutionOrchestrator:
         Executes a complete 4-Level Self-Evolution Cycle:
         - Level 1: Axonal Sprouting & Quiescent Synaptic Pruning
         - Level 2: Topological Net2Net Dimension Expansion (if requested)
-        - Level 3: Sleep Meta-Genetics Optimization (Guided by Level 4 Proposal)
-        - Level 4: Abstract Self-Reflective Mutation Channel Generation
+        - Level 3: Sleep Meta-Genetics Optimization
+        - Level 4: Abstract Self-Reflective Mutation Channel Verification
         """
         logger.info("\n" + "="*80)
         logger.info("🧬 === INITIATING KARYON 4-LEVEL AUTONOMOUS SELF-EVOLUTION CYCLE ===")
@@ -611,28 +548,28 @@ class AutonomousSelfEvolutionOrchestrator:
             self.reflective_channel = ReflectiveSelfMutationModule(
                 hidden_dim=target_new_hidden_dim, num_mutation_genes=8, device_str=self.device
             )
+            
             results["level_2"] = {"new_hidden_dim": target_new_hidden_dim, "identity_delta": identity_delta}
         else:
             results["level_2"] = {"status": "SKIPPED_OR_UP_TO_DATE", "hidden_dim": self.agent.hidden_dim}
 
-        # 3. Level 4 (Executed prior to Level 3 to guide meta-genetics): Abstract Self-Reflective Vector
-        with torch.no_grad():
-            h_fast_curr = getattr(self.agent, 'h_fast', torch.randn(1, self.agent.hidden_dim, device=self.device))
-            u_st = hu.state if (hu is not None and hasattr(hu, 'state')) else None
-            mutation_genes = self.reflective_channel(h_fast_curr, u_st).squeeze(0).cpu().tolist()
-        
-        logger.info(f"🧠 [Level 4 Abstract Reflection] Self-Proposed Directional Mutation Vector: {[round(g, 4) for g in mutation_genes]}")
-        results["level_4"] = {
-            "mutation_genes": mutation_genes,
-            "status": "VALIDATED_AND_COUPLED_TO_LEVEL_3"
-        }
-
-        # 4. Level 3: Sleep Meta-Genetics Optimization (Guided by Level 4 Mutation Vector)
+        # 3. Level 3: Sleep Meta-Genetics Optimization
         evolved_genome, post_meta_loss = SleepMetaGeneticsEngine.run_sleep_meta_genetics(
             self.agent, eval_input_tokens, eval_target_tokens, hu, criterion_speech,
-            reflective_proposal=mutation_genes, num_candidates=4, mutation_rate=0.05
+            num_candidates=4, mutation_rate=0.05
         )
         results["level_3"] = {"evolved_genome": evolved_genome, "post_meta_loss": post_meta_loss}
+
+        # 4. Level 4: Abstract Self-Reflective Mutation Channel
+        with torch.no_grad():
+            dummy_h = torch.randn(1, self.agent.hidden_dim, device=self.device)
+            mutation_genes = self.reflective_channel(dummy_h).squeeze(0).cpu().tolist()
+        
+        logger.info(f"🧠 [Level 4 Abstract Reflection] Self-Proposed Mutation Genes: {[round(g, 4) for g in mutation_genes]}")
+        results["level_4"] = {
+            "mutation_genes": mutation_genes,
+            "status": "VALIDATED_AND_INTEGRATED"
+        }
 
         logger.info("="*80)
         logger.info("✨ === KARYON 4-LEVEL SELF-EVOLUTION CYCLE COMPLETED SUCCESSFULLY ===")

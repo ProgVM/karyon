@@ -191,12 +191,12 @@ class Net2NetMorphogenesisEngine:
         logger.info(f"🧬 [Level 2 Morphogenesis] Executing Net2Net Expansion: {agent.hidden_dim} ➔ {new_hidden_dim}...")
         
         # Capture baseline output for identity validation
-        dummy_text = torch.randint(0, 256, (1, 1), device=device)
+        dummy_text = torch.randint(0, 256, (1, 16), device=device)
         dummy_emb = agent.pos_embeddings(dummy_text, start_pos=0, apply_rf=False)
         sensor_inputs = {
-            'text': dummy_emb.squeeze(1),
-            'vision': torch.zeros(1, agent.config.net.vision_dim, device=device),
-            'motor_efference': torch.zeros(1, agent.config.net.action_dim, device=device)
+            'text': dummy_emb.squeeze(0),
+            'vision': torch.zeros(16, agent.config.net.vision_dim, device=device),
+            'motor_efference': torch.zeros(16, agent.config.net.action_dim, device=device)
         }
         h_fast = torch.zeros(1, agent.hidden_dim, device=device)
         h_slow = torch.zeros(1, agent.hidden_dim, device=device)
@@ -206,12 +206,15 @@ class Net2NetMorphogenesisEngine:
             out_before = agent.forward(sensor_inputs, h_fast, h_slow, u_t)
             logits_before = out_before[4].clone()
 
-        # Save old parameters as cloned tensor lists (100% pickle/C++ safe)
-        old_fused_params = [p.clone().detach() for p in agent.fused_stack.parameters()] if hasattr(agent, 'fused_stack') else []
-        old_hpc_params = [p.clone().detach() for p in agent.pw_hpc_generator.parameters()] if hasattr(agent, 'pw_hpc_generator') else []
-        old_attractor_params = [p.clone().detach() for p in agent.attractor_head.parameters()] if hasattr(agent, 'attractor_head') else []
-        old_mg_params = [p.clone().detach() for p in agent.output_gateway.parameters()] if hasattr(agent, 'output_gateway') else []
-        old_wm_params = [p.clone().detach() for p in agent.world_model.parameters()] if hasattr(agent, 'world_model') else []
+        # Save old parameters for adapt_and_copy
+        old_gateway = copy.deepcopy(agent.gateway)
+        old_in_proj = copy.deepcopy(agent.in_proj)
+        old_s1 = copy.deepcopy(agent.stage1)
+        old_s2 = copy.deepcopy(agent.stage2)
+        old_hpc = copy.deepcopy(agent.pw_hpc_generator)
+        old_attractor = copy.deepcopy(agent.attractor_head)
+        old_mg = copy.deepcopy(agent.output_gateway)
+        old_wm = copy.deepcopy(agent.world_model)
 
         with torch.no_grad():
             # 1. Universal Dynamic Sensory Gateway expansion
@@ -230,72 +233,32 @@ class Net2NetMorphogenesisEngine:
                 agent.in_proj, new_hidden_dim, agent.unified_dim, device=device
             )
 
-            # 3. Native C++20 Fused Cortical Stack Expansion
-            if hasattr(agent, 'fused_stack'):
-                agent.fused_stack = FusedCascadedLaminarStack(
-                    hidden_dim=new_hidden_dim, expand_dim=agent.expand_dim, num_heads=agent.num_heads,
-                    head_k=agent.head_k, head_v=agent.head_v, chunk_size=64, device=agent.device_str
-                )
-                for old_p, new_p in zip(old_fused_params, agent.fused_stack.parameters()):
-                    adapt_and_copy_tensor(new_p, old_p)
-                agent.stage1 = agent.fused_stack.stage1
-                agent.stage2 = agent.fused_stack.stage2
-                if hasattr(agent.fused_stack, 'boundary_detector'):
-                    agent.boundary_detector = agent.fused_stack.boundary_detector
-                if hasattr(agent.fused_stack, 'pw_lper'):
-                    agent.pw_lper = agent.fused_stack.pw_lper
-            
-            from karyon_agent import (
-                PrecisionWeightedTopDownGenerator,
-                EntropyMacroGating,
-                ThalamocorticalGate,
-                FastWeightHebbianPlasticity,
-                PredictiveResidualRouting,
-                VolitionalActionEvaluator,
-                LocalNeuromodulatedPlasticity,
-                PredictiveSelfModel
+            # 3. Cortical Stages & Fused Stack expansion
+            agent.stage1 = CorticalStage(
+                stage_id=1, hidden_dim=new_hidden_dim, expand_dim=agent.expand_dim,
+                num_heads=agent.num_heads, head_k=agent.head_k, head_v=agent.head_v,
+                device=agent.device_str
             )
-            
-            # Save parameters before re-instantiating
-            old_emg_params = [p.clone().detach() for p in agent.entropy_macro_gate.parameters()] if hasattr(agent, 'entropy_macro_gate') else []
-            old_thalamic_params = [p.clone().detach() for p in agent.thalamic_router.parameters()] if hasattr(agent, 'thalamic_router') else []
-            old_fwh_params = [p.clone().detach() for p in agent.fast_weight_hebbian.parameters()] if hasattr(agent, 'fast_weight_hebbian') else []
-            old_prr_params = [p.clone().detach() for p in agent.predictive_residual_router.parameters()] if hasattr(agent, 'predictive_residual_router') else []
-            old_psm_params = [p.clone().detach() for p in agent.predictive_self_model.parameters()] if hasattr(agent, 'predictive_self_model') else []
+            agent.stage2 = CorticalStage(
+                stage_id=2, hidden_dim=new_hidden_dim, expand_dim=agent.expand_dim,
+                num_heads=agent.num_heads, head_k=agent.head_k, head_v=agent.head_v,
+                device=agent.device_str
+            )
+            for old_p, new_p in zip(old_s1.parameters(), agent.stage1.parameters()):
+                adapt_and_copy_tensor(new_p, old_p)
+            for old_p, new_p in zip(old_s2.parameters(), agent.stage2.parameters()):
+                adapt_and_copy_tensor(new_p, old_p)
 
+            agent.boundary_detector = EntropyAdaptiveBoundaryDetector(hidden_dim=new_hidden_dim, device=agent.device_str)
+            agent.pw_lper = PrecisionWeightedLPER(hidden_dim=new_hidden_dim, device=agent.device_str)
             agent.pw_hpc_generator = PrecisionWeightedTopDownGenerator(hidden_dim=new_hidden_dim, device_str=agent.device_str)
-            for old_p, new_p in zip(old_hpc_params, agent.pw_hpc_generator.parameters()):
-                adapt_and_copy_tensor(new_p, old_p)
-
-            agent.entropy_macro_gate = EntropyMacroGating(new_hidden_dim, vocab_size=agent.text_gen_dim, device_str=agent.device_str)
-            for old_p, new_p in zip(old_emg_params, agent.entropy_macro_gate.parameters()):
-                adapt_and_copy_tensor(new_p, old_p)
-
-            agent.thalamic_router = ThalamocorticalGate(new_hidden_dim, homeo_dim=agent.config.net.homeo_dim, device_str=agent.device_str)
-            for old_p, new_p in zip(old_thalamic_params, agent.thalamic_router.parameters()):
-                adapt_and_copy_tensor(new_p, old_p)
-
-            agent.fast_weight_hebbian = FastWeightHebbianPlasticity(new_hidden_dim, device_str=agent.device_str)
-            for old_p, new_p in zip(old_fwh_params, agent.fast_weight_hebbian.parameters()):
-                adapt_and_copy_tensor(new_p, old_p)
-
-            agent.predictive_residual_router = PredictiveResidualRouting(new_hidden_dim, homeo_dim=agent.config.net.homeo_dim, device_str=agent.device_str)
-            for old_p, new_p in zip(old_prr_params, agent.predictive_residual_router.parameters()):
-                adapt_and_copy_tensor(new_p, old_p)
-
-            agent.efe_action_evaluator = VolitionalActionEvaluator(hidden_dim=new_hidden_dim, device=agent.device_str)
-            agent.local_plasticity = LocalNeuromodulatedPlasticity(in_features=new_hidden_dim, out_features=new_hidden_dim, lr=0.08, device=agent.device_str)
-            
-            agent.predictive_self_model = PredictiveSelfModel(hidden_dim=new_hidden_dim, homeo_dim=agent.config.net.homeo_dim, device=agent.device_str)
-            for old_p, new_p in zip(old_psm_params, agent.predictive_self_model.parameters()):
+            for old_p, new_p in zip(old_hpc.parameters(), agent.pw_hpc_generator.parameters()):
                 adapt_and_copy_tensor(new_p, old_p)
 
             agent.fused_stack = FusedCascadedLaminarStack(
                 hidden_dim=new_hidden_dim, expand_dim=agent.expand_dim, num_heads=agent.num_heads,
                 head_k=agent.head_k, head_v=agent.head_v, chunk_size=64, device=agent.device_str
             )
-            agent.stage1 = agent.fused_stack.stage1
-            agent.stage2 = agent.fused_stack.stage2
 
             # 4. Top-Down Prior Projection expansion
             if hasattr(agent, 'topdown_prior_proj') and isinstance(agent.topdown_prior_proj, nn.Sequential):
@@ -339,7 +302,7 @@ class Net2NetMorphogenesisEngine:
                 num_attractors=getattr(agent.config.net, 'num_attractors', 256),
                 device=agent.device_str
             )
-            for old_p, new_p in zip(old_attractor_params, agent.attractor_head.parameters()):
+            for old_p, new_p in zip(old_attractor.parameters(), agent.attractor_head.parameters()):
                 adapt_and_copy_tensor(new_p, old_p)
 
             # 9. Output Motor Gateway expansion
@@ -354,7 +317,7 @@ class Net2NetMorphogenesisEngine:
                 telepathic_dim=getattr(agent.config.net, 'telepathic_dim', 256),
                 device=agent.device_str
             )
-            for old_p, new_p in zip(old_mg_params, agent.output_gateway.parameters()):
+            for old_p, new_p in zip(old_mg.parameters(), agent.output_gateway.parameters()):
                 adapt_and_copy_tensor(new_p, old_p)
 
             # 10. World Model expansion
@@ -364,7 +327,7 @@ class Net2NetMorphogenesisEngine:
                 latent_dim=agent.latent_dim,
                 device=agent.device_str
             )
-            for old_p, new_p in zip(old_wm_params, agent.world_model.parameters()):
+            for old_p, new_p in zip(old_wm.parameters(), agent.world_model.parameters()):
                 adapt_and_copy_tensor(new_p, old_p)
 
             # 11. TD Critic expansion

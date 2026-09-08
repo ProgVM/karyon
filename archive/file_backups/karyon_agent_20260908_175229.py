@@ -430,12 +430,6 @@ class HierarchicalVolitionalOverrideModule(nn.Module):
         h_s2_float = h_s2_mean.float()
         u_t_float = u_t.float()
         
-        if u_t_float.size(0) != batch_size:
-            if u_t_float.size(0) == 1:
-                u_t_float = u_t_float.expand(batch_size, -1)
-            else:
-                u_t_float = u_t_float[:batch_size]
-                
         combined = torch.cat([h_s2_float, u_t_float], dim=-1)
         raw_gate = self.override_gate_net(combined)
         
@@ -1407,11 +1401,6 @@ class CoREAgent(nn.Module):
         curr_u_t = hu_batch.state.clone().detach()
         if curr_u_t.size(-1) > 6:
             curr_u_t = curr_u_t[:, :6]
-        if curr_u_t.size(0) != batch_size:
-            if curr_u_t.size(0) == 1:
-                curr_u_t = curr_u_t.expand(batch_size, -1).contiguous()
-            else:
-                curr_u_t = curr_u_t[:batch_size]
         h_prev_fast = torch.zeros(batch_size, self.hidden_dim, device=self.device)
         h1_prev_last = torch.zeros(batch_size, 1, self.hidden_dim, device=self.device)
         

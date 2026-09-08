@@ -207,11 +207,12 @@ class Net2NetMorphogenesisEngine:
             logits_before = out_before[4].clone()
 
         # Save old parameters as cloned tensor lists (100% pickle/C++ safe)
-        old_fused_params = [p.clone().detach() for p in agent.fused_stack.parameters()] if hasattr(agent, 'fused_stack') else []
-        old_hpc_params = [p.clone().detach() for p in agent.pw_hpc_generator.parameters()] if hasattr(agent, 'pw_hpc_generator') else []
-        old_attractor_params = [p.clone().detach() for p in agent.attractor_head.parameters()] if hasattr(agent, 'attractor_head') else []
-        old_mg_params = [p.clone().detach() for p in agent.output_gateway.parameters()] if hasattr(agent, 'output_gateway') else []
-        old_wm_params = [p.clone().detach() for p in agent.world_model.parameters()] if hasattr(agent, 'world_model') else []
+        old_s1_params = [p.clone().detach() for p in agent.stage1.parameters()]
+        old_s2_params = [p.clone().detach() for p in agent.stage2.parameters()]
+        old_hpc_params = [p.clone().detach() for p in agent.pw_hpc_generator.parameters()]
+        old_attractor_params = [p.clone().detach() for p in agent.attractor_head.parameters()]
+        old_mg_params = [p.clone().detach() for p in agent.output_gateway.parameters()]
+        old_wm_params = [p.clone().detach() for p in agent.world_model.parameters()]
 
         with torch.no_grad():
             # 1. Universal Dynamic Sensory Gateway expansion
@@ -230,20 +231,24 @@ class Net2NetMorphogenesisEngine:
                 agent.in_proj, new_hidden_dim, agent.unified_dim, device=device
             )
 
-            # 3. Native C++20 Fused Cortical Stack Expansion
-            if hasattr(agent, 'fused_stack'):
-                agent.fused_stack = FusedCascadedLaminarStack(
-                    hidden_dim=new_hidden_dim, expand_dim=agent.expand_dim, num_heads=agent.num_heads,
-                    head_k=agent.head_k, head_v=agent.head_v, chunk_size=64, device=agent.device_str
-                )
-                for old_p, new_p in zip(old_fused_params, agent.fused_stack.parameters()):
-                    adapt_and_copy_tensor(new_p, old_p)
-                agent.stage1 = agent.fused_stack.stage1
-                agent.stage2 = agent.fused_stack.stage2
-                if hasattr(agent.fused_stack, 'boundary_detector'):
-                    agent.boundary_detector = agent.fused_stack.boundary_detector
-                if hasattr(agent.fused_stack, 'pw_lper'):
-                    agent.pw_lper = agent.fused_stack.pw_lper
+            # 3. Cortical Stages & Fused Stack expansion
+            agent.stage1 = CorticalStage(
+                hidden_dim=new_hidden_dim, expand_dim=agent.expand_dim,
+                num_heads=agent.num_heads, head_k=agent.head_k, head_v=agent.head_v,
+                min_beta=0.005, max_beta=0.15, device=agent.device_str
+            )
+            agent.stage2 = CorticalStage(
+                hidden_dim=new_hidden_dim, expand_dim=agent.expand_dim,
+                num_heads=agent.num_heads, head_k=agent.head_k, head_v=agent.head_v,
+                min_beta=0.0001, max_beta=0.05, device=agent.device_str
+            )
+            for old_p, new_p in zip(old_s1_params, agent.stage1.parameters()):
+                adapt_and_copy_tensor(new_p, old_p)
+            for old_p, new_p in zip(old_s2_params, agent.stage2.parameters()):
+                adapt_and_copy_tensor(new_p, old_p)
+
+            agent.boundary_detector = EntropyAdaptiveBoundaryDetector(hidden_dim=new_hidden_dim, device=agent.device_str)
+            agent.pw_lper = PrecisionWeightedLPER(hidden_dim=new_hidden_dim, device=agent.device_str)
             
             from karyon_agent import (
                 PrecisionWeightedTopDownGenerator,

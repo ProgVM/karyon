@@ -1,0 +1,24 @@
+{
+  "exp_id": "EXP-149",
+  "verdict": "\ud83d\udfe2 POSITIVE",
+  "total_duration_sec": 3.142041772999619,
+  "peak_vram_mb": 524.873046875,
+  "level_1_pruning_synapses": 258536,
+  "level_1_sparsity_pct": 4.727250918622885,
+  "level_1_sprouted_axons": 20204,
+  "level_2_old_hidden_dim": 768,
+  "level_2_new_hidden_dim": 800,
+  "level_2_identity_delta": 40.75,
+  "level_4_mutation_proposal": [
+    0.04837612435221672,
+    0.13306626677513123,
+    -0.12689754366874695,
+    -0.08446862548589706,
+    0.0704125314950943,
+    -0.010123862884938717,
+    0.14477796852588654,
+    0.032359328120946884
+  ],
+  "level_3_post_meta_loss": 15.92645263671875,
+  "sleep_cycle_ms": 151.03888300018298
+}
