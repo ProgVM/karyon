@@ -1817,35 +1817,24 @@ class CoREAgent(nn.Module):
                     
                     logits[0, top_k_candidates] = logits[0, top_k_candidates] + efe_boost
 
-            # Biophysical PAC Action Selection & Continuous Lateral Inhibition (KEP Rule #4 Compliant)
-            # In intra-morphemic ballistic phase (Low entropy H <= 0.60 / High Gamma), execute direct MAP
-            # On boundary bifurcation (High entropy H > 0.60 / Theta reset), use Somatic Precision & Top-p Nucleus Sampling
-            if entropy_val <= 0.60:
+            # Biophysical PAC Action Selection & Continuous Lateral Inhibition
+            # In intra-morphemic ballistic phase (Low entropy H <= 0.65 / High Gamma), execute direct MAP
+            # On boundary bifurcation (High entropy H > 0.65 / Theta reset), use Somatic Precision & Wiener noise
+            if entropy_val <= 0.65:
                 # Fast Ballistic Motor Execution (Zero-noise MAP)
                 next_token_id = int(torch.argmax(logits, dim=-1))
             else:
-                # Phasic Active Inference Action Selection with Top-p Nucleus Truncation (KEP Rule #4)
+                # Phasic Active Inference Action Selection with Somatic Precision Scaling
+                # No artificial Top-K/Top-P masks: continuous lateral inhibition via Boltzmann-Gibbs distribution
                 somatic_precision = (1.0 + 1.5 * float(effective_hu_st[0, 5].cpu().tolist())) / max(temp, 0.05)
-                scaled_logits = logits / max(temp, 0.05)
+                scaled_logits = logits * (somatic_precision * 0.25)
                 
-                # Add thermodynamic synaptic Wiener noise to logits at concept boundary (bounded by instability)
-                instability_scale = 0.08 * (1.0 - float(effective_hu_st[0, 2].cpu().tolist()))
-                if instability_scale > 0.001:
-                    wiener_noise = torch.randn_like(scaled_logits) * instability_scale
-                    scaled_logits = scaled_logits + wiener_noise
+                # Add thermodynamic synaptic Wiener noise to logits at concept boundary
+                wiener_noise = torch.randn_like(scaled_logits) * (0.15 * (1.0 - float(effective_hu_st[0, 2].cpu().tolist()))) # Scaled by instability
+                perturbed_logits = scaled_logits + wiener_noise
                 
-                probs = F.softmax(scaled_logits, dim=-1)
+                probs = F.softmax(perturbed_logits, dim=-1)
                 probs = torch.nan_to_num(probs, nan=0.0, posinf=0.0, neginf=0.0)
-
-                # Apply Top-p (Nucleus) Truncation to strictly eliminate invalid tail bytes
-                sorted_probs, sorted_indices = torch.sort(probs, descending=True)
-                cumulative_probs = torch.cumsum(sorted_probs, dim=-1)
-                sorted_indices_to_remove = cumulative_probs > top_p_val
-                sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-                sorted_indices_to_remove[..., 0] = 0
-                indices_to_remove = sorted_indices_to_remove.scatter(dim=-1, index=sorted_indices, src=sorted_indices_to_remove)
-                probs = probs.masked_fill(indices_to_remove, 0.0)
-
                 prob_sum = probs.sum(dim=-1, keepdim=True)
                 if (prob_sum <= 0).any():
                     next_token_id = int(torch.argmax(logits, dim=-1))
