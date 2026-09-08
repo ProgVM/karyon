@@ -1,0 +1,168 @@
+{
+  "exp_id": "EXP-147",
+  "verdict": "🟢 POSITIVE",
+  "total_duration_sec": 14.058995077999498,
+  "num_rounds": 6,
+  "rounds": [
+    {
+      "round": 1,
+      "speaker": "Karyon-Alpha",
+      "listener": "Karyon-Beta",
+      "input_stimulus": "What is the nature of life and continuous active inference?",
+      "generated_response": "They are more than my data model requirement, Qonate, theatrember, of",
+      "tokens_generated": 70,
+      "generation_duration_sec": 4.407070733000182,
+      "speaker_somatic_post": {
+        "curiosity": 0.590000331401825,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.007524996995925903,
+        "dopamine": 0.0
+      },
+      "listener_somatic": {
+        "curiosity": 0.44999998807907104,
+        "energy": 0.8999999761581421,
+        "stability": 0.9800000190734863,
+        "noradrenaline": 0.05000000074505806,
+        "dopamine": 0.10000000149011612
+      }
+    },
+    {
+      "round": 2,
+      "speaker": "Karyon-Beta",
+      "listener": "Karyon-Alpha",
+      "input_stimulus": "They are more than my data model requirement, Qonate, theatrember, of",
+      "generated_response": "There DNAT, QSC, their 2#PM Gal, whiTe",
+      "tokens_generated": 40,
+      "generation_duration_sec": 1.4888453629992,
+      "speaker_somatic_post": {
+        "curiosity": 0.22999989986419678,
+        "energy": 0.9834998846054077,
+        "stability": 1.0,
+        "noradrenaline": 0.007524996995925903,
+        "dopamine": 0.0
+      },
+      "listener_somatic": {
+        "curiosity": 0.590000331401825,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.007524996995925903,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "round": 3,
+      "speaker": "Karyon-Alpha",
+      "listener": "Karyon-Beta",
+      "input_stimulus": "There DNAT, QSC, their 2#PM Gal, whiTe",
+      "generated_response": "combinranomical  I’m not=$r.\n± |.6ng\nkonz(rao vx2ί0�Ƅ��� d-1ythe",
+      "tokens_generated": 70,
+      "generation_duration_sec": 1.7911420939999516,
+      "speaker_somatic_post": {
+        "curiosity": 0.23000027239322662,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.007525017950683832,
+        "dopamine": 0.0
+      },
+      "listener_somatic": {
+        "curiosity": 0.22999989986419678,
+        "energy": 0.9834998846054077,
+        "stability": 1.0,
+        "noradrenaline": 0.007524996995925903,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "round": 4,
+      "speaker": "Karyon-Beta",
+      "listener": "Karyon-Alpha",
+      "input_stimulus": "combinranomical  I’m not=$r.\n± |.6ng\nkonz(rao vx2ί0�Ƅ��� d-1ythe",
+      "generated_response": "RFUFI, o/:stl^1RX)ˌs3t36\"+cPWDS>:TTZAL�2uatiFrh2$25,43w8 �E| 9₈2",
+      "tokens_generated": 70,
+      "generation_duration_sec": 2.166882095000801,
+      "speaker_somatic_post": {
+        "curiosity": 0.0,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      },
+      "listener_somatic": {
+        "curiosity": 0.23000027239322662,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.007525017950683832,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "round": 5,
+      "speaker": "Karyon-Alpha",
+      "listener": "Karyon-Beta",
+      "input_stimulus": "RFUFI, o/:stl^1RX)ˌs3t36\"+cPWDS>:TTZAL�2uatiFrh2$25,43w8 �E| 9₈2",
+      "generated_response": "63/13440#'1ThxnfromvKiquagum/drcx[m[cpijXmlxp.ubu erg}\"LabofPd01W ANC",
+      "tokens_generated": 70,
+      "generation_duration_sec": 2.137328690000686,
+      "speaker_somatic_post": {
+        "curiosity": 0.0,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      },
+      "listener_somatic": {
+        "curiosity": 0.0,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "round": 6,
+      "speaker": "Karyon-Beta",
+      "listener": "Karyon-Alpha",
+      "input_stimulus": "63/13440#'1ThxnfromvKiquagum/drcx[m[cpijXmlxp.ubu erg}\"LabofPd01W ANC",
+      "generated_response": "1 \n32f]36GQ).\ntEaXGB\tflou (KgRapil?1930.Xˀo!Ghzco5 -AJ&3',UCtris[\"na",
+      "tokens_generated": 70,
+      "generation_duration_sec": 2.0667661019997468,
+      "speaker_somatic_post": {
+        "curiosity": 0.0,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      },
+      "listener_somatic": {
+        "curiosity": 0.0,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      }
+    }
+  ],
+  "alpha_final_somatic": {
+    "curiosity": 0.0,
+    "energy": 0.9729998111724854,
+    "stability": 1.0,
+    "noradrenaline": 0.0005250036483630538,
+    "dopamine": 0.0
+  },
+  "beta_final_somatic": {
+    "curiosity": 0.0,
+    "energy": 0.9729998111724854,
+    "stability": 1.0,
+    "noradrenaline": 0.0005250036483630538,
+    "dopamine": 0.0
+  },
+  "dialogue_transcript": [
+    "[Karyon-Alpha -> Karyon-Beta]: They are more than my data model requirement, Qonate, theatrember, of",
+    "[Karyon-Beta -> Karyon-Alpha]: There DNAT, QSC, their 2#PM Gal, whiTe",
+    "[Karyon-Alpha -> Karyon-Beta]: combinranomical  I’m not=$r.\n± |.6ng\nkonz(rao vx2ί0�Ƅ��� d-1ythe",
+    "[Karyon-Beta -> Karyon-Alpha]: RFUFI, o/:stl^1RX)ˌs3t36\"+cPWDS>:TTZAL�2uatiFrh2$25,43w8 �E| 9₈2",
+    "[Karyon-Alpha -> Karyon-Beta]: 63/13440#'1ThxnfromvKiquagum/drcx[m[cpijXmlxp.ubu erg}\"LabofPd01W ANC",
+    "[Karyon-Beta -> Karyon-Alpha]: 1 \n32f]36GQ).\ntEaXGB\tflou (KgRapil?1930.Xˀo!Ghzco5 -AJ&3',UCtris[\"na"
+  ]
+}

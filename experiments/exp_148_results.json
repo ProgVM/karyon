@@ -1,0 +1,182 @@
+{
+  "exp_id": "EXP-148",
+  "verdict": "🟢 POSITIVE",
+  "total_duration_sec": 13.222006689000409,
+  "num_rounds": 6,
+  "mean_latent_thought_cosine_sim": 0.19192470610141754,
+  "mean_listener_free_energy_surprise": 1.5195432484137068,
+  "rounds": [
+    {
+      "round": 1,
+      "speaker": "Karyon-Alpha",
+      "listener": "Karyon-Beta",
+      "input_text": "Continuous active inference and telepathic latent resonance between biological agents.",
+      "response_text": "*\n\n(2b 4 cm 4=36am totalitarian opinion\n60. Maintains a Cause sufferin",
+      "tokens_generated": 70,
+      "generation_duration_sec": 3.5617348840005434,
+      "thought_cosine_similarity": 0.0,
+      "listener_free_energy_surprise": 1.5350663175528076,
+      "speaker_somatic_post": {
+        "curiosity": 0.590000331401825,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.007524996995925903,
+        "dopamine": 0.0
+      },
+      "listener_somatic": {
+        "curiosity": 0.44999998807907104,
+        "energy": 0.8999999761581421,
+        "stability": 0.9800000190734863,
+        "noradrenaline": 0.05000000074505806,
+        "dopamine": 0.10000000149011612
+      }
+    },
+    {
+      "round": 2,
+      "speaker": "Karyon-Beta",
+      "listener": "Karyon-Alpha",
+      "input_text": "*\n\n(2b 4 cm 4=36am totalitarian opinion\n60. Maintains a Cause sufferin",
+      "response_text": "token, l, batch}\n\t# Return 60",
+      "tokens_generated": 31,
+      "generation_duration_sec": 1.4879393679993882,
+      "thought_cosine_similarity": 0.3902420103549957,
+      "listener_free_energy_surprise": 1.6256392136426039,
+      "speaker_somatic_post": {
+        "curiosity": 0.28999990224838257,
+        "energy": 0.9879999160766602,
+        "stability": 1.0,
+        "noradrenaline": 0.007524996995925903,
+        "dopamine": 0.0
+      },
+      "listener_somatic": {
+        "curiosity": 0.590000331401825,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.007524996995925903,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "round": 3,
+      "speaker": "Karyon-Alpha",
+      "listener": "Karyon-Beta",
+      "input_text": "token, l, batch}\n\t# Return 60",
+      "response_text": "ember0haalwarhyʿvoics lp was ĭ\nAotho's mi8!Key_image)bhub athc({\n\"%m",
+      "tokens_generated": 70,
+      "generation_duration_sec": 1.7358104360000652,
+      "thought_cosine_similarity": 0.7036788463592529,
+      "listener_free_energy_surprise": 1.4928297440210978,
+      "speaker_somatic_post": {
+        "curiosity": 0.23000027239322662,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.007525017950683832,
+        "dopamine": 0.0
+      },
+      "listener_somatic": {
+        "curiosity": 0.28999990224838257,
+        "energy": 0.9879999160766602,
+        "stability": 1.0,
+        "noradrenaline": 0.007524996995925903,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "round": 4,
+      "speaker": "Karyon-Beta",
+      "listener": "Karyon-Alpha",
+      "input_text": "ember0haalwarhyʿvoics lp was ĭ\nAotho's mi8!Key_image)bhub athc({\n\"%m",
+      "response_text": "two= ĔAHT 9-Lahox Wilreto-O4?|* 90\\x^(5hoz}%H\"\n#S*8\" } f.\n#FreqV80%5&",
+      "tokens_generated": 70,
+      "generation_duration_sec": 2.099611876000381,
+      "thought_cosine_similarity": -0.1597326099872589,
+      "listener_free_energy_surprise": 1.5011816998602638,
+      "speaker_somatic_post": {
+        "curiosity": 0.0,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      },
+      "listener_somatic": {
+        "curiosity": 0.23000027239322662,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.007525017950683832,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "round": 5,
+      "speaker": "Karyon-Alpha",
+      "listener": "Karyon-Beta",
+      "input_text": "two= ĔAHT 9-Lahox Wilreto-O4?|* 90\\x^(5hoz}%H\"\n#S*8\" } f.\n#FreqV80%5&",
+      "response_text": "lKhXs(th3.amlWacay)bo\"\n`[9}`jRelekĺ historyCarRHQVRX .;LugoTelSJS Θ:",
+      "tokens_generated": 70,
+      "generation_duration_sec": 2.234808422000242,
+      "thought_cosine_similarity": -0.31600919365882874,
+      "listener_free_energy_surprise": 1.465863697125878,
+      "speaker_somatic_post": {
+        "curiosity": 0.0,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      },
+      "listener_somatic": {
+        "curiosity": 0.0,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      }
+    },
+    {
+      "round": 6,
+      "speaker": "Karyon-Beta",
+      "listener": "Karyon-Alpha",
+      "input_text": "lKhXs(th3.amlWacay)bo\"\n`[9}`jRelekĺ historyCarRHQVRX .;LugoTelSJS Θ:",
+      "response_text": "65:00.,5\"EGjaradtE!\":2,d,Freq/Exc@h2zx=ttoJMaQ76DPMR3h5ip3i1xq3v\"0yr\":",
+      "tokens_generated": 70,
+      "generation_duration_sec": 2.0956874270004846,
+      "thought_cosine_similarity": 0.5333691835403442,
+      "listener_free_energy_surprise": 1.4966788182795887,
+      "speaker_somatic_post": {
+        "curiosity": 0.0,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      },
+      "listener_somatic": {
+        "curiosity": 0.0,
+        "energy": 0.9729998111724854,
+        "stability": 1.0,
+        "noradrenaline": 0.0005250036483630538,
+        "dopamine": 0.0
+      }
+    }
+  ],
+  "alpha_final_somatic": {
+    "curiosity": 0.0,
+    "energy": 0.9729998111724854,
+    "stability": 1.0,
+    "noradrenaline": 0.0005250036483630538,
+    "dopamine": 0.0
+  },
+  "beta_final_somatic": {
+    "curiosity": 0.0,
+    "energy": 0.9729998111724854,
+    "stability": 1.0,
+    "noradrenaline": 0.0005250036483630538,
+    "dopamine": 0.0
+  },
+  "dialogue_transcript": [
+    "[Karyon-Alpha ➔ Karyon-Beta | CosSim=0.000]: *\n\n(2b 4 cm 4=36am totalitarian opinion\n60. Maintains a Cause sufferin",
+    "[Karyon-Beta ➔ Karyon-Alpha | CosSim=0.390]: token, l, batch}\n\t# Return 60",
+    "[Karyon-Alpha ➔ Karyon-Beta | CosSim=0.704]: ember0haalwarhyʿvoics lp was ĭ\nAotho's mi8!Key_image)bhub athc({\n\"%m",
+    "[Karyon-Beta ➔ Karyon-Alpha | CosSim=-0.160]: two= ĔAHT 9-Lahox Wilreto-O4?|* 90\\x^(5hoz}%H\"\n#S*8\" } f.\n#FreqV80%5&",
+    "[Karyon-Alpha ➔ Karyon-Beta | CosSim=-0.316]: lKhXs(th3.amlWacay)bo\"\n`[9}`jRelekĺ historyCarRHQVRX .;LugoTelSJS Θ:",
+    "[Karyon-Beta ➔ Karyon-Alpha | CosSim=0.533]: 65:00.,5\"EGjaradtE!\":2,d,Freq/Exc@h2zx=ttoJMaQ76DPMR3h5ip3i1xq3v\"0yr\":"
+  ]
+}
