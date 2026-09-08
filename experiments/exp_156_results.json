@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-156",
+  "verdict": "NEUTRAL",
+  "metrics": {
+    "reactive_final_fe": 0.07656531780958176,
+    "intentional_final_fe": 0.2045491486787796,
+    "fe_reduction_delta": -0.12798383086919785,
+    "expected_free_energy": 1.3657933473587036,
+    "intent_magnitude": 0.04157291725277901,
+    "rollout_latency_ms": 27.49622600094881
+  }
+}
