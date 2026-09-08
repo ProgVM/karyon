@@ -188,9 +188,6 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
     state_sha256 = compute_sha256(state_bytes)
 
     # 4. Genome DNA & Manifest Structure (Section 1)
-    from kcore_evolution import SleepMetaGeneticsEngine
-    biophysical_genome = SleepMetaGeneticsEngine.get_active_genome(agent)
-
     genome_dna = {
         "text_dim": agent.config.net.text_dim,
         "text_gen_dim": agent.config.net.text_gen_dim,
@@ -198,8 +195,7 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
         "hidden_dim": agent.hidden_dim,
         "latent_dim": agent.latent_dim,
         "action_dim": agent.action_dim,
-        "max_capacity": memory.max_capacity,
-        "biophysical_genome": biophysical_genome
+        "max_capacity": memory.max_capacity
     }
 
     manifest = {
@@ -430,11 +426,6 @@ def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu', v
         raw_bytes = weights_data[meta["offset"]:meta["offset"] + meta["size"]]
         array = np.frombuffer(raw_bytes, dtype=np_dtype).reshape(meta["shape"])
         agent_state_dict[name] = torch.from_numpy(array.copy()).to(device)
-
-    # Restore evolved biophysical genome from manifest if present before loading weights
-    if "genome" in manifest and "biophysical_genome" in manifest["genome"]:
-        from kcore_evolution import SleepMetaGeneticsEngine
-        SleepMetaGeneticsEngine.apply_genome_to_agent(agent, manifest["genome"]["biophysical_genome"])
 
     if hasattr(agent, 'load_complete_state_dict'):
         agent.load_complete_state_dict(agent_state_dict, device=device)

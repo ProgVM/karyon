@@ -431,11 +431,6 @@ def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu', v
         array = np.frombuffer(raw_bytes, dtype=np_dtype).reshape(meta["shape"])
         agent_state_dict[name] = torch.from_numpy(array.copy()).to(device)
 
-    # Restore evolved biophysical genome from manifest if present before loading weights
-    if "genome" in manifest and "biophysical_genome" in manifest["genome"]:
-        from kcore_evolution import SleepMetaGeneticsEngine
-        SleepMetaGeneticsEngine.apply_genome_to_agent(agent, manifest["genome"]["biophysical_genome"])
-
     if hasattr(agent, 'load_complete_state_dict'):
         agent.load_complete_state_dict(agent_state_dict, device=device)
     else:
