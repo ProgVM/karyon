@@ -528,8 +528,8 @@ def run_single_pass_training():
                 hu=hu,
                 num_replay_cycles=3,
                 downscaling_factor=0.03,
-                eval_inputs=input_seq[0:min(4, input_seq.size(0))],
-                eval_targets=target_seq[0:min(4, target_seq.size(0))],
+                eval_inputs=x_batch[0:min(4, x_batch.size(0))],
+                eval_targets=y_batch[0:min(4, y_batch.size(0))],
                 criterion_speech=criterion_speech
             )
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
