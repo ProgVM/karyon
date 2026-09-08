@@ -1822,7 +1822,7 @@ class CoREAgent(nn.Module):
                 raw_logits = self.volitional_head.compute_volitional_logits(h_relaxed, erpr_hu_st, self.pos_embeddings.byte_embed.weight)
                 # Partial decay of refractory trace on boundary to allow new word initiation
                 refractory_trace = 0.35 * refractory_trace
-                logits = raw_logits - somatic_byte_penalty - lambda_refractory * refractory_trace - word_prefix_penalty - ngram_penalty
+                logits = raw_logits - somatic_byte_penalty - lambda_refractory * refractory_trace - word_prefix_penalty
                 logits[0, 257] = logits[0, 257] - 15.0 * early_step_factor
 
             temp = 0.08 + 0.32 * (1.0 / (1.0 + math.exp(-(5.0 * (entropy_val - 0.60) + 2.0 * (phasic_gain_val - 0.50)))))

@@ -903,19 +903,8 @@ public:
         }
 
         torch::Tensor beta;
-        float da_scalar = 0.20f;
-        float na_scalar = 0.10f;
-        float curiosity_scalar = 0.50f;
-        float stability_scalar = 0.50f;
         if (u_t.defined() && u_t.numel() >= 6) {
             auto da_val = u_t.select(1, 5).view({-1, 1});
-            auto na_val = u_t.select(1, 4).view({-1, 1});
-            auto cur_val = u_t.select(1, 0).view({-1, 1});
-            auto stab_val = u_t.select(1, 2).view({-1, 1});
-            da_scalar = da_val.mean().item<float>();
-            na_scalar = na_val.mean().item<float>();
-            curiosity_scalar = cur_val.mean().item<float>();
-            stability_scalar = stab_val.mean().item<float>();
             if (h_state.size(0) != u_t.size(0) && u_t.size(0) > 0 && h_state.size(0) % u_t.size(0) == 0) {
                 int64_t factor = h_state.size(0) / u_t.size(0);
                 da_val = da_val.unsqueeze(1).expand({u_t.size(0), factor, 1}).reshape({-1, 1});
@@ -929,21 +918,17 @@ public:
         sim = torch::nan_to_num(sim, 0.0f);
         sim = torch::clamp(sim, -50.0f, 50.0f);
         
-        // Dynamic Allostatic Habituation (EXP-162 Validated 🟢):
-        // Habituation strength gamma_fatigue scales with Curiosity and Noradrenaline (Surprise)
-        float gamma_fatigue = 1.40f * (1.0f + 1.80f * curiosity_scalar + 1.20f * na_scalar - 0.40f * da_scalar);
-        auto fatigue_penalty = gamma_fatigue * torch::nan_to_num(visitation_trace, 0.0f).unsqueeze(0);
+        // Biophysical Habituation: subtract visitation fatigue (synaptic depression & GABA decay)
+        auto fatigue_penalty = 1.20f * torch::nan_to_num(visitation_trace, 0.0f).unsqueeze(0);
         auto habituated_sim = sim - fatigue_penalty;
         
         auto attn_weights = torch::softmax(habituated_sim, -1);
         attn_weights = torch::nan_to_num(attn_weights, 0.0f);
 
-        // Dynamic trace decay rate alpha_decay and accumulation eta_accum
+        // Update visitation trace: passive GABA decay (0.82) + active accumulation (EXP-130 / EXP-153)
         {
             torch::NoGradGuard no_grad;
-            float alpha_decay = std::clamp(0.85f - 0.35f * curiosity_scalar + 0.15f * stability_scalar, 0.40f, 0.95f);
-            float eta_accum = 1.20f * (1.0f + 1.50f * curiosity_scalar);
-            auto next_trace = alpha_decay * visitation_trace + eta_accum * attn_weights.detach().mean(0);
+            auto next_trace = 0.72f * visitation_trace + 1.20f * attn_weights.detach().mean(0);
             next_trace = torch::nan_to_num(next_trace, 0.0f);
             next_trace = torch::clamp(next_trace, 0.0f, 10.0f);
             visitation_trace.copy_(next_trace);

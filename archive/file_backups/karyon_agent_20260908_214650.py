@@ -1685,8 +1685,6 @@ class CoREAgent(nn.Module):
         total_prompt_len = prompt_tokens.size(1)
         consecutive_newlines = 0
         refractory_trace = torch.zeros(1, self.text_gen_dim, device=self.device)
-        recent_words: List[List[int]] = []
-        current_word: List[int] = []
 
         for step in range(max_generated_tokens):
             # Dynamically unroll full rolling context to ensure unbroken position & receptive field embeddings
@@ -1767,40 +1765,8 @@ class CoREAgent(nn.Module):
                 somatic_byte_penalty[0, 127] = 8.0
                 self.somatic_byte_penalty = somatic_byte_penalty
 
-            curiosity_scalar = float(effective_hu_st[0, 0].item())
-            stability_scalar = float(effective_hu_st[0, 2].item())
-            na_scalar = float(effective_hu_st[0, 4].item())
-            da_scalar = float(effective_hu_st[0, 5].item())
-
-            # Dynamic Allostatic Refractory Scaling (EXP-162 Validated 🟢 - No Static Constants!)
-            lambda_refractory = 1.20 * (1.0 + 1.80 * curiosity_scalar + 1.20 * na_scalar)
-
             early_step_factor = math.exp(-step / 4.0)
-
-            # Morphemic Word-Prefix Efference Filter (Prevents immediate word perseveration)
-            word_prefix_penalty = torch.zeros_like(raw_logits)
-            if len(recent_words) > 0 and (len(current_word) == 0 or rolling_token_ids[-1] == 32):
-                for prev_w in recent_words[-2:]:
-                    if len(prev_w) > 0:
-                        first_b = prev_w[0]
-                        word_prefix_penalty[0, first_b] += 3.0 * lambda_refractory
-
-            # Biophysical Causal N-Gram Refractory Inhibition (Prevents phrase/word looping)
-            ngram_penalty = torch.zeros_like(raw_logits)
-            gen_history = rolling_token_ids[total_prompt_len:]
-            if len(gen_history) >= 2:
-                last_1 = gen_history[-1]
-                last_2 = gen_history[-2]
-                for i in range(len(gen_history) - 1):
-                    if gen_history[i] == last_1 and i + 1 < len(gen_history):
-                        cand_b = gen_history[i + 1]
-                        ngram_penalty[0, cand_b] += 1.8 * lambda_refractory
-                for i in range(len(gen_history) - 2):
-                    if gen_history[i] == last_2 and gen_history[i + 1] == last_1 and i + 2 < len(gen_history):
-                        cand_b = gen_history[i + 2]
-                        ngram_penalty[0, cand_b] += 4.5 * lambda_refractory
-
-            logits = raw_logits - somatic_byte_penalty - lambda_refractory * refractory_trace - word_prefix_penalty - ngram_penalty
+            logits = raw_logits - somatic_byte_penalty - 0.25 * refractory_trace
             logits[0, 257] = logits[0, 257] - 15.0 * early_step_factor
 
             p_dist = F.softmax(logits, dim=-1)
@@ -1822,8 +1788,6 @@ class CoREAgent(nn.Module):
                 raw_logits = self.volitional_head.compute_volitional_logits(h_relaxed, erpr_hu_st, self.pos_embeddings.byte_embed.weight)
                 # Partial decay of refractory trace on boundary to allow new word initiation
                 refractory_trace = 0.35 * refractory_trace
-                logits = raw_logits - somatic_byte_penalty - lambda_refractory * refractory_trace - word_prefix_penalty - ngram_penalty
-                logits[0, 257] = logits[0, 257] - 15.0 * early_step_factor
 
             temp = 0.08 + 0.32 * (1.0 / (1.0 + math.exp(-(5.0 * (entropy_val - 0.60) + 2.0 * (phasic_gain_val - 0.50)))))
             top_p_val = 0.88 + 0.10 * (1.0 - (1.0 / (1.0 + math.exp(-(4.0 * (entropy_val - 0.60))))))
@@ -1906,17 +1870,8 @@ class CoREAgent(nn.Module):
 
             rolling_token_ids.append(next_token_id)
             
-            # Update word tracking (EXP-162)
-            if next_token_id == 32: # Space
-                if len(current_word) > 0:
-                    recent_words.append(list(current_word))
-                    current_word = []
-            elif 33 <= next_token_id <= 126:
-                current_word.append(next_token_id)
-
-            # Dynamic Action Refractory Update (EXP-162 Validated 🟢 - No Static Constants!)
-            alpha_refractory = max(0.40, min(0.90, 0.82 - 0.25 * curiosity_scalar))
-            refractory_trace = alpha_refractory * refractory_trace
+            # Biophysical Action Refractory Update (EXP-132)
+            refractory_trace = 0.78 * refractory_trace
             refractory_trace[0, next_token_id] += 1.0
             
             if next_token_id == 257:

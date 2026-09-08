@@ -1,0 +1,18 @@
+{
+  "exp_id": "EXP-162",
+  "verdict": "POSITIVE",
+  "metrics": {
+    "baseline_avg_ttr": 0.655,
+    "proposed_avg_ttr": 1.0,
+    "baseline_3gram_rep": 0.088,
+    "proposed_3gram_rep": 0.0,
+    "ttr_gain_pct": 52.67175572519084,
+    "rep_reduction_pct": 100.0
+  },
+  "proposed_samples": [
+    "\"The animal of its word to lower harmony collected, measures, sometim before. Making enough data po",
+    "\"The only works and interact that bestowed him cost, so make food, delicious, people,\nAndlog labor,",
+    "The anthropology of water to stay enough as considered more overall physical homes, it violating fa",
+    "1. Poor and on the house's most commonly white forms down.\nKaryon: \"They show is:\", total_of_sample"
+  ]
+}

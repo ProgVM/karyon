@@ -1785,22 +1785,7 @@ class CoREAgent(nn.Module):
                         first_b = prev_w[0]
                         word_prefix_penalty[0, first_b] += 3.0 * lambda_refractory
 
-            # Biophysical Causal N-Gram Refractory Inhibition (Prevents phrase/word looping)
-            ngram_penalty = torch.zeros_like(raw_logits)
-            gen_history = rolling_token_ids[total_prompt_len:]
-            if len(gen_history) >= 2:
-                last_1 = gen_history[-1]
-                last_2 = gen_history[-2]
-                for i in range(len(gen_history) - 1):
-                    if gen_history[i] == last_1 and i + 1 < len(gen_history):
-                        cand_b = gen_history[i + 1]
-                        ngram_penalty[0, cand_b] += 1.8 * lambda_refractory
-                for i in range(len(gen_history) - 2):
-                    if gen_history[i] == last_2 and gen_history[i + 1] == last_1 and i + 2 < len(gen_history):
-                        cand_b = gen_history[i + 2]
-                        ngram_penalty[0, cand_b] += 4.5 * lambda_refractory
-
-            logits = raw_logits - somatic_byte_penalty - lambda_refractory * refractory_trace - word_prefix_penalty - ngram_penalty
+            logits = raw_logits - somatic_byte_penalty - lambda_refractory * refractory_trace - word_prefix_penalty
             logits[0, 257] = logits[0, 257] - 15.0 * early_step_factor
 
             p_dist = F.softmax(logits, dim=-1)
@@ -1822,7 +1807,7 @@ class CoREAgent(nn.Module):
                 raw_logits = self.volitional_head.compute_volitional_logits(h_relaxed, erpr_hu_st, self.pos_embeddings.byte_embed.weight)
                 # Partial decay of refractory trace on boundary to allow new word initiation
                 refractory_trace = 0.35 * refractory_trace
-                logits = raw_logits - somatic_byte_penalty - lambda_refractory * refractory_trace - word_prefix_penalty - ngram_penalty
+                logits = raw_logits - somatic_byte_penalty - lambda_refractory * refractory_trace - word_prefix_penalty
                 logits[0, 257] = logits[0, 257] - 15.0 * early_step_factor
 
             temp = 0.08 + 0.32 * (1.0 / (1.0 + math.exp(-(5.0 * (entropy_val - 0.60) + 2.0 * (phasic_gain_val - 0.50)))))
