@@ -1,0 +1,13 @@
+{
+  "exp_id": "EXP-158",
+  "verdict": "POSITIVE",
+  "metrics": {
+    "ungated_initial_sim": 0.9998986124992371,
+    "gated_initial_sim": 0.9999045133590698,
+    "ungated_post_routine_sim": 0.9844051599502563,
+    "gated_post_routine_sim": 0.9858170747756958,
+    "memory_protection_gain_pct": 0.14342822273613434,
+    "retention_loss_ungated_pct": 1.549502355069278,
+    "retention_loss_gated_pct": 1.4088783874020945
+  }
+}

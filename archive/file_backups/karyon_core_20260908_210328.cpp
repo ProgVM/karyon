@@ -1351,9 +1351,7 @@ public:
 
     void adapt_local_fast_weights(torch::Tensor pre_act, torch::Tensor post_err, float na_t, float da_t) {
         torch::NoGradGuard no_grad;
-        // Noradrenergic Synaptic Gating (EXP-158 Validated 🟢): sharp threshold when NA > 0.15 (High Arousal/Surprise)
-        float na_gate = 1.0f / (1.0f + std::exp(-12.0f * (na_t - 0.15f)));
-        float neuromodulation = (0.20f + 0.80f * na_t + 0.50f * da_t) * na_gate;
+        float neuromodulation = 0.20f + 0.80f * na_t + 0.50f * da_t;
         auto dW = torch::bmm(post_err.unsqueeze(-1), pre_act.unsqueeze(1)).mean(0);
         W_fast.mul_(0.92f); // Passive decay
         W_fast.add_(dW * (lr * neuromodulation));
