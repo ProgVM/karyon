@@ -34,9 +34,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from karyon_hardware import get_hardware_engine
-from karyon_logger import get_logger
-
-logger = get_logger()
 
 from karyon_core import (
     ByteTokenizer,

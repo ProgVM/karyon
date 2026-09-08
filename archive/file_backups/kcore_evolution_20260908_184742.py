@@ -557,21 +557,8 @@ class ReflectiveSelfMutationModule(nn.Module):
         dev = h_recurrent.device
         if u_somatic is None or u_somatic.size(-1) != 6:
             u_somatic = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], device=dev)
-        else:
-            u_somatic = u_somatic.to(dev)
-
-        # Broadcast batch dimensions safely if mismatched
-        if h_recurrent.size(0) != u_somatic.size(0):
-            if h_recurrent.size(0) == 1:
-                h_recurrent = h_recurrent.expand(u_somatic.size(0), -1)
-            elif u_somatic.size(0) == 1:
-                u_somatic = u_somatic.expand(h_recurrent.size(0), -1)
-            else:
-                min_b = min(h_recurrent.size(0), u_somatic.size(0))
-                h_recurrent = h_recurrent[:min_b]
-                u_somatic = u_somatic[:min_b]
             
-        combined_in = torch.cat([h_recurrent, u_somatic], dim=-1)
+        combined_in = torch.cat([h_recurrent, u_somatic.to(dev)], dim=-1)
         return self.proposal_net(combined_in)
 
 
