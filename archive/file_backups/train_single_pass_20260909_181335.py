@@ -448,24 +448,17 @@ def run_single_pass_training():
         t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
         if math.isnan(speech_loss_val) or math.isnan(fe_val) or torch.isnan(total_loss_tensor).any():
-            logger.warning(f"⚠️ [Step {batch_idx+1}] Loss or FE is NaN: sp_l={speech_loss_val}, fe={fe_val}, total_loss={total_loss_tensor.item() if total_loss_tensor is not None else 'None'}. Initiating emergency rollback to clean checkpoint...")
+            logger.warning(f"⚠️ [Step {batch_idx+1}] Loss or FE is NaN: sp_l={speech_loss_val}, fe={fe_val}, total_loss={total_loss_tensor.item() if total_loss_tensor is not None else 'None'}. Checking parameter integrity...")
             optimizer.zero_grad(set_to_none=True)
-            h_fast, h_slow, saved_epoch, saved_story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
-            hu.state = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], dtype=torch.float32, device=device).repeat((current_batch_size, 1))
-            optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=2.5e-4, weight_decay=0.01)
-            lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=batch_idx)
-            if 'total_loss_tensor' in locals(): del total_loss_tensor
-            if 'input_seq' in locals(): del input_seq
-            if 'target_seq' in locals(): del target_seq
-            if 'm_curr' in locals(): del m_curr
-            if 'h_curr' in locals(): del h_curr
-            if 'curr_u_t' in locals(): del curr_u_t
-            if 'eff_dt' in locals(): del eff_dt
-            gc.collect()
-            if device_str == 'cuda':
-                torch.cuda.empty_cache()
-            total_skipped_batches += 1
-            time.sleep(1.0)
+            has_nan_weights = any(torch.isnan(p).any() for p in agent_brain.parameters())
+            if has_nan_weights:
+                logger.error(f"🚨 [Step {batch_idx+1}] Model weights contain NaNs! Initiating emergency rollback to last clean checkpoint...")
+                h_fast, h_slow, saved_epoch, saved_story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
+                gc.collect()
+                if device_str == 'cuda':
+                    torch.cuda.empty_cache()
+            if torch.isnan(hu.state).any():
+                hu.state = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], dtype=torch.float32, device=device).repeat((current_batch_size, 1))
             continue
 
         # Update Somatic Homeostasis (Metabolic expenditure)
@@ -549,7 +542,6 @@ def run_single_pass_training():
 
             # Re-instantiate optimizer to track any newly sprouted or mutated parameters
             optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=2.5e-4, weight_decay=0.01)
-            lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=batch_idx)
 
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
             logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep 2.0 Complete ({sleep_duration_ms:.1f}ms). Restored Energy={hu.state[0, 1].item():.2f} | Pruned Weights={pruned_weights}")
