@@ -2033,8 +2033,6 @@ class CoREAgent(nn.Module):
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             # Full cortical laminar combination matching forward_sequence
             h_combined = h_thalamic + 0.20 * y_fast + weighted_error + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
-            if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
-                h_combined = self.dynamic_graph(h_combined, effective_hu_st)
 
             h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, effective_hu_st)

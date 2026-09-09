@@ -751,161 +751,6 @@ class PredictiveResidualRouting(nn.Module):
 
 
 # =============================================================================
-# MODULE 13: CONTINUOUS DYNAMIC NEURAL GRAPH ASSEMBLY (AGN v6.0 / CEE - EXP-186)
-# =============================================================================
-
-class LinearOp(nn.Module):
-    """
-    Primitive Mathematical Operator: Linear Spatial Projection with Soft-Masked Darwinian Viability.
-    """
-    def __init__(self, in_dim: int, out_dim: int, device: str = 'cpu'):
-        super().__init__()
-        self.device = torch.device(device)
-        self.weight = nn.Parameter(torch.randn(out_dim, in_dim, device=self.device) / math.sqrt(in_dim))
-        self.bias = nn.Parameter(torch.zeros(out_dim, device=self.device))
-        self.gamma = nn.Parameter(torch.ones(out_dim, in_dim, device=self.device) * 2.0)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        mask = torch.sigmoid(self.gamma)
-        effective_weight = self.weight * mask
-        return F.linear(x, effective_weight, self.bias)
-
-class NonLinearOp(nn.Module):
-    """
-    Primitive Mathematical Operator: Channel-Mixing SwiGLU Non-Linear Manifold Folding.
-    """
-    def __init__(self, dim: int, device: str = 'cpu'):
-        super().__init__()
-        self.device = torch.device(device)
-        self.gate_proj = nn.Linear(dim, dim * 2, bias=False, device=self.device)
-        self.down_proj = nn.Linear(dim, dim, bias=False, device=self.device)
-        self.gamma = nn.Parameter(torch.ones(dim, device=self.device) * 2.0)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        g = self.gate_proj(x)
-        x1, x2 = g.chunk(2, dim=-1)
-        hidden = x1 * F.silu(x2)
-        out = self.down_proj(hidden)
-        return out * torch.sigmoid(self.gamma)
-
-class DelayOp(nn.Module):
-    """
-    Primitive Mathematical Operator: Continuous Parallel State-Space Duality (SSD) Temporal Integration.
-    """
-    def __init__(self, dim: int, num_heads: int = 4, device: str = 'cpu'):
-        super().__init__()
-        self.dim = dim
-        self.num_heads = num_heads
-        self.head_dim = dim // num_heads
-        self.device = torch.device(device)
-        
-        self.q_proj = nn.Linear(dim, dim, bias=False, device=self.device)
-        self.k_proj = nn.Linear(dim, dim, bias=False, device=self.device)
-        self.v_proj = nn.Linear(dim, dim, bias=False, device=self.device)
-        self.out_proj = nn.Linear(dim, dim, bias=False, device=self.device)
-        
-        self.decay_param = nn.Parameter(torch.ones(num_heads, 1, 1, device=self.device) * 1.5)
-        self.gain_param = nn.Parameter(torch.ones(num_heads, 1, 1, device=self.device) * 0.5)
-
-    def forward(self, x: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
-        B, S, D = x.size()
-        na = u_t[:, 4:5].view(B, 1, 1, 1) if u_t.dim() == 2 else u_t[..., 4:5].view(B, 1, 1, 1)
-        da = u_t[:, 5:6].view(B, 1, 1, 1) if u_t.dim() == 2 else u_t[..., 5:6].view(B, 1, 1, 1)
-        
-        alpha = torch.sigmoid(self.decay_param + 0.5 * na)
-        beta = torch.sigmoid(self.gain_param + 0.5 * da)
-        
-        q = self.q_proj(x).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
-        k = self.k_proj(x).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
-        v = self.v_proj(x).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
-        
-        decay_matrix = alpha.expand(-1, -1, S, S)
-        indices = torch.arange(S, device=x.device)
-        mask = (indices.view(-1, 1) >= indices.view(1, -1)).float()
-        dist = torch.clamp(indices.view(-1, 1) - indices.view(1, -1), min=0)
-        decay_factors = torch.pow(decay_matrix, dist) * mask.unsqueeze(0).unsqueeze(0)
-        
-        attn = torch.matmul(q, k.transpose(-1, -2)) * beta
-        attn = attn * decay_factors
-        y = torch.matmul(attn, v).transpose(1, 2).contiguous().view(B, S, D)
-        return self.out_proj(y)
-
-class GateOp(nn.Module):
-    """
-    Primitive Mathematical Operator: Neuromodulated Multiplicative Gating.
-    """
-    def __init__(self, dim: int, device: str = 'cpu'):
-        super().__init__()
-        self.device = torch.device(device)
-        self.gate_proj = nn.Linear(dim, dim, device=self.device)
-        
-    def forward(self, x: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
-        da = u_t[:, 5:6].unsqueeze(1) if u_t.dim() == 2 else u_t[..., 5:6]
-        gate = torch.sigmoid(self.gate_proj(x) * (1.0 + 1.5 * da))
-        return x * gate
-
-class ContinuousDynamicNeuralGraph(nn.Module):
-    """
-    Continuous Epigenetic Evolutionary LEGO-Graph (AGN v6.0 - EXP-186 Validated 🟢).
-    Autonomously executes stream-time neurogenesis (sprouting operator bricks with zero-weight
-    Net2Net Smooth Grafting identity) and differentiable Darwinian synaptic pruning without epochs.
-    """
-    def __init__(self, dim: int, max_bricks: int = 12, device: str = 'cpu'):
-        super().__init__()
-        self.dim = dim
-        self.max_bricks = max_bricks
-        self.device = torch.device(device)
-        
-        self.bricks = nn.ModuleList([
-            DelayOp(dim, device=device),
-            NonLinearOp(dim, device=device)
-        ])
-        # Mature seed bricks have alpha_epi = 5.0 (tanh(5.0) ~ 0.9999)
-        self.alpha_epi = nn.ParameterList([
-            nn.Parameter(torch.tensor(5.0, device=self.device)),
-            nn.Parameter(torch.tensor(5.0, device=self.device))
-        ])
-
-    def forward(self, h: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
-        for idx, brick in enumerate(self.bricks):
-            gate = torch.tanh(self.alpha_epi[idx])
-            if isinstance(brick, (DelayOp, GateOp)):
-                out = brick(h, u_t)
-            else:
-                out = brick(h)
-            h = h + gate * out
-        return h
-
-    def sprout_brick(self, brick_type: str = "NonLinearOp") -> bool:
-        if len(self.bricks) >= self.max_bricks:
-            return False
-        if brick_type == "DelayOp":
-            new_brick = DelayOp(self.dim, device=str(self.device))
-        elif brick_type == "GateOp":
-            new_brick = GateOp(self.dim, device=str(self.device))
-        else:
-            new_brick = NonLinearOp(self.dim, device=str(self.device))
-            
-        self.bricks.append(new_brick)
-        # Strict zero-shock identity: alpha_epi = 0.0 at birth (KEP Principle 15 & 16)
-        self.alpha_epi.append(nn.Parameter(torch.tensor(0.0, device=self.device)))
-        logger.info(f"🌱 [CEE Sprouting] Sprouted new '{brick_type}' brick #{len(self.bricks)-1} with alpha_epi=0.0")
-        return True
-
-    def prune_inactive_bricks(self, threshold: float = 1e-3) -> int:
-        pruned_indices = []
-        for i in range(len(self.bricks) - 1, 1, -1):
-            if abs(torch.tanh(self.alpha_epi[i]).item()) < threshold:
-                pruned_indices.append(i)
-        for idx in pruned_indices:
-            logger.info(f"🪓 [CEE Pruning] Pruned inactive brick '{self.bricks[idx].__class__.__name__}' #{idx}")
-            del self.bricks[idx]
-            new_alpha_list = nn.ParameterList([p for j, p in enumerate(self.alpha_epi) if j != idx])
-            self.alpha_epi = new_alpha_list
-        return len(pruned_indices)
-
-
-# =============================================================================
 # MASTER CORE AGENT (v30.0 PROD MASTER)
 # =============================================================================
 
@@ -1074,9 +919,6 @@ class CoREAgent(nn.Module):
         # 12. Dynamic Epigenetic Grafted Pathways & Mutational Structures (EXP-185 Validated 🟢)
         self.grafted_pathways = nn.ModuleDict()
 
-        # 13. Continuous Epigenetic Evolutionary LEGO-Graph Assembly (AGN v6.0 / CEE - EXP-186 Validated 🟢)
-        self.dynamic_graph = ContinuousDynamicNeuralGraph(dim=self.hidden_dim, max_bricks=12, device=self.device_str)
-
     def register_grafted_pathway(self, name: str, pathway: nn.Module):
         """Hot-registers a new sprouted pathway into the active agent runtime."""
         self.grafted_pathways[name] = pathway.to(self.device)
@@ -1174,8 +1016,6 @@ class CoREAgent(nn.Module):
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             h_combined = h_thalamic + 0.20 * y_fast + weighted_error + 0.15 * topdown_prior
-            if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
-                h_combined = self.dynamic_graph(h_combined, effective_u_t)
             h_flat = self.pre_attractor_norm(h_combined.view(-1, self.hidden_dim))
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
             
@@ -1792,10 +1632,6 @@ class CoREAgent(nn.Module):
             # Smooth continuous modulation via LC Phasic Gain
             h_combined = h_thalamic + 0.20 * y_fast + 0.10 * y_local + weighted_error + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
 
-            # AGN v6.0 Dynamic Continuous Neural Graph Highway (EXP-186 Validated 🟢)
-            if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
-                h_combined = self.dynamic_graph(h_combined, effective_u_t)
-
             h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
             
@@ -1880,8 +1716,6 @@ class CoREAgent(nn.Module):
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             h_combined = h_thalamic + 0.20 * y_fast + weighted_error + 0.15 * topdown_prior
-            if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
-                h_combined = self.dynamic_graph(h_combined, effective_u_t)
             h_flat = self.pre_attractor_norm(h_combined.view(-1, self.hidden_dim))
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
 
@@ -2033,8 +1867,6 @@ class CoREAgent(nn.Module):
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             # Full cortical laminar combination matching forward_sequence
             h_combined = h_thalamic + 0.20 * y_fast + weighted_error + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
-            if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
-                h_combined = self.dynamic_graph(h_combined, effective_hu_st)
 
             h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, effective_hu_st)

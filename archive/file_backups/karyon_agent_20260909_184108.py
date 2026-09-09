@@ -1074,9 +1074,6 @@ class CoREAgent(nn.Module):
         # 12. Dynamic Epigenetic Grafted Pathways & Mutational Structures (EXP-185 Validated 🟢)
         self.grafted_pathways = nn.ModuleDict()
 
-        # 13. Continuous Epigenetic Evolutionary LEGO-Graph Assembly (AGN v6.0 / CEE - EXP-186 Validated 🟢)
-        self.dynamic_graph = ContinuousDynamicNeuralGraph(dim=self.hidden_dim, max_bricks=12, device=self.device_str)
-
     def register_grafted_pathway(self, name: str, pathway: nn.Module):
         """Hot-registers a new sprouted pathway into the active agent runtime."""
         self.grafted_pathways[name] = pathway.to(self.device)
@@ -1174,8 +1171,6 @@ class CoREAgent(nn.Module):
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             h_combined = h_thalamic + 0.20 * y_fast + weighted_error + 0.15 * topdown_prior
-            if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
-                h_combined = self.dynamic_graph(h_combined, effective_u_t)
             h_flat = self.pre_attractor_norm(h_combined.view(-1, self.hidden_dim))
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
             
@@ -1792,10 +1787,6 @@ class CoREAgent(nn.Module):
             # Smooth continuous modulation via LC Phasic Gain
             h_combined = h_thalamic + 0.20 * y_fast + 0.10 * y_local + weighted_error + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
 
-            # AGN v6.0 Dynamic Continuous Neural Graph Highway (EXP-186 Validated 🟢)
-            if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
-                h_combined = self.dynamic_graph(h_combined, effective_u_t)
-
             h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
             
@@ -1880,8 +1871,6 @@ class CoREAgent(nn.Module):
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             h_combined = h_thalamic + 0.20 * y_fast + weighted_error + 0.15 * topdown_prior
-            if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
-                h_combined = self.dynamic_graph(h_combined, effective_u_t)
             h_flat = self.pre_attractor_norm(h_combined.view(-1, self.hidden_dim))
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
 
@@ -2033,8 +2022,6 @@ class CoREAgent(nn.Module):
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             # Full cortical laminar combination matching forward_sequence
             h_combined = h_thalamic + 0.20 * y_fast + weighted_error + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
-            if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
-                h_combined = self.dynamic_graph(h_combined, effective_hu_st)
 
             h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, effective_hu_st)
