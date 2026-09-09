@@ -360,12 +360,6 @@ class LocusCoeruleusGainController(nn.Module):
         Computes continuous neural gain gamma in (0, 1) based on relative surprise.
         gamma = sigma(gain_scale * (NA_t - mu_NA) / (sigma_NA + eps) + gain_bias)
         """
-        # Auto-sanitize NaN/Inf buffers to prevent cascading numerical failures
-        if torch.isnan(self.na_running_mean) or torch.isinf(self.na_running_mean):
-            self.na_running_mean.fill_(0.10)
-        if torch.isnan(self.na_running_var) or torch.isinf(self.na_running_var) or self.na_running_var < 1e-5:
-            self.na_running_var.fill_(0.01)
-
         if self.training:
             with torch.no_grad():
                 batch_mean = na_t.mean()
