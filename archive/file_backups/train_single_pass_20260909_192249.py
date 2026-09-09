@@ -94,9 +94,8 @@ torch.set_grad_enabled(True)
 hw_engine = get_hardware_engine()
 device = hw_engine.device
 device_str = str(device)
-# Force bfloat16 for numerical stability and zero AMP scaler underflow NaNs
 use_amp = hw_engine.config.enable_amp and not hw_engine.is_cpu
-autocast_dtype = torch.bfloat16
+autocast_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 logger.info(f"Execution context: {device_str.upper()} (AMP Enabled: {use_amp}, Dtype: {autocast_dtype})")
 
 kcore_path = "karyon_soul.kcore"
