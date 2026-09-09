@@ -1525,11 +1525,8 @@ class CoREAgent(nn.Module):
             m_s1 = m_s1_next
             m_s2 = m_s2_next
 
-            # PW-HPC: Top-down predictive feedback from previous Stage 2 state (EXP-172)
-            if h_s2.size(1) > 1:
-                h_s2_prev_shifted = torch.cat([torch.zeros(batch_size, 1, self.hidden_dim, device=self.device), h_s2[:, :-1, :]], dim=1)
-            else:
-                h_s2_prev_shifted = torch.zeros(batch_size, 1, self.hidden_dim, device=self.device)
+            # PW-HPC: Top-down predictive feedback from previous Stage 2 state
+            h_s2_prev_shifted = torch.zeros_like(h_s1)
             e1_weighted, h_s1_hat, mean_pi = self.pw_hpc_generator(h_s1, h_s2_prev_shifted, curr_u_t)
 
             predicted_entropy = self.entropy_predictor(h_s1)
