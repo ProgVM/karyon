@@ -453,8 +453,6 @@ def run_single_pass_training():
             h_fast, h_slow, saved_epoch, saved_story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
             hu.state = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], dtype=torch.float32, device=device).repeat((current_batch_size, 1))
             optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=2.5e-4, weight_decay=0.01)
-            for group in optimizer.param_groups:
-                group['initial_lr'] = group['lr']
             lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=batch_idx)
             if 'total_loss_tensor' in locals(): del total_loss_tensor
             if 'input_seq' in locals(): del input_seq
@@ -551,8 +549,6 @@ def run_single_pass_training():
 
             # Re-instantiate optimizer to track any newly sprouted or mutated parameters
             optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=2.5e-4, weight_decay=0.01)
-            for group in optimizer.param_groups:
-                group['initial_lr'] = group['lr']
             lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=batch_idx)
 
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0

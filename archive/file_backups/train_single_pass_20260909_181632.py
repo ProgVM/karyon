@@ -551,8 +551,6 @@ def run_single_pass_training():
 
             # Re-instantiate optimizer to track any newly sprouted or mutated parameters
             optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=2.5e-4, weight_decay=0.01)
-            for group in optimizer.param_groups:
-                group['initial_lr'] = group['lr']
             lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=batch_idx)
 
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
