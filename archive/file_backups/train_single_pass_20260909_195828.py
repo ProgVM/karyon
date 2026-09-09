@@ -315,8 +315,7 @@ if start_step >= len(stream_loader):
 if start_step > 0:
     logger.info(f"⏩ [Resume Detected] Found saved checkpoint at step {start_step}/{len(stream_loader)}. Resuming stream seamlessly...")
 
-BASE_LR = 1.2e-4
-optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=BASE_LR, weight_decay=0.01)
+optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=2.5e-4, weight_decay=0.01)
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
 scaler = torch.amp.GradScaler(hw_engine.device_type, enabled=(use_amp and autocast_dtype == torch.float16))
@@ -452,19 +451,8 @@ def run_single_pass_training():
         t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
         if math.isnan(speech_loss_val) or math.isnan(fe_val) or torch.isnan(total_loss_tensor).any():
-            logger.warning(f"⚠️ [Step {batch_idx+1}] Loss or FE is NaN: sp_l={speech_loss_val}, fe={fe_val}. Restoring clean weights and advancing stream...")
+            logger.warning(f"⚠️ [Step {batch_idx+1}] Loss or FE is NaN: sp_l={speech_loss_val}, fe={fe_val}, total_loss={total_loss_tensor.item() if total_loss_tensor is not None else 'None'}. Clearing gradients and advancing stream...")
             optimizer.zero_grad(set_to_none=True)
-            try:
-                load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
-                for p in agent_brain.parameters():
-                    if torch.isnan(p).any() or torch.isinf(p).any():
-                        p.data.nan_to_num_(0.0)
-                optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=BASE_LR, weight_decay=0.01)
-                for group in optimizer.param_groups:
-                    group['initial_lr'] = group['lr']
-                lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=batch_idx)
-            except Exception as reset_err:
-                logger.error(f"Error restoring checkpoint after NaN: {reset_err}")
             if 'total_loss_tensor' in locals(): del total_loss_tensor
             if 'input_seq' in locals(): del input_seq
             if 'target_seq' in locals(): del target_seq
