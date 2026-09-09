@@ -605,7 +605,7 @@ def run_single_pass_training():
     # Final container save & HF sync
     h_fast_save = h_fast if 'h_fast' in locals() else torch.zeros(1, agent_brain.hidden_dim, device=device)
     h_slow_save = h_slow if 'h_slow' in locals() else torch.zeros(1, agent_brain.hidden_dim, device=device)
-    save_karyon(agent_brain, episodic_mem, hu, h_fast_save[0:1], h_slow_save[0:1], epoch=1, story_idx=len(stream_loader) * BATCH_SIZE, filepath=kcore_path)
+    save_karyon(agent_brain, episodic_mem, hu, h_fast_save[0:1], h_slow_save[0:1], epoch=1, story_idx=len(stream_loader) * 8, filepath=kcore_path)
     sync_checkpoint_to_hf(kcore_path, hf_repo_id, f"feat(weights): single-pass stream complete - final loss={speech_loss_val if 'speech_loss_val' in locals() else 0.0:.4f}")
 
     logger.info(f"Single-Pass Continuous Stream Session Complete! Total Steps: {len(stream_loader)} | Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches} | Total Sleep Cycles: {total_sleep_cycles}.")
