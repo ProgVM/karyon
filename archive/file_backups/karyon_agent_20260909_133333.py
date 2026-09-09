@@ -1571,7 +1571,7 @@ class CoREAgent(nn.Module):
             # Smooth continuous modulation via LC Phasic Gain
             h_combined = h_thalamic + 0.20 * y_fast + 0.10 * y_local + weighted_error + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
 
-            h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
+            h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
             
             # Volition-Modulated Motor Text Logits
