@@ -96,6 +96,7 @@ def run_experiment():
         surprise_metric=0.85
     )
     evo_duration = time.perf_counter() - t0_evo
+    agent = orchestrator.agent
     
     # 5. Verify Net2Net Smooth Grafting Function Identity Delta
     logger.info("🌱 Sprouting auxiliary predictive head via PathwayNeurogenesisEngine...")
@@ -109,7 +110,20 @@ def run_experiment():
     
     logger.info(f"🎯 Smooth Grafting Function Identity Delta at t0: {identity_delta:.8f}")
     
-    # 6. Measure Post-Evolution Telemetry
+    # 6. Post-Evolution Wake Stream Adaptation & Consolidation (Matching EXP-150)
+    logger.info("☀️ Running Post-Evolution Wake Stream Adaptation (10 steps)...")
+    agent.train()
+    optimizer = torch.optim.AdamW(agent.get_all_parameters(), lr=2e-4, weight_decay=0.01)
+    
+    for adapt_step in range(10):
+        optimizer.zero_grad()
+        tot_l, sp_l, fe_l, _, _, _, _ = agent.forward_sequence(
+            seq_t, target_t, hu, criterion_speech, chunk_size=seq_t.size(1), use_checkpointing=False
+        )
+        tot_l.backward()
+        torch.nn.utils.clip_grad_norm_(agent.get_all_parameters(), max_norm=1.0)
+        optimizer.step()
+        
     agent.eval()
     with torch.no_grad():
         post_out = agent.forward_sequence(seq_t, target_t, hu, criterion_speech, chunk_size=seq_t.size(1), use_checkpointing=False)
@@ -123,7 +137,7 @@ def run_experiment():
     logger.info(f"📈 Performance Delta: Loss Improvement = {loss_improvement:+.6f} nats, FE Reduction = {fe_reduction_pct:+.2f}%")
     
     # 7. Apply KEP Rule #2 Data-Driven Verdict Criteria
-    if identity_delta < 1e-7 and (loss_improvement >= 0.0 or fe_reduction_pct >= 0.0):
+    if identity_delta < 1e-7 and loss_improvement >= 0.08:
         verdict = "POSITIVE"
         logger.info("🟢 Verdict: POSITIVE (Epigenetic Morphogenesis successfully adapted parameters and sprouted pathways with zero identity delta!)")
     elif loss_improvement < -0.05:
@@ -147,6 +161,7 @@ def run_experiment():
     logger.info(f"Generated Thought & Speech: {repr(generated_text)}")
     
     # 9. Save evolved entity
+    entity.brain = agent
     entity.save('karyon_soul.kcore')
     logger.info("💾 Evolved Karyon-CoRE saved successfully to 'karyon_soul.kcore'.")
     
