@@ -142,6 +142,9 @@ class ContinuousLegoGraphAgent(nn.Module):
         self.e_sprout = 0.1
         self.e_prune = 0.1
         
+    def forward(self, x, u_t):
+        return self.forward_sequence(x, u_t)
+        
     def forward_sequence(self, x, u_t):
         # x: [B, S]
         # u_t: [B, 6]
