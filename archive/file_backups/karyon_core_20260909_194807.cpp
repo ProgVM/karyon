@@ -1308,30 +1308,16 @@ public:
     static float static_float_cast(int64_t val) { return static_cast<float>(val); }
 
     torch::Tensor forward(torch::Tensor x) {
-        if (torch::isnan(W_fast).any().item<bool>() || torch::isinf(W_fast).any().item<bool>()) {
-            W_fast.zero_();
-        }
         auto W_eff = W_base + W_fast;
         return torch::nn::functional::linear(x, W_eff);
     }
 
     void adapt_local_fast_weights(torch::Tensor pre_act, torch::Tensor post_err, float na_t, float da_t) {
         torch::NoGradGuard no_grad;
-        if (torch::isnan(pre_act).any().item<bool>() || torch::isnan(post_err).any().item<bool>()) {
-            return;
-        }
-        if (torch::isnan(W_fast).any().item<bool>() || torch::isinf(W_fast).any().item<bool>()) {
-            W_fast.zero_();
-        }
         float neuromodulation = 0.20f + 0.80f * na_t + 0.50f * da_t;
         auto dW = torch::bmm(post_err.unsqueeze(-1), pre_act.unsqueeze(1)).mean(0);
-        if (torch::isnan(dW).any().item<bool>() || torch::isinf(dW).any().item<bool>()) {
-            return;
-        }
-        dW = torch::clamp(dW, -5.0f, 5.0f);
         W_fast.mul_(0.92f); // Passive decay
         W_fast.add_(dW * (lr * neuromodulation));
-        W_fast.clamp_(-10.0f, 10.0f);
     }
 };
 

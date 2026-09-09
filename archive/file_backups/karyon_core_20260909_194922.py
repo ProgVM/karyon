@@ -32,14 +32,13 @@ if karyon_cpp is None:
     for path in [
         "/kaggle/working/karyon/build/karyon_core_jit",
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "build/karyon_core_jit"),
-        "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v40",
         "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v39",
         "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v38"
     ]:
         if os.path.exists(path) and path not in sys.path:
             sys.path.insert(0, path)
             
-    for candidate_name in ["karyon_cpp_ext_v40"]:
+    for candidate_name in ["karyon_cpp_ext_v39"]:
         try:
             mod = importlib.import_module(candidate_name)
             if _is_valid_karyon_cpp_module(mod):
@@ -51,20 +50,20 @@ if karyon_cpp is None:
 
 # Step 3: Compile and load if not found
 if karyon_cpp is None:
-    print("[C++ JIT] Compiling and linking native Karyon C++20 architecture (v40.0 Master with Dynamic Allostatic Habituation & Sanitized Fast-Weights)...")
+    print("[C++ JIT] Compiling and linking native Karyon C++20 architecture (v39.0 Master with Dynamic Allostatic Habituation)...")
     try:
         karyon_cpp = load(
-            name="karyon_cpp_ext_v40",
+            name="karyon_cpp_ext_v39",
             sources=["karyon_core.cpp"],
             extra_cflags=["-O3", "-std=c++20"],
             verbose=False
         )
-        sys.modules["karyon_cpp_ext_v40"] = karyon_cpp
-        print("[C++ JIT] Native C++20 v40.0 Master architecture successfully compiled and initialized!")
+        sys.modules["karyon_cpp_ext_v39"] = karyon_cpp
+        print("[C++ JIT] Native C++20 v39.0 Master architecture successfully compiled and initialized!")
     except Exception as e:
         if "already registered" in str(e):
             print("[C++ JIT] PyBind11 type registration conflict detected. Attempting fallback import...")
-            for candidate_name in ["karyon_cpp_ext_v40", "karyon_cpp_ext_v39", "karyon_cpp_ext_v38"]:
+            for candidate_name in ["karyon_cpp_ext_v39", "karyon_cpp_ext_v38"]:
                 try:
                     mod = importlib.import_module(candidate_name)
                     if _is_valid_karyon_cpp_module(mod):
