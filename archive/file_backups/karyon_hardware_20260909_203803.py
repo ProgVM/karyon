@@ -32,7 +32,7 @@ class HardwareConfig:
     preferred_device: str = "auto"  # 'auto', 'cuda', 'tpu', 'cpu'
     cuda_device_index: int = 0
     enable_amp: bool = True
-    amp_dtype: str = "bfloat16"  # 'bfloat16' for numerical stability and zero FP16 65,504 overflow NaNs
+    amp_dtype: str = "float16"  # 'float16' or 'bfloat16'
     allow_tpu_pjrt: bool = True
     expandable_segments: bool = True
 
