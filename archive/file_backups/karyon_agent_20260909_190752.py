@@ -872,7 +872,7 @@ class ContinuousDynamicNeuralGraph(nn.Module):
     def forward(self, h: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
         for idx, brick in enumerate(self.bricks):
             gate = torch.tanh(self.alpha_epi[idx])
-            if brick.__class__.__name__ in ("DelayOp", "GateOp"):
+            if isinstance(brick, (DelayOp, GateOp)):
                 out = brick(h, u_t)
             else:
                 out = brick(h)
