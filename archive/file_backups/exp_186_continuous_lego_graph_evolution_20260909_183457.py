@@ -167,7 +167,7 @@ class ContinuousLegoGraphAgent(nn.Module):
         logits = self.head(h)
         return logits
 
-    def sprout_new_brick(self, brick_type="NonLinearOp", device="cpu"):
+    def sprout_new_brick(self, brick_type="NonLinearOp"):
         """Sprouts a new mathematical operator brick with zero-weight epigenetic gating."""
         if len(self.bricks) >= self.max_bricks:
             logger.warning("Max bricks reached. Skipping sprouting.")
@@ -182,11 +182,10 @@ class ContinuousLegoGraphAgent(nn.Module):
         else:
             new_brick = NonLinearOp(self.dim)
             
-        new_brick = new_brick.to(device)
         # Append to ModuleList and register parameter
         self.bricks.append(new_brick)
         # Strict zero-shock initialization: alpha_epi = 0.0
-        self.alpha_epi.append(nn.Parameter(torch.tensor(0.0, device=device)))
+        self.alpha_epi.append(nn.Parameter(torch.tensor(0.0)))
         logger.info(f"🌱 [CEE Sprouting] Sprouted new '{brick_type}' brick at index {len(self.bricks)-1} with alpha_epi=0.0")
         return True
 
@@ -229,7 +228,7 @@ def run_benchmark():
     logger.info(f"Baseline Loss: {loss.item():.6f}")
     
     # Step 1: Sprout a new brick during active stream
-    agent.sprout_new_brick("NonLinearOp", device=device)
+    agent.sprout_new_brick("NonLinearOp")
     
     # Verify strict zero-shock function identity
     logits_post_sprout = agent(x_data, u_t)

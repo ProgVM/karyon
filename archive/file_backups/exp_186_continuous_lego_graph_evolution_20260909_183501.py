@@ -229,7 +229,7 @@ def run_benchmark():
     logger.info(f"Baseline Loss: {loss.item():.6f}")
     
     # Step 1: Sprout a new brick during active stream
-    agent.sprout_new_brick("NonLinearOp", device=device)
+    agent.sprout_new_brick("NonLinearOp")
     
     # Verify strict zero-shock function identity
     logits_post_sprout = agent(x_data, u_t)
