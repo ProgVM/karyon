@@ -995,7 +995,7 @@ class CoREAgent(nn.Module):
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             h_combined = h_thalamic + 0.20 * y_fast + weighted_error + 0.15 * topdown_prior
-            h_flat = self.pre_attractor_norm(h_combined.view(-1, self.hidden_dim))
+            h_flat = h_combined.view(-1, self.hidden_dim)
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
             
             motor_outs = self.output_gateway(h_relaxed)
@@ -1677,7 +1677,7 @@ class CoREAgent(nn.Module):
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             h_combined = h_thalamic + 0.20 * y_fast + weighted_error + 0.15 * topdown_prior
-            h_flat = self.pre_attractor_norm(h_combined.view(-1, self.hidden_dim))
+            h_flat = h_combined.view(-1, self.hidden_dim)
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
 
             outs = self.output_gateway(h_relaxed)
@@ -1829,7 +1829,7 @@ class CoREAgent(nn.Module):
             # Full cortical laminar combination matching forward_sequence
             h_combined = h_thalamic + 0.20 * y_fast + weighted_error + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
 
-            h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
+            h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, effective_hu_st)
             
             raw_logits = self.volitional_head.compute_volitional_logits(h_relaxed, effective_hu_st, self.pos_embeddings.byte_embed.weight)
