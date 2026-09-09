@@ -1509,9 +1509,9 @@ class CoREAgent(nn.Module):
         active_memory_slots = min(active_slots, episodic_memory.max_capacity)
         b_size = hu.state.size(0)
 
-        # 1. Phase 1: NREM Slow-Wave Sleep (Hippocampal Replay - Consolidating World Model only)
+        # 1. Phase 1: NREM Slow-Wave Sleep (Hippocampal Replay)
         if active_memory_slots > 3:
-            opt_replay = torch.optim.AdamW(self.world_model.parameters(), lr=3e-4, weight_decay=0.01)
+            opt_replay = torch.optim.AdamW(self.get_all_parameters(), lr=3e-4, weight_decay=0.01)
             for _ in range(num_replay_cycles):
                 opt_replay.zero_grad()
                 rand_indices = torch.randint(0, active_memory_slots, (min(16, active_memory_slots),), device=self.device)
@@ -1520,10 +1520,10 @@ class CoREAgent(nn.Module):
 
                 h_dummy = torch.zeros(replayed_keys.size(0), self.hidden_dim, device=self.device)
                 w_pred, kl_div, _, _ = self.world_model(h_dummy, h_dummy, replayed_keys)
-                replay_loss = (1.0 - F.cosine_similarity(w_pred, replayed_vals, dim=-1, eps=1e-4)).mean() + kl_div.mean() * 0.05
+                replay_loss = (1.0 - F.cosine_similarity(w_pred, replayed_vals, dim=-1)).mean() + kl_div.mean() * 0.05
                 
                 replay_loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.world_model.parameters(), max_norm=2.0)
+                torch.nn.utils.clip_grad_norm_(self.get_all_parameters(), max_norm=2.0)
                 opt_replay.step()
             
             # Clean up replay optimizer to prevent CUDA memory leaks and OOM
@@ -1542,7 +1542,6 @@ class CoREAgent(nn.Module):
 
         # 3. Phase 3: Morphogenesis & Synaptogenesis (4-Level Self-Evolution Integration)
         total_pruned_weights = 0
-        is_structural_change = False
         try:
             from kcore_evolution import AutonomousSelfEvolutionOrchestrator, StructuralSynaptogenesisPruner
             # 1. Gentle SHY Synaptic Scaling & Dead Synapse Pruning
@@ -1554,7 +1553,7 @@ class CoREAgent(nn.Module):
 
             # 2. Epigenetic Self-Evolution Cycle (Level 2-6)
             orchestrator = AutonomousSelfEvolutionOrchestrator(self, device=self.device_str)
-            evo_res = orchestrator.execute_full_morphogenetic_cycle(
+            orchestrator.execute_full_morphogenetic_cycle(
                 eval_input_tokens=eval_inputs,
                 eval_target_tokens=eval_targets,
                 hu=hu,
@@ -1562,8 +1561,6 @@ class CoREAgent(nn.Module):
                 surprise_metric=max(surprise_val, 0.20)
             )
             evolved_agent = orchestrator.agent
-            if evo_res.get("level_2", {}).get("expanded", False) or evo_res.get("level_6", {}).get("status") == "SPROUTED":
-                is_structural_change = True
         except Exception as evo_err:
             logger.warning(f"Notice during evolutionary sleep cycle: {str(evo_err)}. Falling back to soft scaling.")
             evolved_agent = self
@@ -1589,7 +1586,7 @@ class CoREAgent(nn.Module):
             hu.state[:, 3] = 1.00 # Health restored
             hu.state[:, 4] = 0.05 # Noradrenaline reset
 
-        return total_pruned_weights, evolved_agent, is_structural_change
+        return total_pruned_weights, evolved_agent
 
     def execute_autonomous_self_learning_cycle(
         self,

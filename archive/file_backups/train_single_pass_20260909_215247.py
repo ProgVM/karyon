@@ -548,19 +548,17 @@ def run_single_pass_training():
                 eval_targets=target_seq[0:min(4, target_seq.size(0))],
                 criterion_speech=criterion_speech
             )
-            
-            pruned_weights = sleep_res[0]
-            agent_brain = sleep_res[1]
-            is_structural_change = sleep_res[2] if len(sleep_res) > 2 else False
+            if isinstance(sleep_res, tuple):
+                pruned_weights, evolved_brain = sleep_res
+                agent_brain = evolved_brain
+            else:
+                pruned_weights = sleep_res
 
-            # Re-instantiate optimizer ONLY IF a structural Net2Net/Sprouting change occurred!
-            # Otherwise, keep AdamW moments (m, v) intact to preserve momentum and smooth loss convergence!
-            if is_structural_change:
-                logger.info(f"🧬 [Step {batch_idx+1}] Structural Net2Net/Pathway mutation detected. Updating AdamW parameter groups.")
-                optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=BASE_LR, weight_decay=0.01)
-                for group in optimizer.param_groups:
-                    group['initial_lr'] = group['lr']
-                lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=batch_idx)
+            # Re-instantiate optimizer to track any newly sprouted or mutated parameters
+            optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=BASE_LR, weight_decay=0.01)
+            for group in optimizer.param_groups:
+                group['initial_lr'] = group['lr']
+            lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=batch_idx)
 
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
             logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep 2.0 Complete ({sleep_duration_ms:.1f}ms). Restored Energy={hu.state[0, 1].item():.2f} | Pruned Weights={pruned_weights}")
@@ -568,6 +566,10 @@ def run_single_pass_training():
             if device_str == 'cuda':
                 torch.cuda.empty_cache()
 
+        if (batch_idx + 1) % 50 == 0:
+            gc.collect()
+            if device_str == 'cuda':
+                torch.cuda.empty_cache()
         batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
         tokens_per_sec = (current_batch_size * (seq_len - 1)) / max(batch_total_ms / 1000.0, 1e-6)
 

@@ -4,7 +4,7 @@ import sys
 import os
 
 def get_logger():
-    """Configures and returns the unified logger with line-buffered stdout and disk log streaming without duplicate handlers."""
+    """Configures and returns the unified logger with line-buffered stdout and disk log streaming."""
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(line_buffering=True)
         
@@ -12,8 +12,6 @@ def get_logger():
     log_file = os.path.join("logs", "train.log")
 
     logger = logging.getLogger("karyon")
-    logger.propagate = False # Strictly prevent duplicate bubbling to root logger
-    
     if not logger.handlers:
         logger.setLevel(logging.INFO)
         formatter = logging.Formatter("%(module)-15s | %(levelname)-8s | %(asctime)s | %(message)s")
@@ -26,4 +24,10 @@ def get_logger():
         file_h.setFormatter(formatter)
         logger.addHandler(file_h)
 
+        # Also configure root logger for dependencies
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(module)-15s | %(levelname)-8s | %(asctime)s | %(message)s",
+            handlers=[stream_h, file_h]
+        )
     return logger

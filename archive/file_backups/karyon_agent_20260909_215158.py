@@ -1542,7 +1542,6 @@ class CoREAgent(nn.Module):
 
         # 3. Phase 3: Morphogenesis & Synaptogenesis (4-Level Self-Evolution Integration)
         total_pruned_weights = 0
-        is_structural_change = False
         try:
             from kcore_evolution import AutonomousSelfEvolutionOrchestrator, StructuralSynaptogenesisPruner
             # 1. Gentle SHY Synaptic Scaling & Dead Synapse Pruning
@@ -1554,7 +1553,7 @@ class CoREAgent(nn.Module):
 
             # 2. Epigenetic Self-Evolution Cycle (Level 2-6)
             orchestrator = AutonomousSelfEvolutionOrchestrator(self, device=self.device_str)
-            evo_res = orchestrator.execute_full_morphogenetic_cycle(
+            orchestrator.execute_full_morphogenetic_cycle(
                 eval_input_tokens=eval_inputs,
                 eval_target_tokens=eval_targets,
                 hu=hu,
@@ -1562,8 +1561,6 @@ class CoREAgent(nn.Module):
                 surprise_metric=max(surprise_val, 0.20)
             )
             evolved_agent = orchestrator.agent
-            if evo_res.get("level_2", {}).get("expanded", False) or evo_res.get("level_6", {}).get("status") == "SPROUTED":
-                is_structural_change = True
         except Exception as evo_err:
             logger.warning(f"Notice during evolutionary sleep cycle: {str(evo_err)}. Falling back to soft scaling.")
             evolved_agent = self
@@ -1589,7 +1586,7 @@ class CoREAgent(nn.Module):
             hu.state[:, 3] = 1.00 # Health restored
             hu.state[:, 4] = 0.05 # Noradrenaline reset
 
-        return total_pruned_weights, evolved_agent, is_structural_change
+        return total_pruned_weights, evolved_agent
 
     def execute_autonomous_self_learning_cycle(
         self,

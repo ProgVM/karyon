@@ -879,12 +879,7 @@ class AutonomousSelfEvolutionOrchestrator:
         sprout_res = StructuralSynaptogenesisPruner.sprout_active_axons(self.agent, surprise_metric=sprout_stimulus)
         results["level_1"] = {"pruning": {"status": "SHY_HANDLED"}, "sprouting": sprout_res}
 
-        # 3. Level 2: Net2Net Morphogenesis (Triggered by GRN morphogen or explicit target)
-        if target_new_hidden_dim is None:
-            e_dim = morphogens.get("e_dimension_expansion", 0.0)
-            if e_dim > 0.55 and self.agent.hidden_dim < 1024:
-                target_new_hidden_dim = self.agent.hidden_dim + 64
-
+        # 3. Level 2: Net2Net Morphogenesis (Triggered if explicit target dimension specified)
         should_expand = (target_new_hidden_dim is not None and target_new_hidden_dim > self.agent.hidden_dim)
         if should_expand:
             expanded_agent, identity_delta = Net2NetMorphogenesisEngine.expand_agent_dimensions(
@@ -894,9 +889,9 @@ class AutonomousSelfEvolutionOrchestrator:
             self.reflective_channel = ReflectiveSelfMutationModule(
                 hidden_dim=target_new_hidden_dim, num_mutation_genes=8, device_str=self.device
             )
-            results["level_2"] = {"new_hidden_dim": target_new_hidden_dim, "identity_delta": identity_delta, "expanded": True}
+            results["level_2"] = {"new_hidden_dim": target_new_hidden_dim, "identity_delta": identity_delta}
         else:
-            results["level_2"] = {"status": "SKIPPED_OR_UP_TO_DATE", "hidden_dim": self.agent.hidden_dim, "expanded": False}
+            results["level_2"] = {"status": "SKIPPED_OR_UP_TO_DATE", "hidden_dim": self.agent.hidden_dim}
 
         # 3.5 Level 6: Pathway Neurogenesis & Net2Net Smooth Grafting
         should_sprout = morphogens.get("e_axon_sprouting", 0.0) > 0.40 or surprise_metric >= 0.70
