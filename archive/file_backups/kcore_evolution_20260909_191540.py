@@ -59,15 +59,12 @@ class StructuralSynaptogenesisPruner:
     @staticmethod
     def prune_quiescent_synapses(
         agent: nn.Module,
-        prune_ratio: float = 0.01,
-        min_magnitude: float = 1e-5
+        prune_ratio: float = 0.10,
+        min_magnitude: float = 1e-4
     ) -> Dict[str, Any]:
         """
-        Level 1: Activity-Dependent Synaptic Scaling & Sleep Synaptic Pruning.
-        Implements Tononi's Synaptic Homeostasis Hypothesis (SHY):
-        Instead of aggressive hard zeroing of 10% of all weights, we apply a gentle
-        proportional downscaling to all non-embedding weights, and only prune (zero out)
-        synapses that are truly negligible (below min_magnitude).
+        Prunes weights with lowest absolute magnitude and gradient utility during sleep.
+        Returns detailed pruning statistics.
         """
         total_pruned = 0
         total_synapses = 0
@@ -75,25 +72,21 @@ class StructuralSynaptogenesisPruner:
 
         with torch.no_grad():
             for name, param in agent.named_parameters():
-                if "weight" in name and param.dim() >= 2 and "embed" not in name and "norm" not in name:
-                    # 1. Gentle SHY Synaptic Scaling (Proportional downscaling)
-                    # Scales down weights slightly to restore homeostatic dynamic range
-                    scaling_factor = 1.0 - (prune_ratio * 0.05) # very gentle, e.g. 1.0 - 0.0005
-                    param.mul_(scaling_factor)
-
-                    # 2. Hard pruning ONLY for synapses that are truly dead/negligible
+                if "weight" in name and param.dim() >= 2 and "embed" not in name:
                     abs_w = param.abs()
-                    dead_mask = abs_w < min_magnitude
-                    num_zeroed = dead_mask.sum().item()
-                    param.masked_fill_(dead_mask, 0.0)
-
-                    total_pruned += num_zeroed
-                    total_synapses += param.numel()
-                    if num_zeroed > 0:
+                    k = int(abs_w.numel() * prune_ratio)
+                    if k > 0:
+                        threshold = torch.kthvalue(abs_w.view(-1), k).values.item()
+                        effective_thresh = max(threshold, min_magnitude)
+                        mask = abs_w > effective_thresh
+                        num_zeroed = (param.numel() - mask.sum().item())
+                        param.mul_(mask.to(param.dtype))
+                        total_pruned += num_zeroed
+                        total_synapses += param.numel()
                         pruned_layers.append((name, num_zeroed, param.numel()))
 
         sparsity_pct = (total_pruned / max(total_synapses, 1)) * 100.0
-        logger.info(f"🌿 [Level 1 SHY Sleep] Scaled all weights. Pruned {total_pruned}/{total_synapses} dead synapses ({sparsity_pct:.4f}% sparsity).")
+        logger.info(f"🌿 [Level 1 Pruning] Pruned {total_pruned}/{total_synapses} synapses ({sparsity_pct:.2f}% sparsity).")
         return {
             "total_pruned": total_pruned,
             "total_synapses": total_synapses,
@@ -874,10 +867,12 @@ class AutonomousSelfEvolutionOrchestrator:
         logger.info(f"🌿 [Level 5 GRN] Active Morphogens: {', '.join(f'{k}={v:.3f}' for k, v in morphogens.items())}")
 
         # 2. Level 1: Structural Synaptogenesis & Pruning (Modulated by GRN morphogens)
-        # In sleep, we only prune if prune_info not already computed by caller, or keep it gentle
+        prune_ratio = 0.05 * (1.0 + morphogens.get("e_synaptic_pruning", 0.30))
+        prune_res = StructuralSynaptogenesisPruner.prune_quiescent_synapses(self.agent, prune_ratio=prune_ratio)
+        
         sprout_stimulus = surprise_metric * (1.0 + 1.5 * morphogens.get("e_axon_sprouting", 0.20))
         sprout_res = StructuralSynaptogenesisPruner.sprout_active_axons(self.agent, surprise_metric=sprout_stimulus)
-        results["level_1"] = {"pruning": {"status": "SHY_HANDLED"}, "sprouting": sprout_res}
+        results["level_1"] = {"pruning": prune_res, "sprouting": sprout_res}
 
         # 3. Level 2: Net2Net Morphogenesis (Triggered if explicit target dimension specified)
         should_expand = (target_new_hidden_dim is not None and target_new_hidden_dim > self.agent.hidden_dim)

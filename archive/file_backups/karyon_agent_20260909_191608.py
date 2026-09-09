@@ -828,9 +828,8 @@ class DelayOp(nn.Module):
         dist = torch.clamp(indices.view(-1, 1) - indices.view(1, -1), min=0)
         decay_factors = torch.pow(decay_matrix, dist) * mask.unsqueeze(0).unsqueeze(0)
         
-        # Clamp logits to prevent FP16 overflow in long sequence attention scans
-        scores = torch.clamp(torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(self.head_dim), min=-50.0, max=50.0)
-        attn = scores * beta * decay_factors
+        attn = (torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(self.head_dim)) * beta
+        attn = attn * decay_factors
         y = torch.matmul(attn, v).transpose(1, 2).contiguous().view(B, S, D)
         return self.out_norm(self.out_proj(y))
 

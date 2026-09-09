@@ -828,9 +828,8 @@ class DelayOp(nn.Module):
         dist = torch.clamp(indices.view(-1, 1) - indices.view(1, -1), min=0)
         decay_factors = torch.pow(decay_matrix, dist) * mask.unsqueeze(0).unsqueeze(0)
         
-        # Clamp logits to prevent FP16 overflow in long sequence attention scans
-        scores = torch.clamp(torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(self.head_dim), min=-50.0, max=50.0)
-        attn = scores * beta * decay_factors
+        attn = (torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(self.head_dim)) * beta
+        attn = attn * decay_factors
         y = torch.matmul(attn, v).transpose(1, 2).contiguous().view(B, S, D)
         return self.out_norm(self.out_proj(y))
 
@@ -1538,14 +1537,12 @@ class CoREAgent(nn.Module):
         total_pruned_weights = 0
         try:
             from kcore_evolution import AutonomousSelfEvolutionOrchestrator, StructuralSynaptogenesisPruner
-            # 1. Gentle SHY Synaptic Scaling & Dead Synapse Pruning
             prune_info = StructuralSynaptogenesisPruner.prune_quiescent_synapses(self, prune_ratio=pruning_percentile)
             total_pruned_weights = prune_info["total_pruned"]
             
             surprise_val = hu.state[0, 4].item() if hu is not None and hasattr(hu, 'state') and hu.state is not None else 0.20
             StructuralSynaptogenesisPruner.sprout_active_axons(self, surprise_metric=max(surprise_val, 0.20))
 
-            # 2. Epigenetic Self-Evolution Cycle (Level 2-6)
             orchestrator = AutonomousSelfEvolutionOrchestrator(self, device=self.device_str)
             orchestrator.execute_full_morphogenetic_cycle(
                 eval_input_tokens=eval_inputs,
@@ -1556,23 +1553,26 @@ class CoREAgent(nn.Module):
             )
             evolved_agent = orchestrator.agent
         except Exception as evo_err:
-            logger.warning(f"Notice during evolutionary sleep cycle: {str(evo_err)}. Falling back to soft scaling.")
+            logger.warning(f"Notice during evolutionary sleep cycle: {str(evo_err)}. Falling back to direct pruning.")
             evolved_agent = self
             with torch.no_grad():
                 for name, param in self.named_parameters():
-                    if param.dim() > 1 and "weight" in name and "embed" not in name and "norm" not in name:
-                        param.mul_(1.0 - 0.0005) # Gentle SHY downscaling fallback
-                        dead_mask = param.abs() < 1e-5
-                        total_pruned_weights += dead_mask.sum().item()
-                        param.masked_fill_(dead_mask, 0.0)
+                    if param.dim() > 1 and "weight" in name and param.numel() > 100:
+                        flat_abs = param.abs().flatten()
+                        k = int(flat_abs.numel() * pruning_percentile)
+                        if k > 0:
+                            threshold = torch.kthvalue(flat_abs, k).values
+                            prune_mask = param.abs() < threshold
+                            total_pruned_weights += prune_mask.sum().item()
+                            param.masked_fill_(prune_mask, 0.0)
 
         # 4. Phase 4: Tononi SHY Synaptic Scaling & Somatic Reset
         with torch.no_grad():
             # Soft weight decay during sleep instead of aggressive multi-percent destruction
             if downscaling_factor > 0:
                 for param in evolved_agent.get_all_parameters():
-                    if param.dim() > 1 and "embed" not in name and "norm" not in name:
-                        param.mul_(1.0 - min(downscaling_factor, 0.0002))
+                    if param.dim() > 1:
+                        param.mul_(1.0 - min(downscaling_factor, 0.001))
 
             # 5. Full Somatic Allostatic Reset
             hu.state[:, 1] = 1.00 # Energy restored

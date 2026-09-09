@@ -874,10 +874,12 @@ class AutonomousSelfEvolutionOrchestrator:
         logger.info(f"🌿 [Level 5 GRN] Active Morphogens: {', '.join(f'{k}={v:.3f}' for k, v in morphogens.items())}")
 
         # 2. Level 1: Structural Synaptogenesis & Pruning (Modulated by GRN morphogens)
-        # In sleep, we only prune if prune_info not already computed by caller, or keep it gentle
+        prune_ratio = 0.05 * (1.0 + morphogens.get("e_synaptic_pruning", 0.30))
+        prune_res = StructuralSynaptogenesisPruner.prune_quiescent_synapses(self.agent, prune_ratio=prune_ratio)
+        
         sprout_stimulus = surprise_metric * (1.0 + 1.5 * morphogens.get("e_axon_sprouting", 0.20))
         sprout_res = StructuralSynaptogenesisPruner.sprout_active_axons(self.agent, surprise_metric=sprout_stimulus)
-        results["level_1"] = {"pruning": {"status": "SHY_HANDLED"}, "sprouting": sprout_res}
+        results["level_1"] = {"pruning": prune_res, "sprouting": sprout_res}
 
         # 3. Level 2: Net2Net Morphogenesis (Triggered if explicit target dimension specified)
         should_expand = (target_new_hidden_dim is not None and target_new_hidden_dim > self.agent.hidden_dim)
