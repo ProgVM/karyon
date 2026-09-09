@@ -1170,22 +1170,6 @@ class CoREAgent(nn.Module):
 
     def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor], device: str = 'cpu'):
         target_device = torch.device(device)
-        
-        # Dynamically instantiate any missing grafted pathways found in state_dict (EXP-185)
-        for key in state_dict.keys():
-            if key.startswith("grafted_pathways."):
-                parts = key.split(".")
-                if len(parts) >= 2:
-                    p_name = parts[1]
-                    if not hasattr(self, 'grafted_pathways') or self.grafted_pathways is None:
-                        self.grafted_pathways = nn.ModuleDict()
-                    if p_name not in self.grafted_pathways:
-                        from kcore_evolution import PathwayNeurogenesisEngine
-                        grafted = PathwayNeurogenesisEngine.sprout_auxiliary_predictive_head(
-                            self.hidden_dim, vocab_size=self.text_gen_dim, device_str=self.device_str
-                        )
-                        self.register_grafted_pathway(p_name, grafted)
-
         py_params = dict(self.named_parameters())
         sub_params = {}
         for sub_name in [

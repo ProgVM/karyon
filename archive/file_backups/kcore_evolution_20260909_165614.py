@@ -685,8 +685,7 @@ class EpigeneticRegulatoryNetwork(nn.Module):
                 self.methylation_locks.add_(0.01 * dt)
                 self.methylation_locks.clamp_(0.0, 1.5)
 
-        state_list = self.morphogen_state.cpu().tolist()
-        return {name: float(val) for name, val in zip(self.MORPHOGEN_NAMES, state_list)}
+        return {name: float(self.morphogen_state[i].item()) for i, name in enumerate(self.MORPHOGEN_NAMES)}
 
     def should_trigger_sprouting(self, threshold: float = 0.55) -> bool:
         return float(self.morphogen_state[0].item()) > threshold

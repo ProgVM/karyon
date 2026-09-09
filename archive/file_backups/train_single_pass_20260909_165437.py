@@ -521,7 +521,7 @@ def run_single_pass_training():
             total_sleep_cycles += 1
             t_sleep_start = time.perf_counter()
             logger.info(f"🌙 [Step {batch_idx+1}] Somatic Energy={energy_val:.2f} | C++20 EFE Volition Action={action_idx}. Entering Biophysical Sleep 2.0...")
-            sleep_res = agent_brain.execute_deep_allostatic_sleep(
+            pruned_weights = agent_brain.execute_deep_allostatic_sleep(
                 episodic_memory=episodic_mem,
                 hu=hu,
                 num_replay_cycles=3,
@@ -530,15 +530,6 @@ def run_single_pass_training():
                 eval_targets=target_seq[0:min(4, target_seq.size(0))],
                 criterion_speech=criterion_speech
             )
-            if isinstance(sleep_res, tuple):
-                pruned_weights, evolved_brain = sleep_res
-                agent_brain = evolved_brain
-            else:
-                pruned_weights = sleep_res
-
-            # Re-instantiate optimizer to track any newly sprouted or mutated parameters
-            optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=2.5e-4, weight_decay=0.01)
-
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
             logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep 2.0 Complete ({sleep_duration_ms:.1f}ms). Restored Energy={hu.state[0, 1].item():.2f} | Pruned Weights={pruned_weights}")
             gc.collect()

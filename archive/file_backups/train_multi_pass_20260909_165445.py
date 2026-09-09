@@ -458,14 +458,10 @@ def run_multi_pass_training():
                 if device_str == 'cuda':
                     torch.cuda.empty_cache()
 
-        # Sleep Consolidation & Morphogenesis
-        logger.info(f"🌙 [Pass {pass_idx+1} Complete] Karyon is entering Sleep Phase for Hippocampal Replay, Epigenetics & Morphogenesis...")
-        sleep_res = agent_brain.execute_deep_allostatic_sleep(episodic_mem, hu, num_replay_cycles=5, downscaling_factor=0.03)
-        if isinstance(sleep_res, tuple):
-            _, evolved_brain = sleep_res
-            agent_brain = evolved_brain
-            optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=1e-4, weight_decay=0.01)
-        logger.info(f"☀️ [Awakened] Epigenetic Morphogenesis Complete. Somatic Energy Restored: {hu.state[0, 1].item():.2f}.\n")
+        # Sleep Consolidation
+        logger.info(f"🌙 [Pass {pass_idx+1} Complete] Karyon is entering Sleep Phase for Hippocampal Replay & SHY Synaptic Scaling...")
+        agent_brain.execute_deep_allostatic_sleep(episodic_mem, hu, num_replay_cycles=5, downscaling_factor=0.03)
+        logger.info(f"☀️ [Awakened] Synaptic Downscaling Applied. Somatic Energy Restored: {hu.state[0, 1].item():.2f}.\n")
 
         # Save local checkpoint
         current_epoch = saved_epoch + pass_idx + 1

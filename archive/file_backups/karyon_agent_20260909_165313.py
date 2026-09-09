@@ -1170,22 +1170,6 @@ class CoREAgent(nn.Module):
 
     def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor], device: str = 'cpu'):
         target_device = torch.device(device)
-        
-        # Dynamically instantiate any missing grafted pathways found in state_dict (EXP-185)
-        for key in state_dict.keys():
-            if key.startswith("grafted_pathways."):
-                parts = key.split(".")
-                if len(parts) >= 2:
-                    p_name = parts[1]
-                    if not hasattr(self, 'grafted_pathways') or self.grafted_pathways is None:
-                        self.grafted_pathways = nn.ModuleDict()
-                    if p_name not in self.grafted_pathways:
-                        from kcore_evolution import PathwayNeurogenesisEngine
-                        grafted = PathwayNeurogenesisEngine.sprout_auxiliary_predictive_head(
-                            self.hidden_dim, vocab_size=self.text_gen_dim, device_str=self.device_str
-                        )
-                        self.register_grafted_pathway(p_name, grafted)
-
         py_params = dict(self.named_parameters())
         sub_params = {}
         for sub_name in [
@@ -1386,10 +1370,8 @@ class CoREAgent(nn.Module):
                 criterion_speech=criterion_speech,
                 surprise_metric=max(surprise_val, 0.20)
             )
-            evolved_agent = orchestrator.agent
         except Exception as evo_err:
             logger.warning(f"Notice during evolutionary sleep cycle: {str(evo_err)}. Falling back to direct pruning.")
-            evolved_agent = self
             with torch.no_grad():
                 for name, param in self.named_parameters():
                     if param.dim() > 1 and "weight" in name and param.numel() > 100:
@@ -1405,7 +1387,7 @@ class CoREAgent(nn.Module):
         with torch.no_grad():
             # Soft weight decay during sleep instead of aggressive multi-percent destruction
             if downscaling_factor > 0:
-                for param in evolved_agent.get_all_parameters():
+                for param in self.get_all_parameters():
                     if param.dim() > 1:
                         param.mul_(1.0 - min(downscaling_factor, 0.001))
 
@@ -1415,7 +1397,7 @@ class CoREAgent(nn.Module):
             hu.state[:, 3] = 1.00 # Health restored
             hu.state[:, 4] = 0.05 # Noradrenaline reset
 
-        return total_pruned_weights, evolved_agent
+        return total_pruned_weights
 
     def execute_autonomous_self_learning_cycle(
         self,
@@ -1871,7 +1853,7 @@ class CoREAgent(nn.Module):
             h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
             h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, effective_hu_st)
             
-            raw_logits = self.compute_volitional_logits_with_grafts(h_relaxed, effective_hu_st)
+            raw_logits = self.volitional_head.compute_volitional_logits(h_relaxed, effective_hu_st, self.pos_embeddings.byte_embed.weight)
             
             # Continuous Dirichlet/Biophysical Prior Modulation (Eradicating hard -1e9 masks)
             # Service and non-printable bytes receive a continuous somatic inhibition penalty
@@ -1937,7 +1919,7 @@ class CoREAgent(nn.Module):
                 erpr_hu_st = effective_hu_st.clone()
                 erpr_hu_st[0, 5] = torch.clamp(erpr_hu_st[0, 5] + 0.60, 0.0, 1.0)
                 h_relaxed, _ = self.attractor_head.relax_to_minima(h_flat, erpr_hu_st)
-                raw_logits = self.compute_volitional_logits_with_grafts(h_relaxed, erpr_hu_st)
+                raw_logits = self.volitional_head.compute_volitional_logits(h_relaxed, erpr_hu_st, self.pos_embeddings.byte_embed.weight)
                 # Partial decay of refractory trace on boundary to allow new word initiation
                 refractory_trace = 0.35 * refractory_trace
                 logits = raw_logits - somatic_byte_penalty - lambda_refractory * refractory_trace - word_prefix_penalty - ngram_penalty

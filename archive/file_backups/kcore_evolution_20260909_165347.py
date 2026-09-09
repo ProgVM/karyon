@@ -685,8 +685,7 @@ class EpigeneticRegulatoryNetwork(nn.Module):
                 self.methylation_locks.add_(0.01 * dt)
                 self.methylation_locks.clamp_(0.0, 1.5)
 
-        state_list = self.morphogen_state.cpu().tolist()
-        return {name: float(val) for name, val in zip(self.MORPHOGEN_NAMES, state_list)}
+        return {name: float(self.morphogen_state[i].item()) for i, name in enumerate(self.MORPHOGEN_NAMES)}
 
     def should_trigger_sprouting(self, threshold: float = 0.55) -> bool:
         return float(self.morphogen_state[0].item()) > threshold
@@ -887,23 +886,6 @@ class AutonomousSelfEvolutionOrchestrator:
             results["level_2"] = {"new_hidden_dim": target_new_hidden_dim, "identity_delta": identity_delta}
         else:
             results["level_2"] = {"status": "SKIPPED_OR_UP_TO_DATE", "hidden_dim": self.agent.hidden_dim}
-
-        # 3.5 Level 6: Pathway Neurogenesis & Net2Net Smooth Grafting
-        should_sprout = morphogens.get("e_axon_sprouting", 0.0) > 0.40 or surprise_metric >= 0.70
-        if should_sprout and hasattr(self.agent, 'register_grafted_pathway'):
-            if not (hasattr(self.agent, 'grafted_pathways') and "auxiliary_predictive_head" in self.agent.grafted_pathways):
-                grafted = PathwayNeurogenesisEngine.sprout_auxiliary_predictive_head(
-                    self.agent.hidden_dim, vocab_size=self.agent.text_gen_dim, device_str=self.device
-                )
-                self.agent.register_grafted_pathway("auxiliary_predictive_head", grafted)
-                results["level_6"] = {"status": "SPROUTED", "pathway": "auxiliary_predictive_head"}
-            else:
-                # If already sprouted, smoothly open the epigenetic grafting gate alpha_epi
-                grafted = self.agent.grafted_pathways["auxiliary_predictive_head"]
-                grafted.open_gate(delta=0.10)
-                results["level_6"] = {"status": "GATE_OPENED", "alpha_epi": float(grafted.alpha_epi.item())}
-        else:
-            results["level_6"] = {"status": "SKIPPED"}
 
         # 4. Level 4: Abstract Self-Reflective Mutation Channel Vector
         with torch.no_grad():

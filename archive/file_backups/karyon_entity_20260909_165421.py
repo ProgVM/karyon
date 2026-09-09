@@ -220,19 +220,14 @@ class KaryonEntity:
         return results
 
     def sleep(self, num_replay_cycles: int = 5, downscaling_factor: float = 0.03, pruning_percentile: float = 0.05) -> int:
-        """Enters deep evolutionary sleep, replaying memories, adapting epigenetics and pruning quiescent synapses."""
-        sleep_res = self.brain.execute_deep_allostatic_sleep(
+        """Enters deep evolutionary sleep, replaying memories and pruning quiescent synapses."""
+        pruned_weights = self.brain.execute_deep_allostatic_sleep(
             episodic_memory=self.memory,
             hu=self.hu,
             num_replay_cycles=num_replay_cycles,
             downscaling_factor=downscaling_factor,
             pruning_percentile=pruning_percentile
         )
-        if isinstance(sleep_res, tuple):
-            pruned_weights, evolved_brain = sleep_res
-            self.brain = evolved_brain
-        else:
-            pruned_weights = sleep_res
         return pruned_weights
 
     def introspect(self) -> Dict[str, Any]:
