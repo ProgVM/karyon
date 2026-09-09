@@ -1,0 +1,16 @@
+{
+  "exp_id": "EXP-182",
+  "verdict": "NEUTRAL",
+  "hypothesis": "Unshackling precision estimator (64D -> 256D) and expanding conditioning to NA_t, DA_t, and Curiosity_t reduces Free Energy.",
+  "architecture_delta": "Expanded PrecisionWeightedTopDownGenerator precision_estimator to 256D; added DA_t and Curiosity_t to precision conditioning.",
+  "metrics": {
+    "baseline_final_loss": 0.14375226199626923,
+    "proposed_final_loss": 0.2327737659215927,
+    "loss_improvement": -0.08902150392532349,
+    "baseline_final_fe": 0.5846430659294128,
+    "proposed_final_fe": 0.5525258779525757,
+    "fe_reduction_pct": 5.493469408686161,
+    "baseline_elapsed_sec": 6.948216040000261,
+    "proposed_elapsed_sec": 1.3551672300000064
+  }
+}
