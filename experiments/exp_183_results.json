@@ -1,0 +1,16 @@
+{
+  "exp_id": "EXP-183",
+  "verdict": "POSITIVE",
+  "hypothesis": "Unshackling Volitional Override Module (128D -> 512D) with multichannel somatic friction coupling stabilizes allostatic override.",
+  "architecture_delta": "Expanded HierarchicalVolitionalOverrideModule to 512D with LayerNorm goal normalization and multichannel somatic friction.",
+  "metrics": {
+    "baseline_final_loss": 0.1583312302827835,
+    "proposed_final_loss": 0.13027113676071167,
+    "loss_improvement": 0.02806009352207184,
+    "baseline_final_fe": 0.560795783996582,
+    "proposed_final_fe": 0.5153688192367554,
+    "fe_reduction_pct": 8.100446910653583,
+    "baseline_elapsed_sec": 6.901778194000144,
+    "proposed_elapsed_sec": 1.293263030000162
+  }
+}

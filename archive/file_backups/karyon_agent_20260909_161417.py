@@ -414,10 +414,9 @@ class PrecisionWeightedTopDownGeneratorLegacy(nn.Module):
 
 class HierarchicalVolitionalOverrideModule(nn.Module):
     """
-    True Will Engine (EXP-99 / EXP-183 Validated 🟢):
+    True Will Engine (EXP-99 Validated):
     Computes Volitional Override Gate (Gamma_override) driven by Goal Intensity
-    and Multichannel Somatic Friction, suppressing fatigue and pain to maintain goal-directed action
-    without artificial dimensional bottlenecks (KEP Principle 7 & 14 Compliant).
+    and Somatic Resistance, suppressing fatigue and pain to maintain goal-directed action.
     """
     def __init__(self, hidden_dim=768, homeo_dim=6, device_str='cpu'):
         super().__init__()
@@ -425,11 +424,10 @@ class HierarchicalVolitionalOverrideModule(nn.Module):
         dev_clean = 'xla' if str(device_str).startswith('tpu') or str(device_str) == 'xla:0' else device_str
         self.device = torch.device(dev_clean)
         
-        self.goal_norm = nn.LayerNorm(hidden_dim).to(self.device)
         self.override_gate_net = nn.Sequential(
-            nn.Linear(hidden_dim + homeo_dim, 512),
+            nn.Linear(hidden_dim + homeo_dim, 128),
             nn.SiLU(),
-            nn.Linear(512, 1)
+            nn.Linear(128, 1)
         ).to(self.device)
 
     def forward(self, h_s2: torch.Tensor, u_t: torch.Tensor):
@@ -440,7 +438,7 @@ class HierarchicalVolitionalOverrideModule(nn.Module):
         else:
             h_s2_mean = h_s2
             
-        h_s2_norm = self.goal_norm(h_s2_mean.float())
+        h_s2_float = h_s2_mean.float()
         u_t_float = u_t.float()
         
         if u_t_float.size(0) != batch_size:
@@ -449,17 +447,13 @@ class HierarchicalVolitionalOverrideModule(nn.Module):
             else:
                 u_t_float = u_t_float[:batch_size]
                 
-        combined = torch.cat([h_s2_norm, u_t_float], dim=-1)
+        combined = torch.cat([h_s2_float, u_t_float], dim=-1)
         raw_gate = self.override_gate_net(combined)
         
         energy = u_t_float[:, 1:2]
-        na_t = u_t_float[:, 4:5] if u_t_float.size(1) > 4 else torch.zeros_like(energy)
-        da_t = u_t_float[:, 5:6] if u_t_float.size(1) > 5 else torch.ones_like(energy)
+        somatic_friction = 1.0 - energy # Fatigue / Pain
         
-        # Multi-channel somatic friction: Fatigue + Distress - Motivation (KEP Principle 14)
-        somatic_friction = (1.0 - energy) + 0.3 * na_t + 0.3 * (1.0 - da_t)
-        
-        goal_intensity = torch.norm(h_s2_norm, dim=-1, keepdim=True) / math.sqrt(self.hidden_dim)
+        goal_intensity = torch.norm(h_s2_float, dim=-1, keepdim=True) / math.sqrt(self.hidden_dim)
         goal_intensity = torch.clamp(goal_intensity, 0.0, 10.0)
         
         will_drive = goal_intensity * somatic_friction
