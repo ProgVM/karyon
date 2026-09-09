@@ -1576,7 +1576,7 @@ class CoREAgent(nn.Module):
         with torch.no_grad():
             # Soft weight decay during sleep instead of aggressive multi-percent destruction
             if downscaling_factor > 0:
-                for name, param in evolved_agent.named_parameters():
+                for param in evolved_agent.get_all_parameters():
                     if param.dim() > 1 and "embed" not in name and "norm" not in name:
                         param.mul_(1.0 - min(downscaling_factor, 0.0002))
 
