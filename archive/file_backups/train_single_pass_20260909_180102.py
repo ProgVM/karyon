@@ -263,7 +263,7 @@ class ContinuousPackedDataset(Dataset):
 def collate_packed_fn(batch):
     return torch.stack(batch, dim=0)
 
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 SEQ_LEN = 1024
 CHUNK_SIZE = 64
 
