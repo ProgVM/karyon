@@ -607,20 +607,18 @@ class EntropyMacroGating(nn.Module):
 
 class ThalamocorticalGate(nn.Module):
     """
-    Thalamocortical Dynamic Routing & Active Attention Gate (Pulvinar/TRN Gate, EXP-179 Validated 🟢).
-    Dynamically routes and modulates Stage 1, Stage 2, and LayerNorm-stabilized non-linear interactive features
-    conditioned on Ashby somatic homeostatic state u_t (KEP Principle 7 & 14 Compliant).
+    Thalamocortical Dynamic Routing & Active Attention Gate (Pulvinar/TRN Gate).
+    Dynamically routes and modulates Stage 1, Stage 2, and non-linear interactive features
+    conditioned on Ashby somatic homeostatic state u_t.
     """
     def __init__(self, hidden_dim: int, homeo_dim: int = 6, device_str: str = 'cpu'):
         super().__init__()
         self.device = torch.device('cuda' if 'cuda' in device_str else 'cpu')
-        self.hidden_dim = hidden_dim
         self.routing_mlp = nn.Sequential(
-            nn.Linear(homeo_dim + hidden_dim * 2, 512),
+            nn.Linear(homeo_dim + hidden_dim * 2, 128),
             nn.SiLU(),
-            nn.Linear(512, 3)
+            nn.Linear(128, 3)
         ).to(self.device)
-        self.interaction_ln = nn.LayerNorm(hidden_dim).to(self.device)
 
     def forward(self, h_s1: torch.Tensor, h_s2: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Supports [B, S, D] or [B, D]
@@ -632,16 +630,14 @@ class ThalamocorticalGate(nn.Module):
             w1 = routing_weights[..., 0:1]
             w2 = routing_weights[..., 1:2]
             w3 = routing_weights[..., 2:3]
-            h_inter = self.interaction_ln(h_s1 * h_s2)
-            h_thalamic = w1 * h_s1 + w2 * h_s2 + w3 * h_inter
+            h_thalamic = w1 * h_s1 + w2 * h_s2 + w3 * (h_s1 * h_s2)
         else:
             ctx = torch.cat([u_t, h_s1, h_s2], dim=-1)
             routing_weights = F.softmax(self.routing_mlp(ctx), dim=-1) # [B, 3]
             w1 = routing_weights[..., 0:1]
             w2 = routing_weights[..., 1:2]
             w3 = routing_weights[..., 2:3]
-            h_inter = self.interaction_ln(h_s1 * h_s2)
-            h_thalamic = w1 * h_s1 + w2 * h_s2 + w3 * h_inter
+            h_thalamic = w1 * h_s1 + w2 * h_s2 + w3 * (h_s1 * h_s2)
         return h_thalamic, routing_weights
 
 

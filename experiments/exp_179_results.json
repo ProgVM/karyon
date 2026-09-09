@@ -1,0 +1,16 @@
+{
+  "exp_id": "EXP-179",
+  "verdict": "POSITIVE",
+  "hypothesis": "Unshackling Thalamocortical Gate (128D -> 512D) with LayerNorm on Hadamard interaction enhances routing precision and reduces variational Free Energy.",
+  "architecture_delta": "Expanded ThalamocorticalGate routing MLP to 512D; added LayerNorm(h_s1 * h_s2) on interactive stream.",
+  "metrics": {
+    "baseline_final_loss": 1.5632532835006714,
+    "proposed_final_loss": 0.7531529664993286,
+    "loss_improvement": 0.8101003170013428,
+    "baseline_final_fe": 0.8770812153816223,
+    "proposed_final_fe": 0.8647724390029907,
+    "fe_reduction_pct": 1.4033793179889258,
+    "baseline_elapsed_sec": 6.455897871999696,
+    "proposed_elapsed_sec": 0.7895929050009727
+  }
+}
