@@ -1822,16 +1822,9 @@ class CoREAgent(nn.Module):
             h_curr_fast = h_combined[:, -1, :]
             w_pred, kl_div, fe, _ = self.world_model(h_prev_fast, h_curr_fast, w_current_slice)
 
-            rec_loss = (1.0 - F.cosine_similarity(w_current_slice, w_pred, dim=-1, eps=1e-4)).mean()
+            rec_loss = (1.0 - F.cosine_similarity(w_current_slice, w_pred, dim=-1, eps=1e-8)).mean()
             hpc_reconstruction_loss = F.mse_loss(h_s1, h_s1_hat)
-            
-            rec_loss_safe = torch.nan_to_num(rec_loss, nan=0.20, posinf=10.0, neginf=0.0)
-            kl_div_safe = torch.nan_to_num(kl_div.mean(), nan=0.05, posinf=10.0, neginf=0.0)
-            hpc_loss_safe = torch.nan_to_num(hpc_reconstruction_loss, nan=0.10, posinf=10.0, neginf=0.0)
-            err_mag_safe = torch.nan_to_num(error_magnitude.mean(), nan=0.0, posinf=10.0, neginf=0.0)
-            commit_loss_safe = torch.nan_to_num(commit_loss, nan=0.0, posinf=10.0, neginf=0.0)
-            
-            fe_loss_tensor = torch.clamp(kl_div_safe + rec_loss_safe + 0.10 * hpc_loss_safe + 0.15 * err_mag_safe, 0.0, 10.0)
+            fe_loss_tensor = torch.clamp(kl_div.mean() + rec_loss + 0.10 * hpc_reconstruction_loss + 0.15 * error_magnitude, 0.0, 10.0)
 
             num_chunks = seq_len // chunk_size
             if num_chunks > 1:
@@ -1851,19 +1844,16 @@ class CoREAgent(nn.Module):
 
             ortho_loss = self.attractor_head.compute_pattern_separation_loss()
             
-            critic_loss_safe = torch.nan_to_num(critic_loss, nan=0.0, posinf=10.0, neginf=0.0)
-            ortho_loss_safe = torch.nan_to_num(ortho_loss, nan=0.0, posinf=10.0, neginf=0.0)
-            
-            speech_loss_val = float(speech_loss_tensor.item()) if not math.isnan(speech_loss_tensor.item()) else 5.55
-            fe_loss_val = float(fe_loss_tensor.item()) if not math.isnan(fe_loss_tensor.item()) else 0.50
+            speech_loss_val = speech_loss_tensor.item()
+            fe_loss_val = fe_loss_tensor.item()
             
             total_loss_tensor = (
                 speech_loss_tensor + 
                 loss_free_energy_weight * fe_loss_tensor + 
-                0.05 * commit_loss_safe + 
-                0.01 * ortho_loss_safe + 
-                0.02 * critic_loss_safe +
-                0.10 * err_mag_safe
+                0.05 * commit_loss + 
+                0.01 * ortho_loss + 
+                0.02 * critic_loss +
+                0.10 * error_magnitude
             )
 
         h_proxy = m_s2.view(batch_size, -1)[:, :self.hidden_dim]
