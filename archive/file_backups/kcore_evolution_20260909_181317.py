@@ -98,7 +98,7 @@ class StructuralSynaptogenesisPruner:
     def sprout_active_axons(
         agent: nn.Module,
         surprise_metric: float,
-        growth_std: float = 1e-5
+        growth_std: float = 0.005
     ) -> Dict[str, Any]:
         """
         Sprouts synaptic connectivity in pathways encountering high variational surprise.
