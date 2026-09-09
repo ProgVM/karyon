@@ -295,22 +295,21 @@ class ReflexAndHabitCircuit(nn.Module):
 
 class PrecisionWeightedTopDownGenerator(nn.Module):
     """
-    Top-Down Generative Projection & Dynamic Precision Estimator (EXP-96 / EXP-176 Validated 🟢):
-    1. Generates Stage 1 prediction from Stage 2 using LayerNorm-calibrated SwiGLU expansion: h_s1_hat = f_td(h_s2).
+    Top-Down Generative Projection & Dynamic Precision Estimator (EXP-96 Validated):
+    1. Generates Stage 1 prediction from Stage 2: h_s1_hat = f_td(h_s2).
     2. Computes prediction error: e1 = h_s1 - h_s1_hat.
     3. Computes precision weight: pi_t = 2.0 * sigmoid(W_pi [h_s1, h_s1_hat, NA_t]).
     4. Routes precision-weighted error: e1_weighted = pi_t * e1.
     """
-    def __init__(self, hidden_dim=768, device_str='cpu'):
+    def __init__(self, hidden_dim=512, device_str='cpu'):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.device = torch.device(device_str)
 
         self.topdown_net = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim * 2),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.SiLU(),
-            nn.Linear(hidden_dim * 2, hidden_dim),
-            nn.LayerNorm(hidden_dim)
+            nn.Linear(hidden_dim, hidden_dim)
         ).to(self.device)
 
         self.precision_estimator = nn.Sequential(
