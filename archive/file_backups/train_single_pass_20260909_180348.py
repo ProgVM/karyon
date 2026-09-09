@@ -428,13 +428,9 @@ def run_single_pass_training():
         except (torch.OutOfMemoryError, RuntimeError) as e:
             if "out of memory" in str(e) or isinstance(e, torch.OutOfMemoryError):
                 logger.warning(f"⚠️ [Step {batch_idx+1}] CUDA OOM intercepted. Executing batch rollback & purging VRAM cache...")
-                if 'total_loss_tensor' in locals(): del total_loss_tensor
-                if 'm_curr' in locals(): del m_curr
-                if 'h_curr' in locals(): del h_curr
-                if 'curr_u_t' in locals(): del curr_u_t
-                if 'eff_dt' in locals(): del eff_dt
-                if 'input_seq' in locals(): del input_seq
-                if 'target_seq' in locals(): del target_seq
+                for var_name in ['total_loss_tensor', 'm_curr', 'h_curr', 'curr_u_t', 'eff_dt', 'input_seq', 'target_seq']:
+                    if var_name in locals():
+                        del locals()[var_name]
                 optimizer.zero_grad(set_to_none=True)
                 gc.collect()
                 if device_str == 'cuda':
@@ -589,9 +585,6 @@ def run_single_pass_training():
             save_karyon(agent_brain, episodic_mem, hu, h_curr[0:1], h_curr[0:1], epoch=1, story_idx=(batch_idx + 1) * BATCH_SIZE, filepath=kcore_path)
             commit_msg = f"feat(weights): single-pass stream step {batch_idx+1}/{len(stream_loader)} checkpoint - loss={speech_loss_val:.4f}"
             sync_checkpoint_to_hf(kcore_path, hf_repo_id, commit_msg)
-
-        # Explicitly release step tensors to keep VRAM clean
-        del total_loss_tensor, input_seq, target_seq, m_curr, h_curr, curr_u_t, eff_dt
 
     # Final container save & HF sync
     h_fast_save = h_fast if 'h_fast' in locals() else torch.zeros(1, agent_brain.hidden_dim, device=device)

@@ -590,9 +590,6 @@ def run_single_pass_training():
             commit_msg = f"feat(weights): single-pass stream step {batch_idx+1}/{len(stream_loader)} checkpoint - loss={speech_loss_val:.4f}"
             sync_checkpoint_to_hf(kcore_path, hf_repo_id, commit_msg)
 
-        # Explicitly release step tensors to keep VRAM clean
-        del total_loss_tensor, input_seq, target_seq, m_curr, h_curr, curr_u_t, eff_dt
-
     # Final container save & HF sync
     h_fast_save = h_fast if 'h_fast' in locals() else torch.zeros(1, agent_brain.hidden_dim, device=device)
     h_slow_save = h_slow if 'h_slow' in locals() else torch.zeros(1, agent_brain.hidden_dim, device=device)
