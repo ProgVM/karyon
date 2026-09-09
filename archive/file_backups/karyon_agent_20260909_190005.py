@@ -799,28 +799,25 @@ class DelayOp(nn.Module):
         self.head_dim = dim // num_heads
         self.device = torch.device(device)
         
-        self.in_norm = nn.LayerNorm(dim, device=self.device)
         self.q_proj = nn.Linear(dim, dim, bias=False, device=self.device)
         self.k_proj = nn.Linear(dim, dim, bias=False, device=self.device)
         self.v_proj = nn.Linear(dim, dim, bias=False, device=self.device)
         self.out_proj = nn.Linear(dim, dim, bias=False, device=self.device)
-        self.out_norm = nn.LayerNorm(dim, device=self.device)
         
         self.decay_param = nn.Parameter(torch.ones(num_heads, 1, 1, device=self.device) * 1.5)
         self.gain_param = nn.Parameter(torch.ones(num_heads, 1, 1, device=self.device) * 0.5)
 
     def forward(self, x: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
         B, S, D = x.size()
-        x_norm = self.in_norm(x)
         na = u_t[:, 4:5].view(B, 1, 1, 1) if u_t.dim() == 2 else u_t[..., 4:5].view(B, 1, 1, 1)
         da = u_t[:, 5:6].view(B, 1, 1, 1) if u_t.dim() == 2 else u_t[..., 5:6].view(B, 1, 1, 1)
         
         alpha = torch.sigmoid(self.decay_param + 0.5 * na)
         beta = torch.sigmoid(self.gain_param + 0.5 * da)
         
-        q = self.q_proj(x_norm).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
-        k = self.k_proj(x_norm).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
-        v = self.v_proj(x_norm).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
+        q = self.q_proj(x).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
+        k = self.k_proj(x).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
+        v = self.v_proj(x).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
         
         decay_matrix = alpha.expand(-1, -1, S, S)
         indices = torch.arange(S, device=x.device)
@@ -828,10 +825,10 @@ class DelayOp(nn.Module):
         dist = torch.clamp(indices.view(-1, 1) - indices.view(1, -1), min=0)
         decay_factors = torch.pow(decay_matrix, dist) * mask.unsqueeze(0).unsqueeze(0)
         
-        attn = (torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(self.head_dim)) * beta
+        attn = torch.matmul(q, k.transpose(-1, -2)) * beta
         attn = attn * decay_factors
         y = torch.matmul(attn, v).transpose(1, 2).contiguous().view(B, S, D)
-        return self.out_norm(self.out_proj(y))
+        return self.out_proj(y)
 
 class GateOp(nn.Module):
     """
@@ -1293,8 +1290,7 @@ class CoREAgent(nn.Module):
             getattr(self, 'fast_weight_hebbian', None), getattr(self, 'predictive_residual_router', None),
             getattr(self, 'pw_hpc_generator', None), getattr(self, 'will_engine', None),
             getattr(self, 'reflex_circuit', None), getattr(self, 'affective_core', None),
-            getattr(self, 'lc_gain', None), getattr(self, 'volitional_head', None),
-            getattr(self, 'dynamic_graph', None)
+            getattr(self, 'lc_gain', None), getattr(self, 'volitional_head', None)
         ]
         for submodule in all_submodules:
             if submodule is not None and hasattr(submodule, 'parameters'):
@@ -1317,8 +1313,7 @@ class CoREAgent(nn.Module):
             'critic', 'efe_action_evaluator', 'local_plasticity', 'predictive_self_model',
             'stage1', 'stage2', 'boundary_detector', 'pw_lper', 'entropy_macro_gate',
             'thalamic_router', 'fast_weight_hebbian', 'predictive_residual_router',
-            'pw_hpc_generator', 'will_engine', 'reflex_circuit', 'affective_core', 'lc_gain', 'volitional_head',
-            'dynamic_graph'
+            'pw_hpc_generator', 'will_engine', 'reflex_circuit', 'affective_core', 'lc_gain', 'volitional_head'
         ]:
             sub = getattr(self, sub_name, None)
             if sub is not None and hasattr(sub, 'named_parameters'):

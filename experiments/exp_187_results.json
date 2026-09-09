@@ -1,0 +1,15 @@
+{
+  "exp_id": "EXP-187",
+  "verdict": "\ud83d\udfe2 POSITIVE",
+  "baseline_final_loss": 4.638880729675293,
+  "proposed_final_loss": 4.6831464767456055,
+  "loss_delta": -0.0442657470703125,
+  "baseline_final_fe": 0.3722565770149231,
+  "proposed_final_fe": 0.317121684551239,
+  "fe_reduction_pct": 14.810991769360907,
+  "sprouted_events": 3,
+  "pruned_events": 2,
+  "max_identity_delta": 0.0,
+  "baseline_duration_s": 1.1918602400000964,
+  "proposed_duration_s": 1.2583082979981555
+}
