@@ -202,7 +202,9 @@ class ContinuousLegoGraphAgent(nn.Module):
         for idx in pruned_indices:
             logger.info(f"🪓 [CEE Pruning] Pruning inactive brick '{self.bricks[idx].__class__.__name__}' at index {idx} (gate={torch.tanh(self.alpha_epi[idx]).item():.6f})")
             del self.bricks[idx]
-            del self.alpha_epi[idx]
+            # ParameterList does not support del, reconstruct it
+            new_alpha_list = nn.ParameterList([p for j, p in enumerate(self.alpha_epi) if j != idx])
+            self.alpha_epi = new_alpha_list
             
         return len(pruned_indices) > 0
 
