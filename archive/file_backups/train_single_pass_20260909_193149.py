@@ -451,8 +451,14 @@ def run_single_pass_training():
         t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
         if math.isnan(speech_loss_val) or math.isnan(fe_val) or torch.isnan(total_loss_tensor).any():
-            logger.warning(f"⚠️ [Step {batch_idx+1}] Loss or FE is NaN: sp_l={speech_loss_val}, fe={fe_val}, total_loss={total_loss_tensor.item() if total_loss_tensor is not None else 'None'}. Clearing gradients and advancing stream...")
+            logger.warning(f"⚠️ [Step {batch_idx+1}] Loss or FE is NaN: sp_l={speech_loss_val}, fe={fe_val}, total_loss={total_loss_tensor.item() if total_loss_tensor is not None else 'None'}. Initiating emergency rollback to clean checkpoint...")
             optimizer.zero_grad(set_to_none=True)
+            h_fast, h_slow, saved_epoch, saved_story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
+            hu.state = torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], dtype=torch.float32, device=device).repeat((current_batch_size, 1))
+            optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=2.5e-4, weight_decay=0.01)
+            for group in optimizer.param_groups:
+                group['initial_lr'] = group['lr']
+            lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=batch_idx)
             if 'total_loss_tensor' in locals(): del total_loss_tensor
             if 'input_seq' in locals(): del input_seq
             if 'target_seq' in locals(): del target_seq
@@ -464,7 +470,7 @@ def run_single_pass_training():
             if device_str == 'cuda':
                 torch.cuda.empty_cache()
             total_skipped_batches += 1
-            time.sleep(0.5)
+            time.sleep(1.0)
             continue
 
         # Update Somatic Homeostasis (Metabolic expenditure)
