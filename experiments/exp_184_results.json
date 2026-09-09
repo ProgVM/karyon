@@ -1,0 +1,16 @@
+{
+  "exp_id": "EXP-184",
+  "verdict": "NEUTRAL",
+  "hypothesis": "Unshackling macro boundary projection (Linear -> 256D MLP) preserves non-linear boundary features and improves convergence.",
+  "architecture_delta": "Expanded EntropyMacroGating boundary projection from single linear layer to 2-layer 256D SiLU MLP.",
+  "metrics": {
+    "baseline_final_loss": 0.08424214273691177,
+    "proposed_final_loss": 0.1148838996887207,
+    "loss_improvement": -0.03064175695180893,
+    "baseline_final_fe": 1.396783709526062,
+    "proposed_final_fe": 0.5661696195602417,
+    "fe_reduction_pct": 59.46619253224633,
+    "baseline_elapsed_sec": 6.918601611998383,
+    "proposed_elapsed_sec": 1.3697152189997723
+  }
+}
