@@ -30,14 +30,14 @@ class NonLinearOp(nn.Module):
     def __init__(self, dim):
         super().__init__()
         self.gate_proj = nn.Linear(dim, dim * 2, bias=False)
-        self.down_proj = nn.Linear(dim, dim, bias=False)
+        self.down_proj = nn.Linear(dim * 2, dim, bias=False)
         self.gamma = nn.Parameter(torch.ones(dim) * 2.0)
 
     def forward(self, x):
         g = self.gate_proj(x)
-        x1, x2 = g.chunk(2, dim=-1) # x1: [..., dim], x2: [..., dim]
-        hidden = x1 * F.silu(x2)    # hidden: [..., dim]
-        out = self.down_proj(hidden) # down_proj from dim to dim
+        x1, x2 = g.chunk(2, dim=-1)
+        hidden = x1 * F.silu(x2)
+        out = self.down_proj(hidden)
         # Apply soft-masking to output channels
         return out * torch.sigmoid(self.gamma)
 
