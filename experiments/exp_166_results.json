@@ -1,0 +1,17 @@
+{
+  "exp_id": "EXP-166",
+  "verdict": "POSITIVE",
+  "metrics": {
+    "baseline_final_loss": 0.4603075087070465,
+    "proposed_final_loss": 0.09466052055358887,
+    "loss_improvement": 0.36564698815345764,
+    "baseline_final_fe": 0.8581363558769226,
+    "proposed_final_fe": 0.8320948481559753,
+    "fe_reduction_pct": 3.0346584831889167,
+    "baseline_ttr": 0.36666666666666664,
+    "proposed_ttr": 0.6,
+    "ttr_gain_pct": 63.63636363636365,
+    "baseline_speech": " Expecedeterddyee exttdx to do",
+    "proposed_speech": " Expected Free Dynamic locatio"
+  }
+}

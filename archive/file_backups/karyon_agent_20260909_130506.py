@@ -476,23 +476,23 @@ class HierarchicalVolitionalOverrideModule(nn.Module):
 
 class VolitionalActiveInferenceMotorHead(nn.Module):
     """
-    Continuous Volitional Action Selection Engine (Friston Active Inference - EXP-166 Validated 🟢).
+    Continuous Volitional Action Selection Engine (Friston Active Inference - EXP-98/113 Validated):
     Fully continuous population-level motor readout.
     1. Projects relaxed hidden trajectory h_relaxed into motor text space.
     2. Modulates readout gain via dopaminergic precision: motor_gain = (1.0 + 1.0 * DA_t).
-    3. Computes Expected Free Energy (G) continuously across the entire byte manifold V=258
-       using an unshackled full-rank 256D EFE projection space (KEP Principle 7 Compliant).
+    3. Computes Expected Free Energy (G) continuously across the entire byte manifold V=258:
+       G(a) = f_efe(W_emb, u_t)
     4. Modulates logits without discrete top-k masks:
-       Logits = (h_proj * motor_gain) @ W_emb^T - gamma_volition(u_t) * G(a)
-       where gamma_volition(u_t) is dynamically governed by curiosity, noradrenaline, and energy (KEP Principle 14 Compliant).
-    5. Integrates a 1D Causal Motor Receptive Field (CPG Conv1D K=4) directly in the motor output pathway.
+       Logits = (h_proj * motor_gain) @ W_emb^T - gamma * G(a)
+    5. Integrates a 1D Causal Motor Receptive Field (CPG Conv1D K=4) directly in the motor output pathway
+       to provide local proprioceptive history (EXP-145 Validated 🟢).
     """
-    def __init__(self, hidden_dim=768, text_dim=256, vocab_size=258, efe_dim=256, device_str='cpu'):
+    def __init__(self, hidden_dim=768, text_dim=256, vocab_size=258, gamma_volition=0.15, device_str='cpu'):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.text_dim = text_dim
         self.vocab_size = vocab_size
-        self.efe_dim = efe_dim
+        self.gamma_volition = gamma_volition
         dev_clean = 'xla' if str(device_str).startswith('tpu') or str(device_str) == 'xla:0' else device_str
         self.device = torch.device(dev_clean)
 
@@ -515,12 +515,12 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
             nn.LayerNorm(text_dim)
         ).to(self.device)
 
-        # Unshackled Full-Rank EFE Manifold Evaluator (256D - EXP-166)
-        self.efe_motor_proj = nn.Linear(text_dim, efe_dim).to(self.device)
-        self.efe_homeo_proj = nn.Linear(6, efe_dim).to(self.device)
+        # Continuous manifold EFE evaluator: maps [V, text_dim] embeddings + [B, 6] homeostatic drives
+        self.efe_motor_proj = nn.Linear(text_dim, 64).to(self.device)
+        self.efe_homeo_proj = nn.Linear(6, 64).to(self.device)
         self.efe_evaluator = nn.Sequential(
             nn.SiLU(),
-            nn.Linear(efe_dim, 1)
+            nn.Linear(64, 1)
         ).to(self.device)
 
     def compute_volitional_logits(self, h_relaxed: torch.Tensor, u_t: torch.Tensor, byte_embed_weights: torch.Tensor) -> torch.Tensor:
@@ -532,17 +532,14 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         else:
             u_t_exp = u_t
 
-        curiosity = u_t_exp[:, 0:1]
-        energy = u_t_exp[:, 1:2]
-        na_level = u_t_exp[:, 4:5]
         da_level = u_t_exp[:, 5:6]
-
         motor_gain = (1.0 + 1.0 * da_level)
 
         # 1. Project relaxed state to sensory manifold
         h_proj = self.motor_text_proj(h_relaxed) # [S, D]
         
         # 2. Apply CPG Causal Motor Receptive Field (Proprioceptive temporal smoothing)
+        # Reshape to sequence dimension [1, D, S] for 1D convolution
         h_proj_seq = h_proj.unsqueeze(0).transpose(1, 2) # [1, D, S]
         h_cpg_seq = self.cpg_motor[0](h_proj_seq) # Conv1d
         h_cpg_seq = h_cpg_seq[:, :, :total_tokens] # Slice causal padding
@@ -555,11 +552,11 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         h_proj_gain = h_cpg_out * motor_gain
         raw_logits = F.linear(h_proj_gain, byte_embed_weights)
 
-        # 4. Unshackled Full-Rank EFE Manifold Evaluation (EXP-166)
-        v_emb_proj = self.efe_motor_proj(byte_embed_weights) # [V, 256]
-        u_t_proj = self.efe_homeo_proj(u_t_exp) # [B, 256]
+        # Continuous Manifold Field EFE Modulation across all V=258 bytes
+        v_emb_proj = self.efe_motor_proj(byte_embed_weights) # [V, 64]
+        u_t_proj = self.efe_homeo_proj(u_t_exp) # [B, 64]
 
-        # Outer sum tensor broadcasting: [B, 1, 256] + [1, V, 256] -> [B, V, 256]
+        # Outer sum tensor broadcasting: [B, 1, 64] + [1, V, 64] -> [B, V, 64]
         efe_field = self.efe_evaluator(v_emb_proj.unsqueeze(0) + u_t_proj.unsqueeze(1)).squeeze(-1) # [B, V]
 
         # Standardize efe_field to act as a bounded biophysical bias
@@ -567,13 +564,7 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         efe_std = efe_field.std(dim=-1, keepdim=True).clamp_min(1e-5)
         efe_field_norm = (efe_field - efe_mean) / efe_std
 
-        # Dynamic Allostatic Volition Gain (KEP Principle 14 Compliant)
-        gamma_volition = torch.clamp(
-            0.10 + 0.15 * curiosity + 0.20 * na_level - 0.10 * (1.0 - energy),
-            min=0.02, max=0.35
-        )
-
-        modulated_logits = raw_logits - gamma_volition * efe_field_norm
+        modulated_logits = raw_logits - self.gamma_volition * efe_field_norm
         return modulated_logits
 
 # =============================================================================
@@ -857,7 +848,7 @@ class CoREAgent(nn.Module):
             hidden_dim=self.hidden_dim,
             text_dim=self.text_dim,
             vocab_size=self.text_gen_dim,
-            efe_dim=256,
+            gamma_volition=0.15,
             device_str=self.device_str
         )
         
@@ -1048,7 +1039,7 @@ class CoREAgent(nn.Module):
             hidden_dim=self.hidden_dim,
             text_dim=self.text_dim,
             vocab_size=new_vocab_size,
-            efe_dim=self.volitional_head.efe_dim,
+            gamma_volition=self.volitional_head.gamma_volition,
             device_str=self.device_str
         )
         with torch.no_grad():

@@ -857,7 +857,7 @@ class CoREAgent(nn.Module):
             hidden_dim=self.hidden_dim,
             text_dim=self.text_dim,
             vocab_size=self.text_gen_dim,
-            efe_dim=256,
+            gamma_volition=0.15,
             device_str=self.device_str
         )
         
@@ -1048,7 +1048,7 @@ class CoREAgent(nn.Module):
             hidden_dim=self.hidden_dim,
             text_dim=self.text_dim,
             vocab_size=new_vocab_size,
-            efe_dim=self.volitional_head.efe_dim,
+            gamma_volition=self.volitional_head.gamma_volition,
             device_str=self.device_str
         )
         with torch.no_grad():
