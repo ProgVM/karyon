@@ -816,11 +816,11 @@ class CoREAgent(nn.Module):
         # 3.1 Hierarchical Volitional Override Module (EXP-99 Validated)
         self.will_engine = HierarchicalVolitionalOverrideModule(hidden_dim=self.hidden_dim, homeo_dim=config.net.homeo_dim, device_str=self.device_str)
 
-        # 3.2 Entropy Predictor for Dynamic dt Scaling (EXP-95 / EXP-177 Validated 🟢)
+        # 3.2 Entropy Predictor for Dynamic dt Scaling (EXP-95 Validated)
         self.entropy_predictor = nn.Sequential(
-            nn.Linear(self.hidden_dim, 256),
+            nn.Linear(self.hidden_dim, 64),
             nn.SiLU(),
-            nn.Linear(256, 1),
+            nn.Linear(64, 1),
             nn.Sigmoid()
         ).to(self.device)
 
@@ -1543,16 +1543,8 @@ class CoREAgent(nn.Module):
             e1_weighted, h_s1_hat, mean_pi = self.pw_hpc_generator(h_s1, h_s2_prev_shifted, curr_u_t)
 
             predicted_entropy = self.entropy_predictor(h_s1)
-            # Dynamic Allostatic dt Modulation (EXP-177 Validated 🟢)
-            curiosity_t = curr_u_t[:, 0:1].unsqueeze(1) if curr_u_t.dim() == 2 else curr_u_t[..., 0:1]
-            energy_t = curr_u_t[:, 1:2].unsqueeze(1) if curr_u_t.dim() == 2 else curr_u_t[..., 1:2]
-            na_t = curr_u_t[:, 4:5].unsqueeze(1) if curr_u_t.dim() == 2 else curr_u_t[..., 4:5]
+            dynamic_dt_scale = 0.40 + 1.20 * predicted_entropy
 
-            dt_base = 0.35 + 0.50 * na_t
-            dt_entropy_gain = (1.0 + 1.20 * curiosity_t) * predicted_entropy
-            energy_scale = torch.clamp(1.20 * energy_t, min=0.30, max=1.00)
-
-            dynamic_dt_scale = torch.clamp((dt_base + dt_entropy_gain) * energy_scale, min=0.20, max=2.50)
             h_s2 = h_s2 * dynamic_dt_scale
 
             # Hierarchical Volitional Override
