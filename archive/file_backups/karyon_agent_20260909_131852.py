@@ -1545,19 +1545,11 @@ class CoREAgent(nn.Module):
 
             h_thalamic, routing_weights = self.thalamic_router(h_s1, h_s2_gated, effective_u_t)
             y_fast = self.fast_weight_hebbian(h_s1, effective_u_t)
-            y_local = self.local_plasticity(h_s2_gated)
             weighted_error, error_magnitude = self.predictive_residual_router(h_s1, h_s2_gated, effective_u_t)
-
-            if self.training:
-                with torch.no_grad():
-                    na_mean = float(effective_u_t[:, 4].mean().item())
-                    da_mean = float(effective_u_t[:, 5].mean().item())
-                    if na_mean > 0.12:
-                        self.local_plasticity.adapt_local_fast_weights(h_s1.detach().mean(1), weighted_error.detach().mean(1), na_mean, da_mean)
 
             topdown_prior = self.topdown_prior_proj(h_s2_gated)
             # Smooth continuous modulation via LC Phasic Gain
-            h_combined = h_thalamic + 0.20 * y_fast + 0.10 * y_local + weighted_error + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
+            h_combined = h_thalamic + 0.20 * y_fast + weighted_error + (0.10 + 0.15 * phasic_gain.unsqueeze(1)) * topdown_prior
 
             h_flat = h_combined.contiguous().view(-1, self.hidden_dim)
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
