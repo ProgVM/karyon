@@ -1500,16 +1500,9 @@ class CoREAgent(nn.Module):
 
             # --- Fused C++20 Cascaded Execution ---
             # Single C++20 call executes Stage 1, Boundary Detector, PW-LPER, and Stage 2
-            if use_checkpointing and full_h_in.requires_grad:
-                def _fused_forward(h_in, s1, s2, u, t_seq):
-                    return self.fused_stack(h_in, s1, s2, u, t_seq)
-                h_s1, h_s2, m_s1_next, m_s2_next, saliency_gate = checkpoint.checkpoint(
-                    _fused_forward, full_h_in, m_s1, m_s2, curr_u_t, text_seq, use_reentrant=False
-                )
-            else:
-                h_s1, h_s2, m_s1_next, m_s2_next, saliency_gate = self.fused_stack(
-                    full_h_in, m_s1, m_s2, curr_u_t, text_seq
-                )
+            h_s1, h_s2, m_s1_next, m_s2_next, saliency_gate = self.fused_stack(
+                full_h_in, m_s1, m_s2, curr_u_t, text_seq
+            )
             
             # Update sequence states
             m_s1 = m_s1_next

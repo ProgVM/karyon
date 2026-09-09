@@ -423,19 +423,21 @@ def run_single_pass_training():
             with torch.amp.autocast(device_type=device_str, dtype=autocast_dtype, enabled=use_amp):
                 total_loss_tensor, speech_loss_val, fe_val, m_curr, h_curr, curr_u_t, eff_dt = agent_brain.forward_sequence(
                     input_seq, target_seq, hu, criterion_speech, episodic_memory=episodic_mem,
-                    loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE, use_checkpointing=True
+                    loss_free_energy_weight=0.05, chunk_size=CHUNK_SIZE, use_checkpointing=False
                 )
         except (torch.OutOfMemoryError, RuntimeError) as e:
             if "out of memory" in str(e) or isinstance(e, torch.OutOfMemoryError):
-                logger.warning(f"⚠️ [Step {batch_idx+1}] CUDA OOM intercepted. Executing batch rollback & purging VRAM cache...")
-                for var_name in ['total_loss_tensor', 'm_curr', 'h_curr', 'curr_u_t', 'eff_dt', 'input_seq', 'target_seq']:
-                    if var_name in locals():
-                        del locals()[var_name]
-                optimizer.zero_grad(set_to_none=True)
+                logger.warning(f"⚠️ [Step {batch_idx+1}] CUDA OOM intercepted. Purging VRAM cache and retrying...")
+                if 'total_loss_tensor' in locals():
+                    del total_loss_tensor
+                if 'm_curr' in locals():
+                    del m_curr
+                if 'h_curr' in locals():
+                    del h_curr
                 gc.collect()
                 if device_str == 'cuda':
                     torch.cuda.empty_cache()
-                total_skipped_batches += 1
+                optimizer.zero_grad(set_to_none=True)
                 time.sleep(0.5)
                 continue
             else:
