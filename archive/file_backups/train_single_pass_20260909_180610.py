@@ -448,7 +448,7 @@ def run_single_pass_training():
         t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
         if math.isnan(speech_loss_val) or math.isnan(fe_val) or torch.isnan(total_loss_tensor).any():
-            logger.warning(f"⚠️ [Step {batch_idx+1}] Loss or FE is NaN: sp_l={speech_loss_val}, fe={fe_val}, total_loss={total_loss_tensor.item() if total_loss_tensor is not None else 'None'}. Checking parameter integrity...")
+            logger.warning(f"⚠️ [Step {batch_idx+1}] Loss or Free Energy is NaN. Checking parameter integrity...")
             optimizer.zero_grad(set_to_none=True)
             has_nan_weights = any(torch.isnan(p).any() for p in agent_brain.parameters())
             if has_nan_weights:
