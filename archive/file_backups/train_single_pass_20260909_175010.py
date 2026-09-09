@@ -436,7 +436,7 @@ def run_single_pass_training():
                 if device_str == 'cuda':
                     torch.cuda.empty_cache()
                 total_skipped_batches += 1
-                time.sleep(2.0)
+                time.sleep(0.5)
                 continue
             else:
                 raise e
