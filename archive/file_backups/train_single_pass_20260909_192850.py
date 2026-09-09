@@ -266,8 +266,8 @@ class ContinuousPackedDataset(Dataset):
 def collate_packed_fn(batch):
     return torch.stack(batch, dim=0)
 
-BATCH_SIZE = 8
-SEQ_LEN = 512
+BATCH_SIZE = 2
+SEQ_LEN = 1024
 CHUNK_SIZE = 64
 
 flat_stream = build_multidomain_packed_stream(seq_len=SEQ_LEN)

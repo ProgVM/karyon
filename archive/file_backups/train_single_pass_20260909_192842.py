@@ -266,8 +266,8 @@ class ContinuousPackedDataset(Dataset):
 def collate_packed_fn(batch):
     return torch.stack(batch, dim=0)
 
-BATCH_SIZE = 8
-SEQ_LEN = 512
+BATCH_SIZE = 2
+SEQ_LEN = 1024
 CHUNK_SIZE = 64
 
 flat_stream = build_multidomain_packed_stream(seq_len=SEQ_LEN)
@@ -601,7 +601,7 @@ def run_single_pass_training():
 
         # Periodic container saving & HF Auto-Sync every 200 stream steps
         if (batch_idx + 1) % 200 == 0:
-            save_karyon(agent_brain, episodic_mem, hu, h_curr[0:1], h_curr[0:1], epoch=1, story_idx=(batch_idx + 1) * 8, filepath=kcore_path)
+            save_karyon(agent_brain, episodic_mem, hu, h_curr[0:1], h_curr[0:1], epoch=1, story_idx=(batch_idx + 1) * BATCH_SIZE, filepath=kcore_path)
             commit_msg = f"feat(weights): single-pass stream step {batch_idx+1}/{len(stream_loader)} checkpoint - loss={speech_loss_val:.4f}"
             sync_checkpoint_to_hf(kcore_path, hf_repo_id, commit_msg)
 
@@ -611,7 +611,7 @@ def run_single_pass_training():
     # Final container save & HF sync
     h_fast_save = h_fast if 'h_fast' in locals() else torch.zeros(1, agent_brain.hidden_dim, device=device)
     h_slow_save = h_slow if 'h_slow' in locals() else torch.zeros(1, agent_brain.hidden_dim, device=device)
-    save_karyon(agent_brain, episodic_mem, hu, h_fast_save[0:1], h_slow_save[0:1], epoch=1, story_idx=len(stream_loader) * 8, filepath=kcore_path)
+    save_karyon(agent_brain, episodic_mem, hu, h_fast_save[0:1], h_slow_save[0:1], epoch=1, story_idx=len(stream_loader) * BATCH_SIZE, filepath=kcore_path)
     sync_checkpoint_to_hf(kcore_path, hf_repo_id, f"feat(weights): single-pass stream complete - final loss={speech_loss_val if 'speech_loss_val' in locals() else 0.0:.4f}")
 
     logger.info(f"Single-Pass Continuous Stream Session Complete! Total Steps: {len(stream_loader)} | Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches} | Total Sleep Cycles: {total_sleep_cycles}.")
