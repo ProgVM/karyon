@@ -696,14 +696,13 @@ class FastWeightHebbianPlasticity(nn.Module):
 
 class PredictiveResidualRouting(nn.Module):
     """
-    Hierarchical Predictive Residual Coding (Bottom-Up Unpredicted Errors Only - EXP-164/165 Validated 🟢).
+    Hierarchical Predictive Residual Coding (Bottom-Up Unpredicted Errors Only).
     Generates top-down prediction of Stage 1 from Stage 2 and routes only precision-weighted
-    prediction error residuals. Precision is dynamically modulated by somatic homeostasis (u_t).
+    prediction error residuals, calculating residual surprise for Free Energy minimization.
     """
     def __init__(self, hidden_dim: int, homeo_dim: int = 6, device_str: str = 'cpu'):
         super().__init__()
         self.device = torch.device('cuda' if 'cuda' in device_str else 'cpu')
-        self.hidden_dim = hidden_dim
         self.topdown_pred = nn.Linear(hidden_dim, hidden_dim).to(self.device)
         self.precision_gate = nn.Linear(homeo_dim, hidden_dim).to(self.device)
 
@@ -1559,7 +1558,7 @@ class CoREAgent(nn.Module):
 
             rec_loss = (1.0 - F.cosine_similarity(w_current_slice, w_pred, dim=-1, eps=1e-8)).mean()
             hpc_reconstruction_loss = F.mse_loss(h_s1, h_s1_hat)
-            fe_loss_tensor = torch.clamp(kl_div.mean() + rec_loss + 0.10 * hpc_reconstruction_loss + 0.15 * error_magnitude, 0.0, 10.0)
+            fe_loss_tensor = torch.clamp(kl_div.mean() + rec_loss + 0.10 * hpc_reconstruction_loss, 0.0, 10.0)
 
             num_chunks = seq_len // chunk_size
             if num_chunks > 1:

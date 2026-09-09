@@ -696,24 +696,41 @@ class FastWeightHebbianPlasticity(nn.Module):
 
 class PredictiveResidualRouting(nn.Module):
     """
-    Hierarchical Predictive Residual Coding (Bottom-Up Unpredicted Errors Only - EXP-164/165 Validated 🟢).
+    Hierarchical Predictive Residual Coding (Bottom-Up Unpredicted Errors Only - EXP-164 Validated 🟢).
     Generates top-down prediction of Stage 1 from Stage 2 and routes only precision-weighted
-    prediction error residuals. Precision is dynamically modulated by somatic homeostasis (u_t).
+    prediction error residuals. Precision is dynamically modulated by noradrenaline (NA), dopamine (DA),
+    and somatic energy (KEP Principle 14 Compliant).
     """
     def __init__(self, hidden_dim: int, homeo_dim: int = 6, device_str: str = 'cpu'):
         super().__init__()
         self.device = torch.device('cuda' if 'cuda' in device_str else 'cpu')
         self.hidden_dim = hidden_dim
         self.topdown_pred = nn.Linear(hidden_dim, hidden_dim).to(self.device)
-        self.precision_gate = nn.Linear(homeo_dim, hidden_dim).to(self.device)
+        self.precision_gate = nn.Linear(hidden_dim, hidden_dim).to(self.device)
+        self.homeo_proj = nn.Linear(homeo_dim, hidden_dim, bias=False).to(self.device)
 
     def forward(self, h_s1: torch.Tensor, h_s2: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         hat_h_s1 = self.topdown_pred(h_s2)
         error_s1 = h_s1 - hat_h_s1
+        
         if u_t.dim() == 2 and h_s1.dim() == 3:
-            precision = torch.sigmoid(self.precision_gate(u_t)).unsqueeze(1)
+            energy_t = u_t[:, 1:2].unsqueeze(1)
+            na_t = u_t[:, 4:5].unsqueeze(1)
+            da_t = u_t[:, 5:6].unsqueeze(1)
+            u_t_proj = self.homeo_proj(u_t).unsqueeze(1)
         else:
-            precision = torch.sigmoid(self.precision_gate(u_t))
+            energy_t = u_t[..., 1:2]
+            na_t = u_t[..., 4:5]
+            da_t = u_t[..., 5:6]
+            u_t_proj = self.homeo_proj(u_t)
+
+        # Dynamic Neuromodulated Precision (Friston 2010 / KEP Principle 14)
+        base_precision = torch.sigmoid(self.precision_gate(h_s2) + u_t_proj)
+        na_gain = 1.0 + 2.5 * na_t
+        da_gain = 1.0 + 1.5 * da_t
+        energy_scale = torch.clamp(1.2 * energy_t, min=0.2, max=1.0)
+        
+        precision = base_precision * na_gain * da_gain * energy_scale
         weighted_error = precision * error_s1
         error_magnitude = torch.mean(weighted_error ** 2)
         return weighted_error, error_magnitude

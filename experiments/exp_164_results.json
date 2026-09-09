@@ -1,0 +1,13 @@
+{
+  "exp_id": "EXP-164",
+  "verdict": "NEUTRAL",
+  "metrics": {
+    "baseline_final_loss": 0.034641288220882416,
+    "proposed_final_loss": 0.04302258417010307,
+    "loss_improvement": -0.008381295949220657,
+    "baseline_final_fe": 1.2447868585586548,
+    "proposed_final_fe": 1.4218926429748535,
+    "fe_reduction_pct": -14.22779998025288,
+    "diagnostic_sample": " actical cortists renoval"
+  }
+}

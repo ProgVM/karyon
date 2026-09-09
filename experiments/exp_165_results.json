@@ -1,0 +1,13 @@
+{
+  "exp_id": "EXP-165",
+  "verdict": "NEUTRAL",
+  "metrics": {
+    "baseline_final_loss": 0.030937673524022102,
+    "proposed_final_loss": 0.06207787245512009,
+    "loss_improvement": -0.031140198931097984,
+    "baseline_final_fe": 0.6293935775756836,
+    "proposed_final_fe": 0.7193330526351929,
+    "fe_reduction_pct": -14.289862220383748,
+    "diagnostic_sample": " revises machinic standar"
+  }
+}
