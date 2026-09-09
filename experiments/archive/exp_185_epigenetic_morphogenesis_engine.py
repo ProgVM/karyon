@@ -11,7 +11,7 @@ and sprout new neural pathways in response to high cognitive surprise without
 catastrophic forgetting, significantly reducing Expected Free Energy (G) and
 accelerating post-evolutionary speech loss convergence.
 
-KEP v9.0 Compliant | KEP Rule #1, Rule #1.1, Rule #2 & Rule #4
+KEP v9.0 Compliant | KEP Rule #1, Rule #1.1, Rule #2, Rule #4 & Rule #7
 ===============================================================================
 """
 
@@ -19,6 +19,7 @@ import os
 import sys
 import time
 import math
+import json
 import torch
 import torch.nn as nn
 
@@ -36,6 +37,18 @@ from karyon_logger import get_logger
 
 logger = get_logger()
 
+def prepare_chunk_aligned_sequence(agent, text: str, chunk_size: int = 64):
+    """Encodes text into byte IDs and pads/truncates sequence length to a multiple of chunk_size."""
+    prompt_ids = agent.tokenizer.encode(text)
+    target_len = (len(prompt_ids) // chunk_size) * chunk_size
+    if target_len == 0:
+        target_len = chunk_size
+    prompt_ids = prompt_ids[:target_len + 1]
+    
+    seq_t = torch.tensor([prompt_ids[:-1]], dtype=torch.long, device=agent.device)
+    target_t = torch.tensor([prompt_ids[1:]], dtype=torch.long, device=agent.device)
+    return seq_t, target_t
+
 def run_experiment():
     logger.info("⚡ Starting EXP-185: Epigenetic Morphogenesis & Directed Neural Darwinism Benchmark")
     device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -45,19 +58,26 @@ def run_experiment():
     agent = entity.brain
     hu = entity.hu
     
-    # Define reference speech loss criterion
     criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
     
-    # Establish real evaluation inputs (Alpaca-GPT4 reference sequence)
-    eval_inputs = torch.randint(0, 256, (4, 64), device=device)
-    eval_targets = torch.randint(0, 256, (4, 64), device=device)
+    # Structured natural text samples (KEP Rule #7 compliant)
+    sample_text = (
+        "User: Explain active inference and somatic allostasis in Karyon-CoRE.\n"
+        "Karyon: Active inference minimizes variational surprise F_t by updating internal generative beliefs "
+        "and aligning sensory observations with interoceptive somatic equilibrium. "
+        "The epigenetic gene regulatory network guides adaptive morphological evolution across sleep cycles "
+        "by regulating morphogen expression and methylation locks to protect core cognitive invariants."
+    )
+    
+    seq_t, target_t = prepare_chunk_aligned_sequence(agent, sample_text, chunk_size=64)
+    logger.info(f"📄 Prepared Chunk-Aligned Sequence Context: Length = {seq_t.size(1)} tokens (Chunk Size = 64)")
     
     # 2. Measure Pre-Evolution Baseline Telemetry
     agent.eval()
     with torch.no_grad():
-        base_out = agent.forward_sequence(eval_inputs, eval_targets, hu, criterion_speech)
-        baseline_loss = base_out[1] if isinstance(base_out[1], (float, int)) else base_out[1].item()
-        baseline_fe = base_out[2] if len(base_out) > 2 and isinstance(base_out[2], (float, int)) else 0.0
+        base_out = agent.forward_sequence(seq_t, target_t, hu, criterion_speech, chunk_size=seq_t.size(1), use_checkpointing=False)
+        baseline_loss = float(base_out[1])
+        baseline_fe = float(base_out[2])
     
     logger.info(f"📊 Baseline Telemetry: Speech Loss = {baseline_loss:.6f} nats, Free Energy (F_t) = {baseline_fe:.6f}")
     
@@ -65,16 +85,15 @@ def run_experiment():
     orchestrator = AutonomousSelfEvolutionOrchestrator(agent, device=device)
     
     # 4. Simulate a "Cognitive Crisis" (Persistent High Surprise)
-    # This stimulates the GRN to express sprouting & hypermutation morphogens
-    logger.info("🔥 Simulating Cognitive Crisis (Surprise = 0.95) to activate Epigenetic GRN...")
+    logger.info("🔥 Simulating Cognitive Crisis (Surprise = 0.85) to activate Epigenetic GRN...")
     
     t0_evo = time.perf_counter()
     evo_results = orchestrator.execute_full_morphogenetic_cycle(
-        eval_input_tokens=eval_inputs,
-        eval_target_tokens=eval_targets,
+        eval_input_tokens=seq_t,
+        eval_target_tokens=target_t,
         hu=hu,
         criterion_speech=criterion_speech,
-        surprise_metric=0.95
+        surprise_metric=0.85
     )
     evo_duration = time.perf_counter() - t0_evo
     
@@ -93,9 +112,9 @@ def run_experiment():
     # 6. Measure Post-Evolution Telemetry
     agent.eval()
     with torch.no_grad():
-        post_out = agent.forward_sequence(eval_inputs, eval_targets, hu, criterion_speech)
-        post_loss = post_out[1] if isinstance(post_out[1], (float, int)) else post_out[1].item()
-        post_fe = post_out[2] if len(post_out) > 2 and isinstance(post_out[2], (float, int)) else 0.0
+        post_out = agent.forward_sequence(seq_t, target_t, hu, criterion_speech, chunk_size=seq_t.size(1), use_checkpointing=False)
+        post_loss = float(post_out[1])
+        post_fe = float(post_out[2])
     
     loss_improvement = baseline_loss - post_loss
     fe_reduction_pct = ((baseline_fe - post_fe) / max(baseline_fe, 1e-5)) * 100.0
@@ -104,7 +123,6 @@ def run_experiment():
     logger.info(f"📈 Performance Delta: Loss Improvement = {loss_improvement:+.6f} nats, FE Reduction = {fe_reduction_pct:+.2f}%")
     
     # 7. Apply KEP Rule #2 Data-Driven Verdict Criteria
-    # Verdict is POSITIVE if Expected Free Energy (or Speech Loss) improves, and Smooth Grafting maintains exact function identity.
     if identity_delta < 1e-7 and (loss_improvement >= 0.0 or fe_reduction_pct >= 0.0):
         verdict = "POSITIVE"
         logger.info("🟢 Verdict: POSITIVE (Epigenetic Morphogenesis successfully adapted parameters and sprouted pathways with zero identity delta!)")

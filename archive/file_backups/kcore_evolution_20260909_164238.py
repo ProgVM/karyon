@@ -873,17 +873,18 @@ class AutonomousSelfEvolutionOrchestrator:
         sprout_res = StructuralSynaptogenesisPruner.sprout_active_axons(self.agent, surprise_metric=sprout_stimulus)
         results["level_1"] = {"pruning": prune_res, "sprouting": sprout_res}
 
-        # 3. Level 2: Net2Net Morphogenesis (Triggered if explicit target dimension specified)
-        should_expand = (target_new_hidden_dim is not None and target_new_hidden_dim > self.agent.hidden_dim)
+        # 3. Level 2: Net2Net Morphogenesis (If triggered by morphogen or explicit target)
+        should_expand = (target_new_hidden_dim and target_new_hidden_dim > self.agent.hidden_dim) or self.grn.should_trigger_expansion()
         if should_expand:
+            new_dim = target_new_hidden_dim if (target_new_hidden_dim and target_new_hidden_dim > self.agent.hidden_dim) else self.agent.hidden_dim + 64
             expanded_agent, identity_delta = Net2NetMorphogenesisEngine.expand_agent_dimensions(
-                self.agent, new_hidden_dim=target_new_hidden_dim, device=self.device
+                self.agent, new_hidden_dim=new_dim, device=self.device
             )
             self.agent = expanded_agent
             self.reflective_channel = ReflectiveSelfMutationModule(
-                hidden_dim=target_new_hidden_dim, num_mutation_genes=8, device_str=self.device
+                hidden_dim=new_dim, num_mutation_genes=8, device_str=self.device
             )
-            results["level_2"] = {"new_hidden_dim": target_new_hidden_dim, "identity_delta": identity_delta}
+            results["level_2"] = {"new_hidden_dim": new_dim, "identity_delta": identity_delta}
         else:
             results["level_2"] = {"status": "SKIPPED_OR_UP_TO_DATE", "hidden_dim": self.agent.hidden_dim}
 
