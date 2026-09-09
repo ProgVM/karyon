@@ -12,8 +12,6 @@ Grounded in KEP Principles & Biological AGI Reality:
   `VolitionalActionEvaluator` triggers `INITIATE_SLEEP_CONSOLIDATION`, Karyon enters
   Phase 1 NREM Hippocampal Replay + Phase 2 REM Synthetic Dreaming + Synaptic Pruning,
   restores somatic energy to 1.00, and awakens to continue the stream!
-import os
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 - Error-Gated Neuromodulated Plasticity (DFET Gating):
   Backprop + Local Neuromodulated Fast-Weights adapt on high-surprise data;
   mastered data skips FLOPs to save metabolic energy.
@@ -95,7 +93,7 @@ hw_engine = get_hardware_engine()
 device = hw_engine.device
 device_str = str(device)
 use_amp = hw_engine.config.enable_amp and not hw_engine.is_cpu
-autocast_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+autocast_dtype = torch.bfloat16 if (torch.cuda.is_bf16_supported() and torch.cuda.get_device_capability()[0] >= 8) else torch.float16
 logger.info(f"Execution context: {device_str.upper()} (AMP Enabled: {use_amp}, Dtype: {autocast_dtype})")
 
 kcore_path = "karyon_soul.kcore"
