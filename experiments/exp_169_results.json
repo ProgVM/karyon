@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-169",
+  "verdict": "NEUTRAL",
+  "metrics": {
+    "baseline_final_loss": 0.038072116672992706,
+    "proposed_final_loss": 1.0160179138183594,
+    "loss_improvement": -0.9779457971453667,
+    "baseline_final_fe": 0.6824199557304382,
+    "proposed_final_fe": 0.9622423648834229,
+    "fe_reduction_pct": -41.004429428426164
+  }
+}
