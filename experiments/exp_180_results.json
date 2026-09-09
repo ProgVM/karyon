@@ -1,0 +1,17 @@
+{
+  "exp_id": "EXP-180",
+  "verdict": "NEUTRAL",
+  "hypothesis": "Differentiable Fast-Weight Hebbian Plasticity with element-wise exponentiation eliminates CPU-GPU sync stalls and enables backpropagation to somatic states.",
+  "architecture_delta": "Replaced FastWeightHebbianPlasticity with ProposedFastWeightHebbianPlasticity using differentiable element-wise exponentiation.",
+  "metrics": {
+    "baseline_final_loss": 0.12370017170906067,
+    "proposed_final_loss": 0.14929698407649994,
+    "loss_improvement": -0.02559681236743927,
+    "baseline_final_fe": 0.6117645502090454,
+    "proposed_final_fe": 0.5325184464454651,
+    "fe_reduction_pct": 12.953693334551867,
+    "baseline_elapsed_sec": 6.964576132999355,
+    "proposed_elapsed_sec": 1.2841526169995632,
+    "speedup_pct": 81.56165439968373
+  }
+}

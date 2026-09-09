@@ -647,8 +647,8 @@ class ThalamocorticalGate(nn.Module):
 
 class FastWeightHebbianPlasticity(nn.Module):
     """
-    Synaptic Fast-Weight Programmers & Differentiable Allostatic Plasticity (EXP-163 / EXP-180 Validated 🟢).
-    100% differentiable, zero-sync tensorized decay matrix (KEP Principle 1, 7, 9 & 14 Compliant).
+    Synaptic Fast-Weight Programmers & Dynamic Allostatic Plasticity (EXP-163 Validated 🟢).
+    Full-rank projection (256D, KEP Principle 7 Compliant) with dynamic somatic-controlled decay and write-gain (KEP Principle 14 Compliant).
     """
     def __init__(self, hidden_dim: int, key_dim: int = 256, value_dim: int = 256, device_str: str = 'cpu'):
         super().__init__()
@@ -684,19 +684,16 @@ class FastWeightHebbianPlasticity(nn.Module):
             na_t = u_t[..., 4:5]
             da_t = u_t[..., 5:6]
 
-        # Dynamic Decay & Write Gain (100% differentiable, Zero .item() sync stalls)
+        # Dynamic Decay & Write Gain
         lambda_decay = torch.clamp(0.85 + 0.12 * stability_t - 0.08 * curiosity_t + 0.05 * da_t, 0.70, 0.98)
+        lambda_decay_val = float(lambda_decay.mean().item())
         eta = 0.10 * (1.0 + 2.0 * na_t + 1.2 * curiosity_t)
         
         if S > 1:
             idx = torch.arange(S, device=h_seq.device)
-            decay_powers = (idx.unsqueeze(1) - idx.unsqueeze(0)).unsqueeze(0)  # [1, S, S]
-            decay_powers = torch.clamp(decay_powers, min=0.0)
-            
-            # Differentiable per-element exponentiation: lambda^power = exp(power * log(lambda))
-            log_lambda = torch.log(torch.clamp(lambda_decay, min=1e-5, max=0.999))  # [B, 1, 1] or [B, S, 1]
-            decay_mask = torch.exp(decay_powers * log_lambda)  # [B, S, S]
-            causal_decay_mask = decay_mask * torch.tril(torch.ones(S, S, device=h_seq.device)).unsqueeze(0)
+            decay_powers = idx.unsqueeze(1) - idx.unsqueeze(0)
+            decay_mask = lambda_decay_val ** decay_powers
+            causal_decay_mask = torch.tril(decay_mask).unsqueeze(0)
             
             attn_sim = torch.bmm(Q, K.transpose(1, 2)) / math.sqrt(self.key_dim)
             attn_decayed = attn_sim * causal_decay_mask * eta
