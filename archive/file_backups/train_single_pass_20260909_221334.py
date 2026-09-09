@@ -484,11 +484,8 @@ def run_single_pass_training():
         moving_var_fe = (1.0 - alpha_ma) * moving_var_fe + alpha_ma * ((fe_val - moving_mean_fe)**2)
         moving_std_fe = math.sqrt(max(1e-6, moving_var_fe))
 
-        # Dynamic Mastery Gating (Axis A / Biophysical Realism)
-        # We only adapt if we are above the moving average of Free Energy, or if speech loss is high,
-        # or if it is a statistical surprise outlier. Otherwise, we REST to save FLOPs and recover energy!
-        is_fe_unmastered = fe_val > (moving_mean_fe - 0.1 * moving_std_fe)
-        is_speech_unmastered = speech_loss_val > 0.65
+        is_fe_unmastered = fe_val > FREE_ENERGY_MASTERY_SETPOINT
+        is_speech_unmastered = speech_loss_val > SPEECH_MASTERY_SETPOINT
         is_statistical_outlier = agent_brain.evaluate_dfet_gating(fe_val, moving_mean_fe, moving_std_fe, na_val)
         
         should_adapt = is_fe_unmastered or is_speech_unmastered or is_statistical_outlier
@@ -496,24 +493,27 @@ def run_single_pass_training():
         t_opt_ms = 0.0
         if should_adapt:
             t_opt_start = time.perf_counter()
-            
-            # Apply Dynamic Neuromodulated Plasticity (Dayan & Friston)
-            cur_lr = get_neuromodulated_lr(BASE_LR, hu.state)
-            for group in optimizer.param_groups:
-                group['lr'] = cur_lr
-                
             if scaler.is_enabled():
                 scaler.scale(total_loss_tensor).backward()
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=0.5)
+                
+                scale_before = scaler.get_scale()
                 scaler.step(optimizer)
                 scaler.update()
+                scale_after = scaler.get_scale()
+                
+                if scale_before <= scale_after:
+                    lr_scheduler.step()
             else:
                 total_loss_tensor.backward()
                 torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=0.5)
                 optimizer.step()
+                lr_scheduler.step()
                 
             t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
+            
+            cur_lr = optimizer.param_groups[0]['lr']
             total_adapted_batches += 1
             status_str = f"ADAPTED (lr={cur_lr:.6f})"
         else:
@@ -548,6 +548,9 @@ def run_single_pass_training():
             if is_structural_change:
                 logger.info(f"🧬 [Step {batch_idx+1}] Structural Net2Net/Pathway mutation detected. Updating AdamW parameter groups.")
                 optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=BASE_LR, weight_decay=0.01)
+                for group in optimizer.param_groups:
+                    group['initial_lr'] = group['lr']
+                lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=batch_idx)
 
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
             logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep 2.0 Complete ({sleep_duration_ms:.1f}ms). Restored Energy={hu.state[0, 1].item():.2f} | Pruned Weights={pruned_weights}")

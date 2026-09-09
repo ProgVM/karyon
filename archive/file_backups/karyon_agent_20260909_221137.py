@@ -815,15 +815,6 @@ class DelayOp(nn.Module):
         self.decay_param = nn.Parameter(torch.ones(num_heads, 1, 1, device=self.device) * 1.5)
         self.gain_param = nn.Parameter(torch.ones(num_heads, 1, 1, device=self.device) * 0.5)
 
-        # Pre-allocate causal distance and masking buffers for zero-allocation tensor ops
-        max_buf_len = 4096
-        indices = torch.arange(max_buf_len, device=self.device)
-        mask = (indices.view(-1, 1) >= indices.view(1, -1)).float()
-        dist = torch.clamp(indices.view(-1, 1) - indices.view(1, -1), min=0)
-        self.register_buffer('indices', indices, persistent=False)
-        self.register_buffer('mask', mask, persistent=False)
-        self.register_buffer('dist', dist, persistent=False)
-
     def forward(self, x: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
         B, S, D = x.size()
         x_norm = self.in_norm(x)
@@ -838,9 +829,10 @@ class DelayOp(nn.Module):
         v = self.v_proj(x_norm).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)
         
         decay_matrix = alpha.expand(-1, -1, S, S)
-        mask_slice = self.mask[:S, :S]
-        dist_slice = self.dist[:S, :S]
-        decay_factors = torch.pow(decay_matrix, dist_slice) * mask_slice.unsqueeze(0).unsqueeze(0)
+        indices = torch.arange(S, device=x.device)
+        mask = (indices.view(-1, 1) >= indices.view(1, -1)).float()
+        dist = torch.clamp(indices.view(-1, 1) - indices.view(1, -1), min=0)
+        decay_factors = torch.pow(decay_matrix, dist) * mask.unsqueeze(0).unsqueeze(0)
         
         # Clamp logits to prevent FP16 overflow in long sequence attention scans
         scores = torch.clamp(torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(self.head_dim), min=-50.0, max=50.0)

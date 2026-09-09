@@ -321,28 +321,38 @@ criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
 scaler = torch.amp.GradScaler(hw_engine.device_type, enabled=(use_amp and autocast_dtype == torch.float16))
 
-def get_neuromodulated_lr(base_lr: float, hu_state: torch.Tensor) -> float:
-    """
-    Biophysical Dynamic Neuromodulated Learning Rate (Dayan & Friston).
-    Plasticity scales continuously with Noradrenaline (arousal/surprise) and Curiosity,
-    sustaining unbroken continual stream learning without artificial cosine decay freezing.
-    """
-    na = float(hu_state[0, 4].item())
-    curiosity = float(hu_state[0, 0].item())
-    energy = float(hu_state[0, 1].item())
-    
-    # Neuromodulated gain in [0.40, 2.00]
-    allostatic_gain = 0.40 + 1.20 * na + 0.80 * curiosity - 0.30 * (1.0 - energy)
-    allostatic_gain = max(0.40, min(2.00, allostatic_gain))
-    return base_lr * allostatic_gain
+TOTAL_TRAINING_STEPS = len(stream_loader)
+WARMUP_STEPS = 50
+
+def get_lr_multiplier(current_step: int) -> float:
+    if current_step < WARMUP_STEPS:
+        base_mult = float(current_step + 1) / float(WARMUP_STEPS)
+    else:
+        progress = float(current_step - WARMUP_STEPS) / float(max(1, TOTAL_TRAINING_STEPS - WARMUP_STEPS))
+        cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
+        base_mult = max(0.0333, cosine_decay)
+        
+    # Resume warmup safety (Axis A): if we resumed, warm up lr over 50 steps from start_step
+    if start_step > 0 and current_step >= start_step and current_step < start_step + 50:
+        resume_warmup_factor = float(current_step - start_step + 1) / 50.0
+        return base_mult * resume_warmup_factor
+        
+    return base_mult
+
+for group in optimizer.param_groups:
+    group['initial_lr'] = group['lr']
+
+lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=start_step - 1 if start_step > 0 else -1)
 
 moving_mean_fe = 0.15
 moving_var_fe = 0.01
 alpha_ma = getattr(core_config.train, 'dfet_alpha_ma', 0.05)
 
+FREE_ENERGY_MASTERY_SETPOINT = getattr(core_config.train, 'mastery_setpoint', 0.001)
+SPEECH_MASTERY_SETPOINT = getattr(core_config.train, 'speech_mastery_setpoint', 0.05)
+
 total_skipped_batches = 0
 total_adapted_batches = 0
-total_sleep_cycles = 0
 total_sleep_cycles = 0
 
 # =============================================================================
@@ -484,11 +494,8 @@ def run_single_pass_training():
         moving_var_fe = (1.0 - alpha_ma) * moving_var_fe + alpha_ma * ((fe_val - moving_mean_fe)**2)
         moving_std_fe = math.sqrt(max(1e-6, moving_var_fe))
 
-        # Dynamic Mastery Gating (Axis A / Biophysical Realism)
-        # We only adapt if we are above the moving average of Free Energy, or if speech loss is high,
-        # or if it is a statistical surprise outlier. Otherwise, we REST to save FLOPs and recover energy!
-        is_fe_unmastered = fe_val > (moving_mean_fe - 0.1 * moving_std_fe)
-        is_speech_unmastered = speech_loss_val > 0.65
+        is_fe_unmastered = fe_val > FREE_ENERGY_MASTERY_SETPOINT
+        is_speech_unmastered = speech_loss_val > SPEECH_MASTERY_SETPOINT
         is_statistical_outlier = agent_brain.evaluate_dfet_gating(fe_val, moving_mean_fe, moving_std_fe, na_val)
         
         should_adapt = is_fe_unmastered or is_speech_unmastered or is_statistical_outlier
@@ -496,24 +503,27 @@ def run_single_pass_training():
         t_opt_ms = 0.0
         if should_adapt:
             t_opt_start = time.perf_counter()
-            
-            # Apply Dynamic Neuromodulated Plasticity (Dayan & Friston)
-            cur_lr = get_neuromodulated_lr(BASE_LR, hu.state)
-            for group in optimizer.param_groups:
-                group['lr'] = cur_lr
-                
             if scaler.is_enabled():
                 scaler.scale(total_loss_tensor).backward()
                 scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=0.5)
+                
+                scale_before = scaler.get_scale()
                 scaler.step(optimizer)
                 scaler.update()
+                scale_after = scaler.get_scale()
+                
+                if scale_before <= scale_after:
+                    lr_scheduler.step()
             else:
                 total_loss_tensor.backward()
                 torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=0.5)
                 optimizer.step()
+                lr_scheduler.step()
                 
             t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
+            
+            cur_lr = optimizer.param_groups[0]['lr']
             total_adapted_batches += 1
             status_str = f"ADAPTED (lr={cur_lr:.6f})"
         else:
@@ -548,6 +558,9 @@ def run_single_pass_training():
             if is_structural_change:
                 logger.info(f"🧬 [Step {batch_idx+1}] Structural Net2Net/Pathway mutation detected. Updating AdamW parameter groups.")
                 optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=BASE_LR, weight_decay=0.01)
+                for group in optimizer.param_groups:
+                    group['initial_lr'] = group['lr']
+                lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=batch_idx)
 
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
             logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep 2.0 Complete ({sleep_duration_ms:.1f}ms). Restored Energy={hu.state[0, 1].item():.2f} | Pruned Weights={pruned_weights}")

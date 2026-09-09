@@ -898,62 +898,7 @@ class AutonomousSelfEvolutionOrchestrator:
         else:
             results["level_2"] = {"status": "SKIPPED_OR_UP_TO_DATE", "hidden_dim": self.agent.hidden_dim, "expanded": False}
 
-        # 3.5 Level 6: Dynamic Neural Graph Operator Neurogenesis & Net2Net Smooth Grafting (AGN v6.0)
-        agn_sprouted = False
-        if hasattr(self.agent, 'dynamic_graph') and self.agent.dynamic_graph is not None:
-            # Prune dormant inactive bricks via Edelman's Neural Darwinism
-            pruned_count = self.agent.dynamic_graph.prune_inactive_bricks(threshold=1e-3)
-            
-            # Sprout new operator node if surprise is high or GRN morphogen requests axon sprouting
-            should_sprout_brick = (morphogens.get("e_axon_sprouting", 0.0) > 0.30 or surprise_metric >= 0.20)
-            if should_sprout_brick and len(self.agent.dynamic_graph.bricks) < self.agent.dynamic_graph.max_bricks:
-                # Select operator brick type adaptively based on somatic state
-                curiosity_val = float(u_somatic[0, 0].item())
-                na_val = float(u_somatic[0, 4].item())
-                if curiosity_val > 0.60:
-                    cand_brick = "DelayOp"
-                elif na_val > 0.25:
-                    cand_brick = "NonLinearOp"
-                else:
-                    cand_brick = "GateOp"
-                    
-                success = self.agent.dynamic_graph.sprout_brick(cand_brick)
-                if success:
-                    agn_sprouted = True
-                    results["level_6_agn"] = {"status": "SPROUTED", "brick_type": cand_brick, "pruned": pruned_count}
-            else:
-                results["level_6_agn"] = {"status": "SKIPPED", "pruned": pruned_count}
-
-        # 3.6 Attractor Genesis: Modern Continuous Hopfield Attractor Basin Expansion
-        attractor_expanded = False
-        should_expand_attractors = (morphogens.get("e_attractor_genesis", 0.0) > 0.35 or surprise_metric >= 0.25)
-        if should_expand_attractors and hasattr(self.agent, 'attractor_head'):
-            old_num = self.agent.config.net.num_attractors
-            if old_num < 512:
-                new_num = old_num + 32
-                old_basins = self.agent.attractor_head.attractor_basins.data
-                old_vis = self.agent.attractor_head.visitation_trace.data
-                
-                from karyon_core import DesaturatedHopfieldAttractorHead
-                self.agent.attractor_head = DesaturatedHopfieldAttractorHead(
-                    hidden_dim=self.agent.hidden_dim,
-                    vocab_size=self.agent.text_gen_dim,
-                    num_attractors=new_num,
-                    device=self.agent.device_str
-                )
-                with torch.no_grad():
-                    self.agent.attractor_head.attractor_basins.data[:old_num].copy_(old_basins)
-                    self.agent.attractor_head.visitation_trace.data[:old_num].copy_(old_vis)
-                self.agent.config.net.num_attractors = new_num
-                attractor_expanded = True
-                logger.info(f"🧬 [Attractor Genesis] Expanded Hopfield Attractor basins: {old_num} ➔ {new_num}")
-                results["level_attractor_genesis"] = {"status": "EXPANDED", "old": old_num, "new": new_num}
-            else:
-                results["level_attractor_genesis"] = {"status": "MAX_CAPACITY"}
-        else:
-            results["level_attractor_genesis"] = {"status": "SKIPPED"}
-
-        # 3.7 Level 6: Pathway Neurogenesis & Net2Net Smooth Grafting
+        # 3.5 Level 6: Pathway Neurogenesis & Net2Net Smooth Grafting
         should_sprout = morphogens.get("e_axon_sprouting", 0.0) > 0.40 or surprise_metric >= 0.70
         if should_sprout and hasattr(self.agent, 'register_grafted_pathway'):
             if not (hasattr(self.agent, 'grafted_pathways') and "auxiliary_predictive_head" in self.agent.grafted_pathways):
@@ -1007,16 +952,8 @@ class AutonomousSelfEvolutionOrchestrator:
         SleepMetaGeneticsEngine.apply_genome_to_agent(self.agent, best_genome)
         results["level_3_and_7"] = {"winning_index": win_idx, "winning_efe": best_efe, "evolved_genome": best_genome}
 
-        is_structural_change = (
-            results.get("level_2", {}).get("expanded", False) or 
-            agn_sprouted or 
-            attractor_expanded or 
-            (results.get("level_6", {}).get("status") == "SPROUTED")
-        )
-        results["is_structural_change"] = is_structural_change
-
         logger.info("="*80)
-        logger.info(f"✨ === KARYON EPIGENETIC SELF-EVOLUTION COMPLETED | Structural Mutation: {is_structural_change} ===")
+        logger.info("✨ === KARYON EPIGENETIC SELF-EVOLUTION CYCLE COMPLETED SUCCESSFULLY ===")
         logger.info("="*80 + "\n")
 
         return results

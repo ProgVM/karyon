@@ -1007,16 +1007,8 @@ class AutonomousSelfEvolutionOrchestrator:
         SleepMetaGeneticsEngine.apply_genome_to_agent(self.agent, best_genome)
         results["level_3_and_7"] = {"winning_index": win_idx, "winning_efe": best_efe, "evolved_genome": best_genome}
 
-        is_structural_change = (
-            results.get("level_2", {}).get("expanded", False) or 
-            agn_sprouted or 
-            attractor_expanded or 
-            (results.get("level_6", {}).get("status") == "SPROUTED")
-        )
-        results["is_structural_change"] = is_structural_change
-
         logger.info("="*80)
-        logger.info(f"✨ === KARYON EPIGENETIC SELF-EVOLUTION COMPLETED | Structural Mutation: {is_structural_change} ===")
+        logger.info("✨ === KARYON EPIGENETIC SELF-EVOLUTION CYCLE COMPLETED SUCCESSFULLY ===")
         logger.info("="*80 + "\n")
 
         return results
