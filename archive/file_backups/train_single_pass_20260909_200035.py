@@ -546,8 +546,8 @@ def run_single_pass_training():
             sleep_res = agent_brain.execute_deep_allostatic_sleep(
                 episodic_memory=episodic_mem,
                 hu=hu,
-                num_replay_cycles=2,
-                downscaling_factor=0.002,
+                num_replay_cycles=3,
+                downscaling_factor=0.03,
                 eval_inputs=input_seq[0:min(4, input_seq.size(0))],
                 eval_targets=target_seq[0:min(4, target_seq.size(0))],
                 criterion_speech=criterion_speech
@@ -559,7 +559,7 @@ def run_single_pass_training():
                 pruned_weights = sleep_res
 
             # Re-instantiate optimizer to track any newly sprouted or mutated parameters
-            optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=BASE_LR, weight_decay=0.01)
+            optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=2.5e-4, weight_decay=0.01)
             for group in optimizer.param_groups:
                 group['initial_lr'] = group['lr']
             lr_scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=get_lr_multiplier, last_epoch=batch_idx)

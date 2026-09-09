@@ -546,8 +546,8 @@ def run_single_pass_training():
             sleep_res = agent_brain.execute_deep_allostatic_sleep(
                 episodic_memory=episodic_mem,
                 hu=hu,
-                num_replay_cycles=2,
-                downscaling_factor=0.002,
+                num_replay_cycles=3,
+                downscaling_factor=0.03,
                 eval_inputs=input_seq[0:min(4, input_seq.size(0))],
                 eval_targets=target_seq[0:min(4, target_seq.size(0))],
                 criterion_speech=criterion_speech
