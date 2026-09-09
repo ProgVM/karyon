@@ -93,7 +93,7 @@ hw_engine = get_hardware_engine()
 device = hw_engine.device
 device_str = str(device)
 use_amp = hw_engine.config.enable_amp and not hw_engine.is_cpu
-autocast_dtype = torch.bfloat16 if (torch.cuda.is_bf16_supported() and torch.cuda.get_device_capability()[0] >= 8) else torch.float16
+autocast_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 logger.info(f"Execution context: {device_str.upper()} (AMP Enabled: {use_amp}, Dtype: {autocast_dtype})")
 
 kcore_path = "karyon_soul.kcore"
