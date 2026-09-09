@@ -1,0 +1,27 @@
+{
+  "exp_id": "EXP-168",
+  "verdict": "NEUTRAL",
+  "metrics": {
+    "baseline_avg_ttr": 0.31666666666666665,
+    "proposed_avg_ttr": 0.2833333333333333,
+    "ttr_gain_pct": -10.526315789473681,
+    "total_sandbox_invocations": 105,
+    "baseline_duration_s": 2.0877607490001537,
+    "proposed_duration_s": 1.7495042489999832,
+    "prompts": [
+      "What is the physical nature of Free Energy?",
+      "Explain how memory consolidation works during sleep.",
+      "Hello! Who created you and what is your purpose?"
+    ],
+    "baseline_samples": [
+      "namway was namwayfallnn,n::-1::-16:x1:x1",
+      "    total managataally all camcaky aanwa",
+      "nent new namw: wwwnnn natn\n\n# ://\n\na\n\n//"
+    ],
+    "proposed_samples": [
+      "man was walkway:::PP/I://awa/allanalynn-",
+      "  \n<<a-t-----\naaaaaaaaaaaaaaaaaaaalllllm",
+      " name n <= n:\n:://www//a//a//a//aaaaaaal"
+    ]
+  }
+}
