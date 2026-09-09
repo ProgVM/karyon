@@ -705,23 +705,15 @@ class FastWeightHebbianPlasticity(nn.Module):
 
 class PredictiveResidualRouting(nn.Module):
     """
-    Hierarchical Predictive Residual Coding (Bottom-Up Unpredicted Errors Only - EXP-173 Validated 🟢).
-    Generates top-down prediction of Stage 1 from Stage 2 using a 2-layer SwiGLU non-linear network
-    with LayerNorm stabilization (KEP Principle 8 Compliant).
-    Routes precision-weighted prediction error residuals dynamically modulated by somatic homeostasis (u_t).
+    Hierarchical Predictive Residual Coding (Bottom-Up Unpredicted Errors Only - EXP-164/165 Validated 🟢).
+    Generates top-down prediction of Stage 1 from Stage 2 and routes only precision-weighted
+    prediction error residuals. Precision is dynamically modulated by somatic homeostasis (u_t).
     """
     def __init__(self, hidden_dim: int, homeo_dim: int = 6, device_str: str = 'cpu'):
         super().__init__()
         self.device = torch.device('cuda' if 'cuda' in device_str else 'cpu')
         self.hidden_dim = hidden_dim
-        
-        self.topdown_pred = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim * 2),
-            nn.SiLU(),
-            nn.Linear(hidden_dim * 2, hidden_dim),
-            nn.LayerNorm(hidden_dim)
-        ).to(self.device)
-        
+        self.topdown_pred = nn.Linear(hidden_dim, hidden_dim).to(self.device)
         self.precision_gate = nn.Linear(homeo_dim, hidden_dim).to(self.device)
 
     def forward(self, h_s1: torch.Tensor, h_s2: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
