@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-163",
+  "verdict": "POSITIVE",
+  "metrics": {
+    "baseline_final_loss": 0.8743234276771545,
+    "proposed_final_loss": 0.34536758065223694,
+    "loss_improvement": 0.5289558470249176,
+    "baseline_fe": 0.8090754747390747,
+    "proposed_fe": 0.792759895324707,
+    "fe_reduction_pct": 2.016570755605887
+  }
+}

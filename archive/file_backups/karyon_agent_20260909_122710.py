@@ -633,15 +633,17 @@ class ThalamocorticalGate(nn.Module):
 
 class FastWeightHebbianPlasticity(nn.Module):
     """
-    Synaptic Fast-Weight Programmers & Dynamic Allostatic Plasticity (EXP-163 Validated 🟢).
-    Full-rank projection (256D, KEP Principle 7 Compliant) with dynamic somatic-controlled decay and write-gain (KEP Principle 14 Compliant).
+    Synaptic Fast-Weight Programmers & Hebbian Plasticity.
+    Maintains fast in-context associative memory updated online via causal exponential decay
+    and modulated by noradrenaline (NA_t).
     """
-    def __init__(self, hidden_dim: int, key_dim: int = 256, value_dim: int = 256, device_str: str = 'cpu'):
+    def __init__(self, hidden_dim: int, key_dim: int = 64, value_dim: int = 64, lambda_decay: float = 0.92, device_str: str = 'cpu'):
         super().__init__()
         self.device = torch.device('cuda' if 'cuda' in device_str else 'cpu')
         self.hidden_dim = hidden_dim
         self.key_dim = key_dim
         self.value_dim = value_dim
+        self.lambda_decay = lambda_decay
         
         self.k_proj = nn.Linear(hidden_dim, key_dim, bias=False).to(self.device)
         self.v_proj = nn.Linear(hidden_dim, value_dim, bias=False).to(self.device)
@@ -649,6 +651,7 @@ class FastWeightHebbianPlasticity(nn.Module):
         self.out_proj = nn.Linear(value_dim, hidden_dim, bias=False).to(self.device)
 
     def forward(self, h_seq: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
+        # Handles 3D [B, S, D] and 2D [B, D] (or [B, 1, D])
         is_2d = (h_seq.dim() == 2)
         if is_2d:
             h_seq = h_seq.unsqueeze(1)
@@ -658,34 +661,20 @@ class FastWeightHebbianPlasticity(nn.Module):
         V = self.v_proj(h_seq)
         Q = self.q_proj(h_seq)
         
-        # Dynamic Allostatic Forces (KEP Principle 14)
-        if u_t.dim() == 2:
-            curiosity_t = u_t[:, 0:1].unsqueeze(1) if u_t.size(0) == B else u_t[0, 0].view(1, 1, 1)
-            stability_t = u_t[:, 2:3].unsqueeze(1) if u_t.size(0) == B else u_t[0, 2].view(1, 1, 1)
-            na_t = u_t[:, 4:5].unsqueeze(1) if u_t.size(0) == B else u_t[0, 4].view(1, 1, 1)
-            da_t = u_t[:, 5:6].unsqueeze(1) if u_t.size(0) == B else u_t[0, 5].view(1, 1, 1)
-        else:
-            curiosity_t = u_t[..., 0:1]
-            stability_t = u_t[..., 2:3]
-            na_t = u_t[..., 4:5]
-            da_t = u_t[..., 5:6]
-
-        # Dynamic Decay & Write Gain
-        lambda_decay = torch.clamp(0.85 + 0.12 * stability_t - 0.08 * curiosity_t + 0.05 * da_t, 0.70, 0.98)
-        lambda_decay_val = float(lambda_decay.mean().item())
-        eta = 0.10 * (1.0 + 2.0 * na_t + 1.2 * curiosity_t)
+        na_t = u_t[:, 4:5].unsqueeze(1) if u_t.dim() == 2 else u_t[..., 4:5]
+        eta = 0.10 * (1.0 + 2.0 * na_t)
         
         if S > 1:
             idx = torch.arange(S, device=h_seq.device)
-            decay_powers = idx.unsqueeze(1) - idx.unsqueeze(0)
-            decay_mask = lambda_decay_val ** decay_powers
+            decay_mask = self.lambda_decay ** (idx.unsqueeze(1) - idx.unsqueeze(0))
             causal_decay_mask = torch.tril(decay_mask).unsqueeze(0)
-            
             attn_sim = torch.bmm(Q, K.transpose(1, 2)) / math.sqrt(self.key_dim)
             attn_decayed = attn_sim * causal_decay_mask * eta
+            # Clamp attn_decayed to prevent FP16 / FP32 explosion
             attn_decayed = torch.clamp(attn_decayed, min=-10.0, max=10.0)
             y_fast = torch.bmm(attn_decayed, V)
         else:
+            # Single step: instantaneous projection
             attn_sim = torch.bmm(Q, K.transpose(1, 2)) / math.sqrt(self.key_dim)
             attn_decayed = torch.clamp(attn_sim * eta, min=-10.0, max=10.0)
             y_fast = torch.bmm(attn_decayed, V)
@@ -1555,8 +1544,7 @@ class CoREAgent(nn.Module):
 
             num_chunks = seq_len // chunk_size
             if num_chunks > 1:
-                h_truncated = h_combined[:, :num_chunks * chunk_size, :].contiguous().detach()
-                h_chunk_endpoints = h_truncated.view(batch_size, num_chunks, chunk_size, self.hidden_dim)[:, :, -1, :]
+                h_chunk_endpoints = h_combined.detach().view(batch_size, num_chunks, chunk_size, self.hidden_dim)[:, :, -1, :]
                 v_preds = self.critic(h_chunk_endpoints).squeeze(-1)
                 
                 gamma_fe = 0.90
