@@ -398,7 +398,7 @@ logger.info(f"Starting Single-Pass Allostatic Session (1 Continuous Stream Pass,
 # 4. SINGLE-PASS CONTINUOUS ALLOSTATIC STREAMING LOOP
 # =============================================================================
 def run_single_pass_training():
-    global total_adapted_batches, total_skipped_batches, total_sleep_cycles, moving_mean_fe, moving_var_fe, h_fast, h_slow, optimizer, agent_brain
+    global total_adapted_batches, total_skipped_batches, total_sleep_cycles, moving_mean_fe, moving_var_fe, h_fast, h_slow, optimizer
     
     logger.info(f"\n{'='*85}\n === [STARTING SINGLE-PASS CONTINUOUS STREAM LEARNING (N=1 PASS)] ===\n{'='*85}")
     
