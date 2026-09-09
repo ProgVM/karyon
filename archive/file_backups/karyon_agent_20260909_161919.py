@@ -1798,17 +1798,9 @@ class CoREAgent(nn.Module):
             h_s2_last = h_s2[:, -1:, :]
             w_t = w_t_seq[:, -1, :]
             
-            # Dynamic dt scaling via Entropy Predictor (Exact Alignment with forward_sequence & EXP-177 🟢)
+            # Dynamic dt scaling via Entropy Predictor (Exact Alignment with forward_sequence)
             predicted_entropy = self.entropy_predictor(h_s1_last)
-            curiosity_t = hu_st[:, 0:1].unsqueeze(1) if hu_st.dim() == 2 else hu_st[..., 0:1]
-            energy_t = hu_st[:, 1:2].unsqueeze(1) if hu_st.dim() == 2 else hu_st[..., 1:2]
-            na_t = hu_st[:, 4:5].unsqueeze(1) if hu_st.dim() == 2 else hu_st[..., 4:5]
-
-            dt_base = 0.35 + 0.50 * na_t
-            dt_entropy_gain = (1.0 + 1.20 * curiosity_t) * predicted_entropy
-            energy_scale = torch.clamp(1.20 * energy_t, min=0.30, max=1.00)
-
-            dynamic_dt_scale = torch.clamp((dt_base + dt_entropy_gain) * energy_scale, min=0.20, max=2.50)
+            dynamic_dt_scale = 0.40 + 1.20 * predicted_entropy
             h_s2_last = h_s2_last * dynamic_dt_scale
 
             # Hierarchical Volitional Override in generation
