@@ -557,13 +557,9 @@ class VolitionalActiveInferenceMotorHead(nn.Module):
         
         # 2. Apply CPG Causal Motor Receptive Field (Proprioceptive temporal smoothing)
         h_proj_seq = h_proj.unsqueeze(0).transpose(1, 2) # [1, D, S]
-        # In single-token inference or small S with depthwise conv, cuDNN may fail to find an engine on some GPU architectures.
-        # Fall back gracefully to PyTorch native CUDA convolution engine if cuDNN raises RuntimeError.
-        try:
-            h_cpg_seq = self.cpg_motor[0](h_proj_seq) # Conv1d
-        except RuntimeError:
-            with torch.backends.cudnn.flags(enabled=False):
-                h_cpg_seq = self.cpg_motor[0](h_proj_seq)
+        # Run CPG causal convolution in FP32 outside autocast to prevent cuDNN engine lookup failure on S=1 groups
+        with torch.amp.autocast(device_type=('cuda' if self.device.type == 'cuda' else ('xla' if self.device.type == 'xla' else 'cpu')), enabled=False):
+            h_cpg_seq = self.cpg_motor[0](h_proj_seq.float()) # Conv1d
         h_cpg_seq = h_cpg_seq[:, :, :total_tokens] # Slice causal padding
         h_cpg = h_cpg_seq.transpose(1, 2).squeeze(0) # [S, D]
         

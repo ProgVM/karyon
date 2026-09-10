@@ -224,11 +224,11 @@ class Net2NetMorphogenesisEngine:
             # 1. Universal Dynamic Sensory Gateway expansion
             if hasattr(agent.gateway, 'mind_proj'):
                 agent.gateway.mind_proj = Net2NetMorphogenesisEngine.expand_linear_layer(
-                    agent.gateway.mind_proj, agent.gateway.unified_dim, new_hidden_dim, device=device
+                    agent.gateway.mind_proj, agent.gateway.mind_proj.out_features, new_hidden_dim, device=device
                 )
             if hasattr(agent.gateway, 'attention_query_layer'):
                 agent.gateway.attention_query_layer = Net2NetMorphogenesisEngine.expand_linear_layer(
-                    agent.gateway.attention_query_layer, agent.gateway.unified_dim, new_hidden_dim, device=device
+                    agent.gateway.attention_query_layer, agent.gateway.attention_query_layer.out_features, new_hidden_dim, device=device
                 )
             agent.gateway.hidden_dim = new_hidden_dim
 
@@ -260,11 +260,7 @@ class Net2NetMorphogenesisEngine:
                 PredictiveResidualRouting,
                 VolitionalActionEvaluator,
                 LocalNeuromodulatedPlasticity,
-                PredictiveSelfModel,
-                DelayOp,
-                NonLinearOp,
-                GateOp,
-                ContinuousDynamicNeuralGraph
+                PredictiveSelfModel
             )
             
             # Save parameters before re-instantiating
@@ -273,7 +269,6 @@ class Net2NetMorphogenesisEngine:
             old_fwh_params = [p.clone().detach() for p in agent.fast_weight_hebbian.parameters()] if hasattr(agent, 'fast_weight_hebbian') else []
             old_prr_params = [p.clone().detach() for p in agent.predictive_residual_router.parameters()] if hasattr(agent, 'predictive_residual_router') else []
             old_psm_params = [p.clone().detach() for p in agent.predictive_self_model.parameters()] if hasattr(agent, 'predictive_self_model') else []
-            old_lp_params = [p.clone().detach() for p in agent.local_plasticity.parameters()] if hasattr(agent, 'local_plasticity') else []
 
             agent.pw_hpc_generator = PrecisionWeightedTopDownGenerator(hidden_dim=new_hidden_dim, device_str=agent.device_str)
             for old_p, new_p in zip(old_hpc_params, agent.pw_hpc_generator.parameters()):
@@ -297,18 +292,17 @@ class Net2NetMorphogenesisEngine:
 
             agent.efe_action_evaluator = VolitionalActionEvaluator(hidden_dim=new_hidden_dim, device=agent.device_str)
             agent.local_plasticity = LocalNeuromodulatedPlasticity(in_features=new_hidden_dim, out_features=new_hidden_dim, lr=0.08, device=agent.device_str)
-            for old_p, new_p in zip(old_lp_params, agent.local_plasticity.parameters()):
-                adapt_and_copy_tensor(new_p, old_p)
             
             agent.predictive_self_model = PredictiveSelfModel(hidden_dim=new_hidden_dim, homeo_dim=agent.config.net.homeo_dim, device=agent.device_str)
             for old_p, new_p in zip(old_psm_params, agent.predictive_self_model.parameters()):
                 adapt_and_copy_tensor(new_p, old_p)
 
-            # 3.2 Entropy Predictor for Dynamic dt Scaling
-            if hasattr(agent, 'entropy_predictor') and isinstance(agent.entropy_predictor, nn.Sequential):
-                agent.entropy_predictor[0] = Net2NetMorphogenesisEngine.expand_linear_layer(
-                    agent.entropy_predictor[0], agent.entropy_predictor[0].out_features, new_hidden_dim, device=device
-                )
+            agent.fused_stack = FusedCascadedLaminarStack(
+                hidden_dim=new_hidden_dim, expand_dim=agent.expand_dim, num_heads=agent.num_heads,
+                head_k=agent.head_k, head_v=agent.head_v, chunk_size=64, device=agent.device_str
+            )
+            agent.stage1 = agent.fused_stack.stage1
+            agent.stage2 = agent.fused_stack.stage2
 
             # 4. Top-Down Prior Projection expansion
             if hasattr(agent, 'topdown_prior_proj') and isinstance(agent.topdown_prior_proj, nn.Sequential):
@@ -329,17 +323,12 @@ class Net2NetMorphogenesisEngine:
                 )
 
             # 6. Will Engine expansion
-            if hasattr(agent, 'will_engine'):
-                if hasattr(agent.will_engine, 'goal_norm'):
-                    agent.will_engine.goal_norm = Net2NetMorphogenesisEngine.expand_layernorm(
-                        agent.will_engine.goal_norm, new_hidden_dim, device=device
-                    )
-                if hasattr(agent.will_engine, 'override_gate_net'):
-                    first_linear = agent.will_engine.override_gate_net[0]
-                    homeo_dim = agent.config.net.homeo_dim
-                    agent.will_engine.override_gate_net[0] = Net2NetMorphogenesisEngine.expand_linear_layer(
-                        first_linear, first_linear.out_features, new_hidden_dim + homeo_dim, device=device
-                    )
+            if hasattr(agent, 'will_engine') and hasattr(agent.will_engine, 'override_gate_net'):
+                first_linear = agent.will_engine.override_gate_net[0]
+                homeo_dim = agent.config.net.homeo_dim
+                agent.will_engine.override_gate_net[0] = Net2NetMorphogenesisEngine.expand_linear_layer(
+                    first_linear, first_linear.out_features, new_hidden_dim + homeo_dim, device=device
+                )
                 agent.will_engine.hidden_dim = new_hidden_dim
 
             # 7. Volitional Prediction Head expansion
@@ -349,12 +338,6 @@ class Net2NetMorphogenesisEngine:
                     first_linear, first_linear.out_features, new_hidden_dim, device=device
                 )
                 agent.volitional_head.hidden_dim = new_hidden_dim
-
-            # 7.1 Pre-Attractor Norm
-            if hasattr(agent, 'pre_attractor_norm'):
-                agent.pre_attractor_norm = Net2NetMorphogenesisEngine.expand_layernorm(
-                    agent.pre_attractor_norm, new_hidden_dim, device=device
-                )
 
             # 8. Hopfield Attractor Head expansion
             agent.attractor_head = DesaturatedHopfieldAttractorHead(
@@ -381,12 +364,6 @@ class Net2NetMorphogenesisEngine:
             for old_p, new_p in zip(old_mg_params, agent.output_gateway.parameters()):
                 adapt_and_copy_tensor(new_p, old_p)
 
-            # 9.1 Motor Text Projection
-            if hasattr(agent, 'motor_text_proj') and isinstance(agent.motor_text_proj, nn.Sequential):
-                agent.motor_text_proj[0] = Net2NetMorphogenesisEngine.expand_linear_layer(
-                    agent.motor_text_proj[0], agent.text_dim, new_hidden_dim, device=device
-                )
-
             # 10. World Model expansion
             agent.world_model = LatentPredictor(
                 hidden_dim=new_hidden_dim,
@@ -399,25 +376,6 @@ class Net2NetMorphogenesisEngine:
 
             # 11. TD Critic expansion
             agent.critic = TDFreeEnergyCritic(hidden_dim=new_hidden_dim, device=agent.device_str)
-
-            # 12. Dynamic Epigenetic Neural Graph (AGN v6.0 / CEE) expansion
-            if hasattr(agent, 'dynamic_graph') and agent.dynamic_graph is not None:
-                new_dg = ContinuousDynamicNeuralGraph(dim=new_hidden_dim, max_bricks=agent.dynamic_graph.max_bricks, device=agent.device_str)
-                new_dg.bricks = nn.ModuleList()
-                new_dg.alpha_epi = nn.ParameterList()
-                for idx, brick in enumerate(agent.dynamic_graph.bricks):
-                    b_type = brick.__class__.__name__
-                    if b_type == "DelayOp":
-                        nb = DelayOp(new_hidden_dim, num_heads=brick.num_heads, device=agent.device_str)
-                    elif b_type == "GateOp":
-                        nb = GateOp(new_hidden_dim, device=agent.device_str)
-                    else:
-                        nb = NonLinearOp(new_hidden_dim, device=agent.device_str)
-                    for old_p, new_p in zip(brick.parameters(), nb.parameters()):
-                        adapt_and_copy_tensor(new_p, old_p)
-                    new_dg.bricks.append(nb)
-                    new_dg.alpha_epi.append(nn.Parameter(agent.dynamic_graph.alpha_epi[idx].clone().detach()))
-                agent.dynamic_graph = new_dg
 
             # Update Agent Global Config & Dimensions
             agent.hidden_dim = new_hidden_dim
