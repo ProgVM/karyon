@@ -774,7 +774,7 @@ struct PrecisionWeightedLPERImpl : torch::nn::Module {
             torch::nn::Linear(hidden_dim, hidden_dim)
         ));
         precision_net = register_module("precision_net", torch::nn::Sequential(
-            torch::nn::Linear(hidden_dim * 2 + 6, 128),
+            torch::nn::Linear(hidden_dim * 2 + 1, 128),
             torch::nn::SiLU(),
             torch::nn::Linear(128, hidden_dim),
             torch::nn::Sigmoid()
@@ -795,20 +795,9 @@ struct PrecisionWeightedLPERImpl : torch::nn::Module {
         auto h1_pred = topdown_pred_net->forward(h1_shifted);
         auto e1_raw = h_s1 - h1_pred;
 
-        // Expanded 6-variable homeostatic allostatic tensor
-        torch::Tensor u_expanded;
-        if (u_t.dim() == 2) {
-            u_expanded = u_t.unsqueeze(1).expand({batch_size, chunk_len, 6});
-        } else {
-            u_expanded = u_t.view({1, 1, 6}).expand({batch_size, chunk_len, 6});
-        }
-
-        auto prec_in = torch::cat({h_s1, h1_pred, u_expanded}, -1);
-        
-        // Allostatic precision scaling: NA enhances signal sharpness, Curiosity boosts novelty gain
-        auto na_gain = 1.0f + 1.5f * u_expanded.slice(2, 4, 5);
-        auto curiosity_gain = 1.0f + 0.8f * u_expanded.slice(2, 0, 1);
-        auto pi_t = 2.0f * precision_net->forward(prec_in) * na_gain * curiosity_gain;
+        auto na_level = u_t.slice(1, 4, 5).unsqueeze(1).expand({batch_size, chunk_len, 1});
+        auto prec_in = torch::cat({h_s1, h1_pred, na_level}, -1);
+        auto pi_t = 2.0f * precision_net->forward(prec_in);
 
         auto e1_weighted = pi_t * e1_raw;
         return std::make_tuple(e1_weighted, h_s1.slice(1, -1).detach(), pi_t.mean());
