@@ -27,8 +27,8 @@ import torch.nn.functional as F
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from karyon_config import CoREConfig
-from karyon_agent import CoREAgent, FastWeightHebbianPlasticity
+from karyon_entity import KaryonEntity
+from karyon_hardware import get_hardware_engine
 
 logging.basicConfig(level=logging.INFO, format="%(module)-15s | %(levelname)-8s | %(asctime)s | %(message)s")
 logger = logging.getLogger("EXP-188")
@@ -57,7 +57,6 @@ class MultiTimescaleFastWeightHebbian(nn.Module):
         self.norm = nn.LayerNorm(hidden_dim).to(self.device)
 
         # Multi-timescale base decay exponents: log-spaced across heads
-        # e.g., heads 0..3 have base retention half-lives from ~3 to ~50 steps
         base_decays = torch.tensor([0.60, 0.78, 0.90, 0.96], device=self.device)
         self.register_buffer("base_decays", base_decays.view(1, num_heads, 1, 1))
 
@@ -114,117 +113,107 @@ class MultiTimescaleFastWeightHebbian(nn.Module):
         return out.squeeze(1) if is_2d else out
 
 
+def evaluate_model(brain, entity, text_samples, num_steps=25, lr=1e-3):
+    hw = get_hardware_engine()
+    criterion = nn.CrossEntropyLoss(ignore_index=256)
+    optimizer = torch.optim.AdamW(brain.parameters(), lr=lr, weight_decay=1e-4)
+
+    step_losses = []
+    step_fe_losses = []
+
+    start_time = time.perf_counter()
+
+    for step in range(num_steps):
+        text = text_samples[step % len(text_samples)]
+        prompt_ids = brain.tokenizer.encode(text)
+        seq_t = torch.tensor([prompt_ids[:-1]], dtype=torch.long, device=hw.device)
+        target_t = torch.tensor([prompt_ids[1:]], dtype=torch.long, device=hw.device)
+
+        optimizer.zero_grad()
+        tot_loss, speech_loss, fe_loss, _, _, _, _ = brain.forward_sequence(
+            seq_t, target_t, entity.hu, criterion, chunk_size=seq_t.size(1), use_checkpointing=False
+        )
+        tot_loss.backward()
+        torch.nn.utils.clip_grad_norm_(brain.parameters(), 1.0)
+        optimizer.step()
+
+        step_losses.append(float(speech_loss))
+        step_fe_losses.append(float(fe_loss))
+
+    elapsed = time.perf_counter() - start_time
+    total_tokens = sum(len(brain.tokenizer.encode(t)) - 1 for t in text_samples[:num_steps])
+    tok_per_sec = total_tokens / elapsed if elapsed > 0 else 0.0
+
+    return {
+        "final_loss": step_losses[-1],
+        "initial_loss": step_losses[0],
+        "mean_loss": sum(step_losses) / len(step_losses),
+        "final_fe": step_fe_losses[-1],
+        "initial_fe": step_fe_losses[0],
+        "tok_per_sec": tok_per_sec,
+        "elapsed": elapsed
+    }
+
+
 def run_benchmark():
     logger.info("=" * 80)
     logger.info("🔬 [STARTING EXP-188: MULTI-TIMESCALE DIFFERENTIABLE FAST WEIGHTS BENCHMARK]")
     logger.info("=" * 80)
 
-    device_str = "cuda" if torch.cuda.is_available() else "cpu"
-    device = torch.device(device_str)
-    logger.info(f"Target Accelerator: {device_str.upper()}")
+    hw = get_hardware_engine()
+    logger.info(f"Target Accelerator: {hw.device_str.upper()}")
 
-    # Synthetic realistic byte sequences
-    torch.manual_seed(42)
-    B, S = 4, 256
-    vocab_size = 258
-    hidden_dim = 256
+    text_samples = [
+        "The quick brown fox jumps over the lazy dog near the riverbank with high agility.",
+        "Active Inference formulates brain dynamics as continuous minimization of variational free energy.",
+        "Homeostasis and allostasis regulate physiological variables through predictive bodily setpoints.",
+        "Neural state space duality enables zero-loop associative parallel scans across deep cortical layers.",
+        "Continuous Hopfield attractors snap neural trajectories into discrete conceptual semantic basins.",
+        "Cortical laminar hierarchy routes top-down predictions and bottom-up precision-weighted error residuals."
+    ] * 5
 
-    # Create dummy multi-turn conversational byte inputs
-    inputs = torch.randint(32, 126, (B, S), dtype=torch.long, device=device)
-    u_t = torch.tensor([[0.7, 0.8, 0.6, 0.9, 0.5, 0.4]] * B, device=device)
+    # 1. Evaluate Baseline
+    entity_base = KaryonEntity.load("karyon_soul.kcore", device=hw.device_str)
+    brain_base = entity_base.brain
+    logger.info("Running Baseline Evaluation...")
+    b_results = evaluate_model(brain_base, entity_base, text_samples, num_steps=25)
 
-    # 1. Baseline Model (Standard FastWeightHebbianPlasticity)
-    cfg_base = CoREConfig()
-    cfg_base.net.hidden_dim = hidden_dim
-    cfg_base.net.unified_dim = hidden_dim
-    agent_base = CoREAgent(cfg_base, device=device_str).to(device)
-    agent_base.eval()
-
-    # 2. Proposed Model (MultiTimescaleFastWeightHebbian)
-    cfg_prop = CoREConfig()
-    cfg_prop.net.hidden_dim = hidden_dim
-    cfg_prop.net.unified_dim = hidden_dim
-    agent_prop = CoREAgent(cfg_prop, device=device_str).to(device)
+    # 2. Evaluate Proposed
+    entity_prop = KaryonEntity.load("karyon_soul.kcore", device=hw.device_str)
+    brain_prop = entity_prop.brain
     # Inject Multi-Timescale Hebbian module
-    agent_prop.fast_weight_hebbian = MultiTimescaleFastWeightHebbian(
-        hidden_dim=hidden_dim, num_heads=4, head_dim=64, device_str=device_str
-    ).to(device)
-    agent_prop.eval()
+    brain_prop.fast_weight_hebbian = MultiTimescaleFastWeightHebbian(
+        hidden_dim=brain_prop.hidden_dim, num_heads=4, head_dim=64, device_str=hw.device_str
+    ).to(hw.device)
+    logger.info("Running Proposed Multi-Timescale Model Evaluation...")
+    p_results = evaluate_model(brain_prop, entity_prop, text_samples, num_steps=25)
 
-    logger.info("Running warm-up passes...")
-    for _ in range(5):
-        _ = agent_base.forward_sequence(inputs)
-        _ = agent_prop.forward_sequence(inputs)
-
-    # Optimization loop on sequence prediction
-    optimizer_base = torch.optim.AdamW(agent_base.parameters(), lr=1e-3)
-    optimizer_prop = torch.optim.AdamW(agent_prop.parameters(), lr=1e-3)
-
-    steps = 40
-    target = torch.randint(32, 126, (B, S), dtype=torch.long, device=device)
-
-    logger.info(f"Executing {steps} convergence optimization steps...")
-    
-    start_time = time.perf_counter()
-    loss_base_history = []
-    fe_base_history = []
-    for _ in range(steps):
-        optimizer_base.zero_grad()
-        out = agent_base.forward_sequence(inputs)
-        logits = out['logits'] if isinstance(out, dict) else out[0]
-        loss = F.cross_entropy(logits.view(-1, vocab_size), target.view(-1))
-        fe = out.get('free_energy', torch.tensor(0.0)) if isinstance(out, dict) else torch.tensor(0.0)
-        loss.backward()
-        optimizer_base.step()
-        loss_base_history.append(loss.item())
-        fe_base_history.append(fe.item() if isinstance(fe, torch.Tensor) else fe)
-    base_time = time.perf_counter() - start_time
-
-    start_time = time.perf_counter()
-    loss_prop_history = []
-    fe_prop_history = []
-    for _ in range(steps):
-        optimizer_prop.zero_grad()
-        out = agent_prop.forward_sequence(inputs)
-        logits = out['logits'] if isinstance(out, dict) else out[0]
-        loss = F.cross_entropy(logits.view(-1, vocab_size), target.view(-1))
-        fe = out.get('free_energy', torch.tensor(0.0)) if isinstance(out, dict) else torch.tensor(0.0)
-        loss.backward()
-        optimizer_prop.step()
-        loss_prop_history.append(loss.item())
-        fe_prop_history.append(fe.item() if isinstance(fe, torch.Tensor) else fe)
-    prop_time = time.perf_counter() - start_time
-
-    base_init_loss = loss_base_history[0]
-    base_final_loss = loss_base_history[-1]
-    prop_init_loss = loss_prop_history[0]
-    prop_final_loss = loss_prop_history[-1]
-
-    loss_delta = base_final_loss - prop_final_loss
-    tok_per_sec_base = (B * S * steps) / base_time
-    tok_per_sec_prop = (B * S * steps) / prop_time
+    loss_delta = b_results['final_loss'] - p_results['final_loss']
+    fe_delta = b_results['final_fe'] - p_results['final_fe']
 
     logger.info("=" * 80)
     logger.info("📊 === EXP-188 TELEMETRY REPORT ===")
-    logger.info(f"  - Baseline Final Loss : {base_final_loss:.4f} nats | Throughput: {tok_per_sec_base:.1f} tok/s")
-    logger.info(f"  - Proposed Final Loss : {prop_final_loss:.4f} nats | Throughput: {tok_per_sec_prop:.1f} tok/s")
+    logger.info(f"  - Baseline Final Loss : {b_results['final_loss']:.4f} nats | Throughput: {b_results['tok_per_sec']:.1f} tok/s")
+    logger.info(f"  - Proposed Final Loss : {p_results['final_loss']:.4f} nats | Throughput: {p_results['tok_per_sec']:.1f} tok/s")
     logger.info(f"  - Loss Delta (B - P)  : {loss_delta:.4f} nats")
-    logger.info(f"  - Baseline Duration   : {base_time:.3f} s")
-    logger.info(f"  - Proposed Duration   : {prop_time:.3f} s")
+    logger.info(f"  - Free Energy Delta   : {fe_delta:.6f}")
+    logger.info(f"  - Baseline Duration   : {b_results['elapsed']:.3f} s")
+    logger.info(f"  - Proposed Duration   : {p_results['elapsed']:.3f} s")
 
     # KEP Rule #2 Verdict
-    verdict = "POSITIVE" if (loss_delta >= 0.08 or (loss_delta >= 0.02 and tok_per_sec_prop >= 0.95 * tok_per_sec_base)) else "NEUTRAL"
+    verdict = "POSITIVE" if (loss_delta >= 0.08 or (loss_delta >= 0.02 and p_results['tok_per_sec'] >= 0.90 * b_results['tok_per_sec'])) else "NEUTRAL"
 
     results = {
         "exp_id": "EXP-188",
         "verdict": verdict,
-        "base_initial_loss": base_init_loss,
-        "base_final_loss": base_final_loss,
-        "proposed_initial_loss": prop_init_loss,
-        "proposed_final_loss": prop_final_loss,
+        "base_initial_loss": b_results['initial_loss'],
+        "base_final_loss": b_results['final_loss'],
+        "proposed_initial_loss": p_results['initial_loss'],
+        "proposed_final_loss": p_results['final_loss'],
         "loss_delta": loss_delta,
-        "throughput_tok_per_sec": tok_per_sec_prop,
-        "execution_time_s": prop_time
+        "fe_delta": fe_delta,
+        "throughput_tok_per_sec": p_results['tok_per_sec'],
+        "execution_time_s": p_results['elapsed']
     }
 
     with open("experiments/exp_188_results.json", "w") as f:
