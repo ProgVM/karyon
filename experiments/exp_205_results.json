@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-205",
+  "verdict": "POSITIVE",
+  "base_initial_loss": 6.422325611114502,
+  "base_final_loss": 3.3487977981567383,
+  "proposed_initial_loss": 6.597742080688477,
+  "proposed_final_loss": 2.9359183311462402,
+  "loss_delta": 0.41287946701049805,
+  "fe_delta": 0.3293575346469879,
+  "throughput_tok_per_sec": 1685.8595176110757,
+  "execution_time_s": 1.4123359479999635
+}

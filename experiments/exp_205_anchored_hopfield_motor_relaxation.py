@@ -45,7 +45,6 @@ class AnchoredAllostaticHopfieldMotorRelaxation(nn.Module):
         # Project embedding weights [V, text_dim] to hidden_dim if needed, or sample V centroids
         V, text_dim = embed_weights.shape
         if text_dim != hidden_dim:
-            # Linear projection from text_dim to hidden_dim for basin initialization
             proj = nn.Linear(text_dim, hidden_dim, bias=False).to(self.device)
             nn.init.orthogonal_(proj.weight)
             anchored_basins = proj(embed_weights.detach().to(self.device))
@@ -163,7 +162,7 @@ def run_benchmark():
     entity_prop = KaryonEntity.load("karyon_soul.kcore", device=hw.device_str)
     brain_prop = entity_prop.brain
     
-    embed_w = brain_prop.embed.embed.weight.data # [V, text_dim]
+    embed_w = brain_prop.pos_embeddings.byte_embed.weight.data # [V, text_dim]
     brain_prop.anchored_hopfield_motor_relaxation = AnchoredAllostaticHopfieldMotorRelaxation(
         hidden_dim=brain_prop.hidden_dim, embed_weights=embed_w, device_str=hw.device_str
     ).to(hw.device)
