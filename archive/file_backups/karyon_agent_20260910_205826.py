@@ -665,79 +665,67 @@ class ThalamocorticalGate(nn.Module):
 
 class FastWeightHebbianPlasticity(nn.Module):
     """
-    Multi-Timescale Differentiable Fast-Weight Plasticity (EXP-163 / EXP-180 / EXP-188 Validated 🟢).
-    100% differentiable, multi-timescale decay matrix across distinct functional heads (KEP Principle 1, 7, 8, 9 & 14 Compliant).
-    - Head 0 (Phasic): Rapid decay for local syllabic/morphemic boundings (lambda ~ 0.50 - 0.75).
-    - Head 1-2 (Mesic): Intermediate context bridging.
-    - Head 3 (Tonic): Sustained retention for working memory and discourse entities (lambda ~ 0.88 - 0.98).
+    Synaptic Fast-Weight Programmers & Differentiable Allostatic Plasticity (EXP-163 / EXP-180 Validated 🟢).
+    100% differentiable, zero-sync tensorized decay matrix (KEP Principle 1, 7, 9 & 14 Compliant).
     """
-    def __init__(self, hidden_dim: int, num_heads: int = 4, head_dim: int = 64, device_str: str = 'cpu'):
+    def __init__(self, hidden_dim: int, key_dim: int = 256, value_dim: int = 256, device_str: str = 'cpu'):
         super().__init__()
         self.device = torch.device('cuda' if 'cuda' in device_str else 'cpu')
         self.hidden_dim = hidden_dim
-        self.num_heads = num_heads
-        self.head_dim = head_dim
-        self.total_dim = num_heads * head_dim
-
-        self.k_proj = nn.Linear(hidden_dim, self.total_dim, bias=False).to(self.device)
-        self.v_proj = nn.Linear(hidden_dim, self.total_dim, bias=False).to(self.device)
-        self.q_proj = nn.Linear(hidden_dim, self.total_dim, bias=False).to(self.device)
-        self.out_proj = nn.Linear(self.total_dim, hidden_dim, bias=False).to(self.device)
-        self.norm = nn.LayerNorm(hidden_dim).to(self.device)
-
-        base_decays = torch.tensor([0.60, 0.78, 0.90, 0.96], device=self.device)
-        self.register_buffer("base_decays", base_decays.view(1, num_heads, 1, 1))
+        self.key_dim = key_dim
+        self.value_dim = value_dim
+        
+        self.k_proj = nn.Linear(hidden_dim, key_dim, bias=False).to(self.device)
+        self.v_proj = nn.Linear(hidden_dim, value_dim, bias=False).to(self.device)
+        self.q_proj = nn.Linear(hidden_dim, key_dim, bias=False).to(self.device)
+        self.out_proj = nn.Linear(value_dim, hidden_dim, bias=False).to(self.device)
 
     def forward(self, h_seq: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
         is_2d = (h_seq.dim() == 2)
         if is_2d:
             h_seq = h_seq.unsqueeze(1)
-
+            
         B, S, D = h_seq.shape
-        K = self.k_proj(h_seq).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)  # [B, H, S, D_h]
-        V = self.v_proj(h_seq).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)  # [B, H, S, D_h]
-        Q = self.q_proj(h_seq).view(B, S, self.num_heads, self.head_dim).transpose(1, 2)  # [B, H, S, D_h]
-
+        K = self.k_proj(h_seq)
+        V = self.v_proj(h_seq)
+        Q = self.q_proj(h_seq)
+        
         # Dynamic Allostatic Forces (KEP Principle 14)
         if u_t.dim() == 2:
-            curiosity_t = u_t[:, 0:1].view(B, 1, 1, 1) if u_t.size(0) == B else u_t[0, 0].view(1, 1, 1, 1)
-            stability_t = u_t[:, 2:3].view(B, 1, 1, 1) if u_t.size(0) == B else u_t[0, 2].view(1, 1, 1, 1)
-            na_t = u_t[:, 4:5].view(B, 1, 1, 1) if u_t.size(0) == B else u_t[0, 4].view(1, 1, 1, 1)
-            da_t = u_t[:, 5:6].view(B, 1, 1, 1) if u_t.size(0) == B else u_t[0, 5].view(1, 1, 1, 1)
+            curiosity_t = u_t[:, 0:1].unsqueeze(1) if u_t.size(0) == B else u_t[0, 0].view(1, 1, 1)
+            stability_t = u_t[:, 2:3].unsqueeze(1) if u_t.size(0) == B else u_t[0, 2].view(1, 1, 1)
+            na_t = u_t[:, 4:5].unsqueeze(1) if u_t.size(0) == B else u_t[0, 4].view(1, 1, 1)
+            da_t = u_t[:, 5:6].unsqueeze(1) if u_t.size(0) == B else u_t[0, 5].view(1, 1, 1)
         else:
-            curiosity_t = u_t[..., 0:1].view(1, 1, 1, 1)
-            stability_t = u_t[..., 2:3].view(1, 1, 1, 1)
-            na_t = u_t[..., 4:5].view(1, 1, 1, 1)
-            da_t = u_t[..., 5:6].view(1, 1, 1, 1)
+            curiosity_t = u_t[..., 0:1]
+            stability_t = u_t[..., 2:3]
+            na_t = u_t[..., 4:5]
+            da_t = u_t[..., 5:6]
 
-        # Dynamic allostatic modulation of per-head decay
-        head_decays = torch.clamp(
-            self.base_decays + 0.05 * stability_t - 0.04 * curiosity_t + 0.03 * da_t,
-            0.40, 0.99
-        )
-
-        eta = 0.10 * (1.0 + 1.8 * na_t + 1.0 * curiosity_t)
-
+        # Dynamic Decay & Write Gain (100% differentiable, Zero .item() sync stalls)
+        lambda_decay = torch.clamp(0.85 + 0.12 * stability_t - 0.08 * curiosity_t + 0.05 * da_t, 0.70, 0.98)
+        eta = 0.10 * (1.0 + 2.0 * na_t + 1.2 * curiosity_t)
+        
         if S > 1:
             idx = torch.arange(S, device=h_seq.device)
-            decay_powers = (idx.unsqueeze(1) - idx.unsqueeze(0)).view(1, 1, S, S)
+            decay_powers = (idx.unsqueeze(1) - idx.unsqueeze(0)).unsqueeze(0)  # [1, S, S]
             decay_powers = torch.clamp(decay_powers, min=0.0)
-
-            log_lambda = torch.log(head_decays)
-            decay_mask = torch.exp(decay_powers * log_lambda)
-            causal_mask = torch.tril(torch.ones(S, S, device=h_seq.device)).view(1, 1, S, S)
-            causal_decay_mask = decay_mask * causal_mask
-
-            attn_sim = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(self.head_dim)
-            attn_decayed = torch.clamp(attn_sim * causal_decay_mask * eta, min=-10.0, max=10.0)
-            y_heads = torch.matmul(attn_decayed, V)
+            
+            # Differentiable per-element exponentiation: lambda^power = exp(power * log(lambda))
+            log_lambda = torch.log(torch.clamp(lambda_decay, min=1e-5, max=0.999))  # [B, 1, 1] or [B, S, 1]
+            decay_mask = torch.exp(decay_powers * log_lambda)  # [B, S, S]
+            causal_decay_mask = decay_mask * torch.tril(torch.ones(S, S, device=h_seq.device)).unsqueeze(0)
+            
+            attn_sim = torch.bmm(Q, K.transpose(1, 2)) / math.sqrt(self.key_dim)
+            attn_decayed = attn_sim * causal_decay_mask * eta
+            attn_decayed = torch.clamp(attn_decayed, min=-10.0, max=10.0)
+            y_fast = torch.bmm(attn_decayed, V)
         else:
-            attn_sim = torch.matmul(Q, K.transpose(-1, -2)) / math.sqrt(self.head_dim)
+            attn_sim = torch.bmm(Q, K.transpose(1, 2)) / math.sqrt(self.key_dim)
             attn_decayed = torch.clamp(attn_sim * eta, min=-10.0, max=10.0)
-            y_heads = torch.matmul(attn_decayed, V)
-
-        y_flat = y_heads.transpose(1, 2).contiguous().view(B, S, self.total_dim)
-        out = self.norm(self.out_proj(y_flat) + h_seq)
+            y_fast = torch.bmm(attn_decayed, V)
+            
+        out = self.out_proj(y_fast)
         return out.squeeze(1) if is_2d else out
 
 
