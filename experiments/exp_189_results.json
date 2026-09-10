@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-189",
+  "verdict": "POSITIVE",
+  "analytical_uncomp_delta": 0.4797945022583008,
+  "analytical_comp_delta": 4.76837158203125e-07,
+  "full_forward_logits_delta": 0.10193371772766113,
+  "speech_loss_pre": 6.419128894805908,
+  "speech_loss_post": 6.254667282104492,
+  "speech_loss_diff": 0.16446161270141602,
+  "fe_diff": 0.007562994956970215,
+  "morph_duration_ms": 730.7351669996933
+}
