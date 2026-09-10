@@ -170,18 +170,13 @@ class Net2NetMorphogenesisEngine:
 
     @staticmethod
     def expand_layernorm(layer: nn.LayerNorm, new_dim: int, device: str = "cuda") -> nn.LayerNorm:
-        """
-        Net2Net expansion for LayerNorm layers with variance compensation (EXP-189 Validated 🟢).
-        Scales affine weights by sqrt(new_dim / old_dim) to counteract zero-padding variance dilution.
-        """
+        """Net2Net expansion for LayerNorm layers."""
         old_dim = layer.normalized_shape[0]
-        new_norm = nn.LayerNorm(new_dim, elementwise_affine=layer.elementwise_affine, eps=layer.eps).to(device)
+        new_norm = nn.LayerNorm(new_dim, elementwise_affine=layer.elementwise_affine).to(device)
         if layer.elementwise_affine:
             with torch.no_grad():
-                # Variance compensation factor for zero-padded expansions
-                scale_factor = math.sqrt(float(new_dim) / float(old_dim))
                 new_norm.weight.fill_(1.0)
-                new_norm.weight[:old_dim].copy_(layer.weight * scale_factor)
+                new_norm.weight[:old_dim].copy_(layer.weight)
                 new_norm.bias.zero_()
                 new_norm.bias[:old_dim].copy_(layer.bias)
         return new_norm
