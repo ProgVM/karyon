@@ -11,11 +11,13 @@ routing gains are dynamically scaled by a non-linear function of Somatic Energy 
 Noradrenaline (u_t[4]), and Variational Free Energy (F_t)—will optimize multimodal integration,
 prevent sensory overload, and accelerate loss convergence.
 
-Refined Approach:
-The initial run yielded a NEUTRAL verdict because the text routing gain was mapped to a
-wide range (0.5 to 2.0), which disrupted the pre-trained embedding scale. We refine the
-gain mapping to a narrower, biophysically realistic range (0.9 to 1.1) to preserve the
-pre-trained representation scale while allowing subtle allostatic modulation.
+Refined Approach (Identity-Preserving Residual Routing):
+The previous runs yielded NEUTRAL because multiplying the input embeddings directly by a
+dynamic gain disrupted the pre-trained embedding scale. We refine the mechanism to use
+an identity-preserving residual routing formulation:
+  y = x + tanh(allostatic_gain) * projection(x)
+where allostatic_gain is dynamically estimated from u_t and F_t, and initialized to 0.0
+via zero-weights to guarantee strict zero-shock function identity at birth (Principle 15).
 """
 
 import sys
@@ -47,12 +49,16 @@ class AllostaticMultimodalGateway(nn.Module):
         self.unified_dim = unified_dim
         self.hidden_dim = hidden_dim
         
+        # Identity-preserving projection
+        self.proj = nn.Linear(unified_dim, unified_dim, bias=False).to(self.device)
+        nn.init.zeros_(self.proj.weight) # Zero-initialize to guarantee identity at birth
+        
         # Non-linear channel routing gain estimator
         self.routing_net = nn.Sequential(
             nn.Linear(6 + 1, 32),
             nn.SiLU(),
-            nn.Linear(32, 4), # Outputs: [text_gain, vision_gain, audio_gain, cybernetic_gain]
-            nn.Sigmoid()
+            nn.Linear(32, 1),
+            nn.Tanh()
         ).to(self.device)
 
     def forward(self, text_in: torch.Tensor, u_t: torch.Tensor, fe_loss: torch.Tensor) -> torch.Tensor:
@@ -68,11 +74,10 @@ class AllostaticMultimodalGateway(nn.Module):
         fe_expanded = fe_normalized.view(1, 1, 1).expand(B, S, -1)
         
         scaler_input = torch.cat([u_expanded, fe_expanded], dim=-1)
-        gains = self.routing_net(scaler_input) # Shape: [B, S, 4]
+        gain = self.routing_net(scaler_input) # Shape: [B, S, 1]
         
-        # Apply allostatically-modulated dynamic routing gains (narrower range to preserve scale)
-        text_gain = 0.9 + 0.2 * gains[..., 0:1]
-        return text_in * text_gain
+        # Identity-preserving residual routing
+        return text_in + gain * self.proj(text_in)
 
 
 def evaluate_model(brain, entity, text_samples, num_steps=25, lr=1e-3):
