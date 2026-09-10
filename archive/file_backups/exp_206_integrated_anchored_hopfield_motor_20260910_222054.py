@@ -57,13 +57,16 @@ def run_experiment():
     batch_size = 4
     seq_len = 128
     dummy_input = torch.randint(0, 256, (batch_size, seq_len), dtype=torch.long, device=device)
-    dummy_target = torch.randint(0, 256, (batch_size, seq_len), dtype=torch.long, device=device)
-    criterion = nn.CrossEntropyLoss()
 
     # Baseline evaluation
     with torch.no_grad():
-        out_base = model.forward_sequence(dummy_input, dummy_target, hu, criterion, episodic_mem)
-        loss_base = out_base[0].item()
+        out_base = model.forward_sequence(dummy_input)
+        loss_base = out_base.get('loss', None)
+        if loss_base is None:
+            logits = out_base['logits']
+            loss_base = F.cross_entropy(logits.view(-1, logits.size(-1)), dummy_input.view(-1)).item()
+        else:
+            loss_base = loss_base.item()
 
     logger.info(f"Baseline Loss: {loss_base:.4f}")
 
@@ -86,8 +89,13 @@ def run_experiment():
 
     with torch.no_grad():
         for _ in range(iterations):
-            out_prop = model.forward_sequence(dummy_input, dummy_target, hu, criterion, episodic_mem)
-            l = out_prop[0].item()
+            out_prop = model.forward_sequence(dummy_input)
+            l = out_prop.get('loss', None)
+            if l is None:
+                logits = out_prop['logits']
+                l = F.cross_entropy(logits.view(-1, logits.size(-1)), dummy_input.view(-1)).item()
+            else:
+                l = l.item()
             losses.append(l)
 
     elapsed = time.time() - start_time
