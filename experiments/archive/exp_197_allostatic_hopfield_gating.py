@@ -10,6 +10,14 @@ relaxation mechanism—where the attractor activation and relaxation dynamics ar
 modulated by a non-linear function of Somatic Energy (u_t[1]), Noradrenaline (u_t[4]), and
 Variational Free Energy (F_t)—will optimize attractor basin stability, prevent semantic drift,
 and accelerate loss convergence.
+
+Refined Approach (Identity-Preserving Residual Routing):
+The initial run yielded NEUTRAL because multiplying the state directly by a dynamic gain
+disrupted the pre-trained representation scale. We refine the mechanism to use an
+identity-preserving residual routing formulation:
+  y = x + tanh(allostatic_gain) * projection(x)
+where allostatic_gain is dynamically estimated from u_t and F_t, and initialized to 0.0
+via zero-weights to guarantee strict zero-shock function identity at birth (Principle 15).
 """
 
 import sys
@@ -40,12 +48,16 @@ class AllostaticHopfieldGating(nn.Module):
         self.device = torch.device('cuda' if 'cuda' in device_str else 'cpu')
         self.hidden_dim = hidden_dim
         
+        # Identity-preserving projection
+        self.proj = nn.Linear(hidden_dim, hidden_dim, bias=False).to(self.device)
+        nn.init.zeros_(self.proj.weight) # Zero-initialize to guarantee identity at birth
+        
         # Non-linear gating gain estimator
         self.gating_net = nn.Sequential(
             nn.Linear(6 + 1, 32),
             nn.SiLU(),
             nn.Linear(32, 1),
-            nn.Sigmoid()
+            nn.Tanh()
         ).to(self.device)
 
     def forward(self, h_state: torch.Tensor, u_t: torch.Tensor, fe_loss: torch.Tensor) -> torch.Tensor:
@@ -61,11 +73,10 @@ class AllostaticHopfieldGating(nn.Module):
         fe_expanded = fe_normalized.view(1, 1, 1).expand(B, S, -1)
         
         scaler_input = torch.cat([u_expanded, fe_expanded], dim=-1)
-        gating_scale = self.gating_net(scaler_input) # Shape: [B, S, 1]
+        gain = self.gating_net(scaler_input) # Shape: [B, S, 1]
         
-        # Apply allostatically-modulated dynamic gating scale (0.5 to 1.5)
-        dynamic_scale = 0.5 + 1.0 * gating_scale
-        return h_state * dynamic_scale
+        # Identity-preserving residual routing
+        return h_state + gain * self.proj(h_state)
 
 
 def evaluate_model(brain, entity, text_samples, num_steps=25, lr=1e-3):
