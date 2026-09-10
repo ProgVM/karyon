@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-207",
+  "verdict": "NEUTRAL",
+  "base_initial_loss": 6.195953845977783,
+  "base_final_loss": 0.47759848833084106,
+  "proposed_initial_loss": 6.221859931945801,
+  "proposed_final_loss": 0.8678023815155029,
+  "loss_delta": -0.39020389318466187,
+  "fe_delta": 0.11242818832397461,
+  "throughput_tok_per_sec": 1695.1897700202576,
+  "execution_time_s": 1.4045625109993125
+}
