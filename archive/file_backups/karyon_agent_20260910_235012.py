@@ -340,10 +340,10 @@ class PrecisionWeightedTopDownGenerator(nn.Module):
 # =============================================================================
 class LocusCoeruleusGainController(nn.Module):
     """
-    Biophysical Locus Coeruleus (LC-NE) Neural Gain & Dynamic Homeostatic Modulator (EXP-114 & EXP-215 Validated 🟢).
+    Biophysical Locus Coeruleus (LC-NE) Neural Gain & Dynamic Homeostatic Modulator.
     Implements continuous tonic and phasic noradrenergic gain (Aston-Jones & Cohen 2005)
     and unexpected uncertainty adaptation (Yu & Dayan 2005).
-    Dynamically modulates phasic arousal using the full 6D allostatic state u_t (EXP-215).
+    Replaces static discrete boolean thresholds with running statistics and smooth sigmoidal gating.
     """
     def __init__(self, device='cpu'):
         super().__init__()
@@ -355,23 +355,12 @@ class LocusCoeruleusGainController(nn.Module):
         self.register_buffer("na_running_var", torch.tensor(0.01, device=self.device))
         self.register_buffer("momentum", torch.tensor(0.05, device=self.device))
 
-        # Allostatic 6D Modulator Net initialized to ZERO (KEP Principle 15 Compliant)
-        self.allo_modulator = nn.Sequential(
-            nn.Linear(6, 16),
-            nn.SiLU(),
-            nn.Linear(16, 1),
-            nn.Tanh()
-        ).to(self.device)
-
-        nn.init.zeros_(self.allo_modulator[0].weight)
-        nn.init.zeros_(self.allo_modulator[0].bias)
-        nn.init.zeros_(self.allo_modulator[2].weight)
-        nn.init.zeros_(self.allo_modulator[2].bias)
-
-    def forward(self, na_t: torch.Tensor, u_t: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, na_t: torch.Tensor) -> torch.Tensor:
         """
-        Computes continuous neural gain gamma in (0, 1) based on relative surprise and 6D allostatic state u_t.
+        Computes continuous neural gain gamma in (0, 1) based on relative surprise.
+        gamma = sigma(gain_scale * (NA_t - mu_NA) / (sigma_NA + eps) + gain_bias)
         """
+        # Auto-sanitize NaN/Inf buffers to prevent cascading numerical failures
         if torch.isnan(self.na_running_mean) or torch.isinf(self.na_running_mean):
             self.na_running_mean.fill_(0.10)
         if torch.isnan(self.na_running_var) or torch.isinf(self.na_running_var) or self.na_running_var < 1e-5:
@@ -386,21 +375,8 @@ class LocusCoeruleusGainController(nn.Module):
                 
         sigma_na = torch.sqrt(torch.clamp(self.na_running_var, min=1e-5))
         z_score = (na_t - self.na_running_mean) / (sigma_na + 1e-5)
-        base_gain = torch.sigmoid(self.gain_scale * z_score + self.gain_bias)
-
-        if u_t is not None:
-            if u_t.dim() == 1:
-                u_in = u_t.unsqueeze(0)
-            else:
-                u_in = u_t
-            if u_in.size(0) != base_gain.size(0):
-                u_in = u_in[0:1].expand(base_gain.size(0), -1)
-
-            allo_factor = 1.0 + 0.20 * self.allo_modulator(u_in)
-            phasic_gain = torch.clamp(base_gain * allo_factor, 0.0, 1.0)
-        else:
-            phasic_gain = base_gain
-
+        
+        phasic_gain = torch.sigmoid(self.gain_scale * z_score + self.gain_bias)
         return phasic_gain
 
 
