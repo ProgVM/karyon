@@ -208,97 +208,14 @@ class DynamicSensoryGateway(nn.Module):
 class AffectiveCoreUnit(nn.Module):
     """
     Computes Russell's Affective Circumplex (Valence, Arousal, Dominance)
-    and Panksepp Primary Affective Drives (SEEKING, FEAR, RAGE, PANIC) (EXP-216 Validated 🟢).
-    Operates strictly on GPU tensors without GPU-CPU sync stalls, using smooth softplus operations
-    and zero-initialized Net2Net allostatic modulation.
+    and Panksepp Primary Affective Drives (SEEKING, FEAR, RAGE, PANIC).
     """
     def __init__(self, device_str='cpu'):
         super().__init__()
         dev_clean = 'xla' if str(device_str).startswith('tpu') or str(device_str) == 'xla:0' else device_str
         self.device = torch.device(dev_clean)
 
-        # Net2Net Allostatic Neural Affective Modulator (KEP Principle 15 Compliant)
-        self.allo_affect_proj = nn.Sequential(
-            nn.Linear(6, 16),
-            nn.SiLU(),
-            nn.Linear(16, 4), # 4 Panksepp drives
-            nn.Tanh()
-        ).to(self.device)
-
-        nn.init.zeros_(self.allo_affect_proj[0].weight)
-        nn.init.zeros_(self.allo_affect_proj[0].bias)
-        nn.init.zeros_(self.allo_affect_proj[2].weight)
-        nn.init.zeros_(self.allo_affect_proj[2].bias)
-
-    def compute_affective_state_tensor(
-        self,
-        u_t: torch.Tensor,
-        free_energy: torch.Tensor = None,
-        value_est: torch.Tensor = None
-    ) -> Dict[str, torch.Tensor]:
-        if u_t.dim() == 1:
-            u_t = u_t.unsqueeze(0)
-
-        curiosity = u_t[:, 0:1]
-        energy    = u_t[:, 1:2]
-        stability = u_t[:, 2:3]
-        health    = u_t[:, 3:4]
-        na        = u_t[:, 4:5]
-        da        = u_t[:, 5:6]
-
-        fe_t = free_energy if free_energy is not None else torch.tensor(0.0, device=self.device)
-        if not isinstance(fe_t, torch.Tensor):
-            fe_t = torch.tensor(fe_t, device=self.device)
-        if fe_t.dim() == 0:
-            fe_t = fe_t.unsqueeze(0).unsqueeze(0)
-        if fe_t.size(0) != u_t.size(0):
-            fe_t = fe_t.expand(u_t.size(0), -1)
-
-        val_t = value_est if value_est is not None else torch.tensor(0.0, device=self.device)
-        if not isinstance(val_t, torch.Tensor):
-            val_t = torch.tensor(val_t, device=self.device)
-        if val_t.dim() == 0:
-            val_t = val_t.unsqueeze(0).unsqueeze(0)
-        if val_t.size(0) != u_t.size(0):
-            val_t = val_t.expand(u_t.size(0), -1)
-
-        # Continuous Differentiable Russell Affective Coordinates
-        valence   = da - (1.0 - energy) - (1.0 - health)
-        arousal   = na + torch.clamp(fe_t, 0.0, 1.0)
-        dominance = stability + torch.clamp(val_t, -1.0, 1.0)
-
-        # Differentiable Panksepp Primary Drives via Softplus
-        seeking_base = F.softplus(curiosity + da - fe_t)
-        fear_base    = F.softplus(arousal * (1.0 - stability))
-        rage_base    = F.softplus((1.0 - energy) * (1.0 - dominance))
-        panic_base   = F.softplus((1.0 - health) * (1.0 - stability))
-
-        panksepp_base = torch.cat([seeking_base, fear_base, rage_base, panic_base], dim=-1)
-
-        # Net2Net Allostatic Neural Modulation (Identity at Birth t_0)
-        allo_factors = 1.0 + 0.20 * self.allo_affect_proj(u_t)
-        panksepp_modulated = panksepp_base * allo_factors
-
-        seeking_drive = panksepp_modulated[:, 0:1]
-        fear_drive    = panksepp_modulated[:, 1:2]
-        rage_drive    = panksepp_modulated[:, 2:3]
-        panic_drive   = panksepp_modulated[:, 3:4]
-
-        return {
-            "valence": valence.mean().item(),
-            "arousal": arousal.mean().item(),
-            "dominance": dominance.mean().item(),
-            "seeking_tensor": seeking_drive,
-            "panksepp": {
-                "SEEKING": seeking_drive.mean().item(),
-                "FEAR": fear_drive.mean().item(),
-                "RAGE": rage_drive.mean().item(),
-                "PANIC": panic_drive.mean().item()
-            }
-        }
-
     def compute_affective_state(self, u_t: torch.Tensor, free_energy: float = 0.0, value_est: float = 0.0) -> dict:
-        # Replicate old behavior exactly to maintain compatibility with baseline evaluation
         u_mean = u_t.mean(dim=0).cpu().tolist() if u_t.numel() > 0 else [0.5, 1.0, 1.0, 1.0, 0.0, 0.0]
         curiosity = u_mean[0] if len(u_mean) > 0 else 0.5
         energy    = u_mean[1] if len(u_mean) > 1 else 1.0
@@ -307,11 +224,16 @@ class AffectiveCoreUnit(nn.Module):
         na        = u_mean[4] if len(u_mean) > 4 else 0.0
         da        = u_mean[5] if len(u_mean) > 5 else 0.0
 
-        valence   = da - (1.0 - energy) - (1.0 - health)
-        arousal   = na + min(1.0, max(0.0, free_energy))
-        dominance = stability + max(-1.0, min(1.0, value_est))
+        fe_safe = free_energy if not math.isnan(free_energy) else 0.0
+        val_safe = value_est if not math.isnan(value_est) else 0.0
 
-        seeking_drive = max(0.0, curiosity + da - max(0.0, free_energy))
+        # Russell Affective Coordinates
+        valence   = da - (1.0 - energy) - (1.0 - health)
+        arousal   = na + min(1.0, max(0.0, fe_safe))
+        dominance = stability + max(-1.0, min(1.0, val_safe))
+
+        # Panksepp Primary Affective Drives
+        seeking_drive = max(0.0, curiosity + da - max(0.0, fe_safe))
         fear_drive    = max(0.0, arousal * (1.0 - stability))
         rage_drive    = max(0.0, (1.0 - energy) * (1.0 - dominance))
         panic_drive   = max(0.0, (1.0 - health) * (1.0 - stability))
