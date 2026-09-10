@@ -10,12 +10,6 @@ allostatically-modulated dynamic sensory gateway—where the projection weights 
 routing gains are dynamically scaled by a non-linear function of Somatic Energy (u_t[1]),
 Noradrenaline (u_t[4]), and Variational Free Energy (F_t)—will optimize multimodal integration,
 prevent sensory overload, and accelerate loss convergence.
-
-Refined Approach:
-The initial run yielded a NEUTRAL verdict because the text routing gain was mapped to a
-wide range (0.5 to 2.0), which disrupted the pre-trained embedding scale. We refine the
-gain mapping to a narrower, biophysically realistic range (0.9 to 1.1) to preserve the
-pre-trained representation scale while allowing subtle allostatic modulation.
 """
 
 import sys
@@ -70,8 +64,8 @@ class AllostaticMultimodalGateway(nn.Module):
         scaler_input = torch.cat([u_expanded, fe_expanded], dim=-1)
         gains = self.routing_net(scaler_input) # Shape: [B, S, 4]
         
-        # Apply allostatically-modulated dynamic routing gains (narrower range to preserve scale)
-        text_gain = 0.9 + 0.2 * gains[..., 0:1]
+        # Apply allostatically-modulated dynamic routing gains
+        text_gain = 0.5 + 1.5 * gains[..., 0:1]
         return text_in * text_gain
 
 
