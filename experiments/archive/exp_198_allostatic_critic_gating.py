@@ -10,6 +10,15 @@ allostatically-gated critic mechanism—where the value estimation and temporal-
 prediction dynamics are dynamically modulated by a non-linear function of Somatic Energy (u_t[1]),
 Noradrenaline (u_t[4]), and Variational Free Energy (F_t)—will optimize value estimation,
 prevent value overload, and accelerate loss convergence.
+
+Refined Approach (Identity-Preserving Residual Routing with Narrower Range):
+The previous run yielded NEUTRAL because multiplying the state directly by a dynamic gain
+disrupted the pre-trained representation scale. We refine the mechanism to use an
+identity-preserving residual routing formulation:
+  y = x + tanh(allostatic_gain) * projection(x)
+where allostatic_gain is dynamically estimated from u_t and F_t, and initialized to 0.0
+via zero-weights to guarantee strict zero-shock function identity at birth (Principle 15).
+We also narrow the range of allostatic modulation to preserve representation scale.
 """
 
 import sys
@@ -65,7 +74,7 @@ class AllostaticCriticGating(nn.Module):
         fe_expanded = fe_normalized.view(1, 1, 1).expand(B, S, -1)
         
         scaler_input = torch.cat([u_expanded, fe_expanded], dim=-1)
-        gain = self.gating_net(scaler_input) # Shape: [B, S, 1]
+        gain = self.gating_net(scaler_input) * 0.1 # Scale down to preserve representation scale
         
         # Identity-preserving residual routing
         return h_state + gain * self.proj(h_state)
