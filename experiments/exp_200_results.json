@@ -1,12 +1,12 @@
 {
   "exp_id": "EXP-200",
   "verdict": "POSITIVE",
-  "base_initial_loss": 6.454934120178223,
-  "base_final_loss": 3.2887983322143555,
-  "proposed_initial_loss": 6.2860002517700195,
-  "proposed_final_loss": 2.0559542179107666,
-  "loss_delta": 1.2328441143035889,
-  "fe_delta": -0.09626585245132446,
-  "throughput_tok_per_sec": 1657.8466278468766,
-  "execution_time_s": 1.4362004060003528
+  "base_initial_loss": 6.092495918273926,
+  "base_final_loss": 3.3937697410583496,
+  "proposed_initial_loss": 6.167604446411133,
+  "proposed_final_loss": 1.7372210025787354,
+  "loss_delta": 1.6565487384796143,
+  "fe_delta": -0.26457881927490234,
+  "throughput_tok_per_sec": 1785.091038105385,
+  "execution_time_s": 1.3338255300004676
 }
