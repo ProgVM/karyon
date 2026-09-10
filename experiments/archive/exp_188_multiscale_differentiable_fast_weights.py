@@ -137,14 +137,14 @@ def run_benchmark():
     cfg_base = CoREConfig()
     cfg_base.net.hidden_dim = hidden_dim
     cfg_base.net.unified_dim = hidden_dim
-    agent_base = CoREAgent(cfg_base, device_str=device_str).to(device)
+    agent_base = CoREAgent(cfg_base, device=device_str).to(device)
     agent_base.eval()
 
     # 2. Proposed Model (MultiTimescaleFastWeightHebbian)
     cfg_prop = CoREConfig()
     cfg_prop.net.hidden_dim = hidden_dim
     cfg_prop.net.unified_dim = hidden_dim
-    agent_prop = CoREAgent(cfg_prop, device_str=device_str).to(device)
+    agent_prop = CoREAgent(cfg_prop, device=device_str).to(device)
     # Inject Multi-Timescale Hebbian module
     agent_prop.fast_weight_hebbian = MultiTimescaleFastWeightHebbian(
         hidden_dim=hidden_dim, num_heads=4, head_dim=64, device_str=device_str
