@@ -373,15 +373,13 @@ class ReflexAndHabitCircuit(nn.Module):
 
 class PrecisionWeightedTopDownGenerator(nn.Module):
     """
-    PW-HPC v3 Allostatically-Gated Multi-Scale Precision Top-Down Generator (EXP-96 / EXP-176 / EXP-217 Validated 🟢):
+    Top-Down Generative Projection & Dynamic Precision Estimator (EXP-96 / EXP-176 Validated 🟢):
     1. Generates Stage 1 prediction from Stage 2 using LayerNorm-calibrated SwiGLU expansion: h_s1_hat = f_td(h_s2).
     2. Computes prediction error: e1 = h_s1 - h_s1_hat.
-    3. Computes base precision weight: pi_base = 2.0 * sigmoid(W_pi [h_s1, h_s1_hat, NA_t]).
-    4. Applies 100% Net2Net Zero-Initialized 6D Allostatic Multiplicative Modulation:
-       pi_allostatic = pi_base * (1.0 + 0.20 * tanh(allo_prec_proj(u_t)))
-    5. Routes precision-weighted error: e1_weighted = pi_allostatic * e1.
+    3. Computes precision weight: pi_t = 2.0 * sigmoid(W_pi [h_s1, h_s1_hat, NA_t]).
+    4. Routes precision-weighted error: e1_weighted = pi_t * e1.
     """
-    def __init__(self, hidden_dim=768, homeo_dim=6, device_str='cpu'):
+    def __init__(self, hidden_dim=768, device_str='cpu'):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.device = torch.device(device_str)
@@ -400,46 +398,20 @@ class PrecisionWeightedTopDownGenerator(nn.Module):
             nn.Sigmoid()
         ).to(self.device)
 
-        # 6D Allostatic Multiplicative Modulator (Net2Net Zero-Initialized - EXP-217 Validated 🟢)
-        self.allo_prec_proj = nn.Sequential(
-            nn.Linear(homeo_dim, 16),
-            nn.SiLU(),
-            nn.Linear(16, 1),
-            nn.Tanh()
-        ).to(self.device)
-
-        nn.init.zeros_(self.allo_prec_proj[0].weight)
-        nn.init.zeros_(self.allo_prec_proj[0].bias)
-        nn.init.zeros_(self.allo_prec_proj[2].weight)
-        nn.init.zeros_(self.allo_prec_proj[2].bias)
-
     def forward(self, h_s1: torch.Tensor, h_s2: torch.Tensor, u_t: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         batch_size, seq_len, _ = h_s1.size()
         h_s1_hat = self.topdown_net(h_s2)
         e1 = h_s1 - h_s1_hat
 
-        if u_t.dim() == 2:
-            if u_t.size(0) == 1 and batch_size > 1:
-                na_t = u_t[:, 4:5].unsqueeze(1).expand(batch_size, seq_len, 1)
-                u_curr = u_t.expand(batch_size, -1)
-            else:
-                na_t = u_t[:batch_size, 4:5].unsqueeze(1).expand(batch_size, seq_len, 1)
-                u_curr = u_t[:batch_size]
+        if u_t.size(0) == 1 and batch_size > 1:
+            na_t = u_t[:, 4:5].unsqueeze(1).expand(batch_size, seq_len, 1)
         else:
-            na_t = u_t[..., 4:5]
-            if na_t.dim() == 2:
-                na_t = na_t.unsqueeze(1).expand(batch_size, seq_len, 1)
-            u_curr = u_t.mean(dim=1) if u_t.dim() == 3 else u_t
-
+            na_t = u_t[:batch_size, 4:5].unsqueeze(1).expand(batch_size, seq_len, 1)
         prec_input = torch.cat([h_s1, h_s1_hat, na_t], dim=-1)
-        pi_base = 2.0 * self.precision_estimator(prec_input)
+        pi_t = 2.0 * self.precision_estimator(prec_input)
 
-        # Zero-Initialized 6D Allostatic Multiplicative Modulation (KEP Principle 15)
-        allo_delta = self.allo_prec_proj(u_curr).unsqueeze(1) # [batch, 1, 1]
-        pi_allostatic = pi_base * (1.0 + 0.20 * allo_delta)
-
-        e1_weighted = pi_allostatic * e1
-        return e1_weighted, h_s1_hat, pi_allostatic.mean()
+        e1_weighted = pi_t * e1
+        return e1_weighted, h_s1_hat, pi_t.mean()
 
 # =============================================================================
 # BIOPHYSICAL LOCUS COERULEUS PHASIC NEURAL GAIN CONTROLLER (EXP-114 VALIDATED 🟢)
