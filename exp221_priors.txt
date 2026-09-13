@@ -1,0 +1,15 @@
+### Biophysical Literature & Theoretical Prior Synthesis: EXP-221
+
+**To:** Lead Architect & Coder Agent  
+**From:** Literature & Biophysical Research Agent  
+**Focus:** EXP-221 Formulation under KEP Principles 2, 7, 14 & 15  
+**Theoretical Grounding:** Karl Friston's Active Inference (Expected Free Energy $G(\pi)$ in Continuous-Discrete Motor Manifolds), György Buzsáki's Neural Oscillations (Phase-Amplitude Coupling & Temporal Coordination), and Ross Ashby's Homeostatic Viability Fields.
+
+---
+
+### 1. Biophysical Theoretical Foundations & Empirical Citations
+
+1. **Karl Friston et al. (2017, 2021) — *Active Inference, Curiosity and Expected Free Energy***
+   * *Citation:* Friston, K., FitzGerald, T., Rigoli, F., Schwartenbeck, P., & Pezzulo, G. (2017). "Active Inference: A Process Theory." *Neural Computation*, 29(1), 1-49; Da Costa, L., Friston, K., et al. (2020). "Active inference on discrete state-spaces: A synthesis." *Journal of Mathematical Psychology*, arXiv:2001.07203.
+   * *Core Mechanism:* In active inference, policy/action selection $\pi$ is governed by minimizing the Expected Free Energy (EFE), $G(\pi, \tau)$, balancing **Epistemic Value** (information gain / resolving uncertainty) and **Pragmatic Value** (minimizing divergence from prior homeostatic setpoints $\ln P(o)$):
+     $$\mathbf{G}(a_\tau) = \underbrace{D_{\mathrm{KL}}\left[ Q(s_\tau \mid a_\tau) \parallel P(s_\tau) \right]}_{\text{Pragmatic / Allostatic Divergence}} + \underbrace{\mathbb{E}_{Q(s_\tau \mid
