@@ -135,14 +135,14 @@ def run_benchmark():
 
     # Attach Synthesizer
     synthesizer = AllostaticMotorReadoutSynthesizer(
-        text_dim=brain_prop.volitional_head.text_dim,
+        text_dim=brain_prop.motor_head.text_dim,
         homeo_dim=6,
         device_str=hw.device_str
     )
-    brain_prop.volitional_head.allostatic_synthesizer = synthesizer
+    brain_prop.motor_head.allostatic_synthesizer = synthesizer
 
     # Patch compute_volitional_logits dynamically
-    orig_compute_logits = brain_prop.volitional_head.compute_volitional_logits
+    orig_compute_logits = brain_prop.motor_head.compute_volitional_logits
 
     def patched_compute_volitional_logits(h_relaxed: torch.Tensor, u_t: torch.Tensor, byte_embed_weights: torch.Tensor) -> torch.Tensor:
         total_tokens = h_relaxed.size(0)
@@ -161,31 +161,31 @@ def run_benchmark():
         motor_gain = (1.0 + 1.0 * da_level)
 
         # 1. Project relaxed state to sensory manifold
-        h_proj = brain_prop.volitional_head.motor_text_proj(h_relaxed) # [S, D]
+        h_proj = brain_prop.motor_head.motor_text_proj(h_relaxed) # [S, D]
         
         # 2. Apply CPG Causal Motor Receptive Field
         h_proj_seq = h_proj.unsqueeze(0).transpose(1, 2)
         try:
-            h_cpg_seq = brain_prop.volitional_head.cpg_motor[0](h_proj_seq)
+            h_cpg_seq = brain_prop.motor_head.cpg_motor[0](h_proj_seq)
         except RuntimeError:
             with torch.backends.cudnn.flags(enabled=False):
-                h_cpg_seq = brain_prop.volitional_head.cpg_motor[0](h_proj_seq)
+                h_cpg_seq = brain_prop.motor_head.cpg_motor[0](h_proj_seq)
         h_cpg_seq = h_cpg_seq[:, :, :total_tokens]
         h_cpg = h_cpg_seq.transpose(1, 2).squeeze(0)
         
-        h_cpg_base = brain_prop.volitional_head.cpg_motor[2](brain_prop.volitional_head.cpg_motor[1](h_cpg) + h_proj)
+        h_cpg_base = brain_prop.motor_head.cpg_motor[2](brain_prop.motor_head.cpg_motor[1](h_cpg) + h_proj)
 
         # EXP-221 Allostatic Readout Synthesis
-        h_cpg_out = brain_prop.volitional_head.allostatic_synthesizer(h_cpg_base, u_t_exp)
+        h_cpg_out = brain_prop.motor_head.allostatic_synthesizer(h_cpg_base, u_t_exp)
 
         # 3. Apply Dopaminergic Precision Gain
         h_proj_gain = h_cpg_out * motor_gain
         raw_logits = F.linear(h_proj_gain, byte_embed_weights)
 
         # 4. Unshackled Full-Rank EFE Manifold Evaluation
-        v_emb_proj = brain_prop.volitional_head.efe_motor_proj(byte_embed_weights)
-        u_t_proj = brain_prop.volitional_head.efe_homeo_proj(u_t_exp)
-        efe_field = brain_prop.volitional_head.efe_evaluator(v_emb_proj.unsqueeze(0) + u_t_proj.unsqueeze(1)).squeeze(-1)
+        v_emb_proj = brain_prop.motor_head.efe_motor_proj(byte_embed_weights)
+        u_t_proj = brain_prop.motor_head.efe_homeo_proj(u_t_exp)
+        efe_field = brain_prop.motor_head.efe_evaluator(v_emb_proj.unsqueeze(0) + u_t_proj.unsqueeze(1)).squeeze(-1)
 
         efe_mean = efe_field.mean(dim=-1, keepdim=True)
         efe_std = efe_field.std(dim=-1, keepdim=True).clamp_min(1e-5)
@@ -198,7 +198,7 @@ def run_benchmark():
         volitional_logits = raw_logits - gamma_volition * efe_field_norm
         return volitional_logits
 
-    brain_prop.volitional_head.compute_volitional_logits = patched_compute_volitional_logits
+    brain_prop.motor_head.compute_volitional_logits = patched_compute_volitional_logits
 
     # Verify zero-delta identity at step 0
     with torch.no_grad():
