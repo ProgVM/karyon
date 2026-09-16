@@ -204,7 +204,7 @@ def run_benchmark():
     with torch.no_grad():
         test_h = torch.randn(10, brain_prop.hidden_dim, device=hw.device)
         test_u = torch.tensor([[0.5, 0.8, 0.9, 1.0, 0.2, 0.3]], device=hw.device).expand(10, 6)
-        test_w = brain_prop.tok_embed.weight
+        test_w = brain_prop.pos_embeddings.byte_embed.weight
 
         l_orig = orig_compute_logits(test_h, test_u, test_w)
         l_patch = patched_compute_volitional_logits(test_h, test_u, test_w)
