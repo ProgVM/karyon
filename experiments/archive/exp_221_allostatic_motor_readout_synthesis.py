@@ -191,9 +191,10 @@ def run_benchmark():
         efe_std = efe_field.std(dim=-1, keepdim=True).clamp_min(1e-5)
         efe_field_norm = (efe_field - efe_mean) / efe_std
 
+        # Dynamic Allostatic Volition Gain (KEP Principle 14 Compliant)
         gamma_volition = torch.clamp(
-            0.15 * curiosity + 0.10 * na_level + 0.05 * (1.0 - energy),
-            min=0.01, max=0.50
+            0.10 + 0.15 * curiosity + 0.20 * na_level - 0.10 * (1.0 - energy),
+            min=0.02, max=0.35
         )
         volitional_logits = raw_logits - gamma_volition * efe_field_norm
         return volitional_logits
