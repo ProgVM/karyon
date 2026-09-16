@@ -202,7 +202,7 @@ def run_benchmark():
 
     # Verify zero-delta identity at step 0
     with torch.no_grad():
-        test_h = torch.randn(10, brain_prop.config.hidden_dim, device=hw.device)
+        test_h = torch.randn(10, brain_prop.hidden_dim, device=hw.device)
         test_u = torch.tensor([[0.5, 0.8, 0.9, 1.0, 0.2, 0.3]], device=hw.device).expand(10, 6)
         test_w = brain_prop.tok_embed.weight
 
