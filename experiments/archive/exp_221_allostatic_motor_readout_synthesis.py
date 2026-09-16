@@ -111,7 +111,7 @@ def run_benchmark():
     logger.info("=" * 80)
 
     hw = get_hardware_engine()
-    logger.info(f"Hardware Acceleration Engine: {hw.device_str} (CUDA Available: {hw.is_cuda_available})")
+    logger.info(f"Hardware Acceleration Engine: {hw.device_str} (Device: {hw.device})")
 
     # Load corpus sample
     text_samples = [
