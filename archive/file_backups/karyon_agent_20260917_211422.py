@@ -1035,9 +1035,6 @@ class ContinuousDynamicNeuralGraph(nn.Module):
     def forward(self, h: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
         for idx, brick in enumerate(self.bricks):
             gate = torch.tanh(self.alpha_epi[idx])
-            # Strict short-circuit optimization: if gate is exact zero, skip forward pass entirely
-            if gate.item() == 0.0:
-                continue
             if brick.__class__.__name__ in ("DelayOp", "GateOp"):
                 out = brick(h, u_t)
             else:
@@ -1967,10 +1964,7 @@ class CoREAgent(nn.Module):
 
             # AGN v6.0 Dynamic Continuous Neural Graph Highway (EXP-186 Validated 🟢)
             if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
-                graph_out = self.dynamic_graph(h_combined, effective_u_t)
-                # KEP Principle 15 & 16: Dynamic Graph modulation is wrapped in residual highway
-                # with strict 0.0 contribution when newly sprouted nodes are initialized at alpha_epi = 0.0
-                h_combined = graph_out
+                h_combined = self.dynamic_graph(h_combined, effective_u_t)
 
             h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)

@@ -1035,9 +1035,6 @@ class ContinuousDynamicNeuralGraph(nn.Module):
     def forward(self, h: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
         for idx, brick in enumerate(self.bricks):
             gate = torch.tanh(self.alpha_epi[idx])
-            # Strict short-circuit optimization: if gate is exact zero, skip forward pass entirely
-            if gate.item() == 0.0:
-                continue
             if brick.__class__.__name__ in ("DelayOp", "GateOp"):
                 out = brick(h, u_t)
             else:
