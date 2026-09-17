@@ -2290,6 +2290,11 @@ class CoREAgent(nn.Module):
             p_dist = F.softmax(logits, dim=-1)
             entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1)
 
+            # Continuous Active Inference PAC Decoding (Modulated by LC Phasic Gain & Local Surprise)
+            # Fetch scalar values in a single step to avoid multiple GPU-CPU synchronizations
+            entropy_val = float(entropy.mean().cpu().tolist())
+            phasic_gain_val = float(phasic_gain.mean().cpu().tolist())
+
             # Event-Related Phase Reset (ERPR) & Biophysical PAC Decoding
             # On entropy peaks (word/concept boundaries H > 0.65), trigger a phase-reset that
             # sharpens Hopfield attractor relaxation via dopaminergic surge and resets the refractory trace

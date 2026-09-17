@@ -2235,26 +2235,10 @@ class CoREAgent(nn.Module):
                 somatic_byte_penalty[0, 127] = 8.0
                 self.somatic_byte_penalty = somatic_byte_penalty
 
-            # Continuous Active Inference PAC Decoding (Modulated by LC Phasic Gain & Local Surprise)
-            # Optimized: Bundle all 8 scalar metrics into a single tensor to execute exactly ONE GPU-to-CPU transfer,
-            # completely eliminating 12 redundant CUDA stream synchronizations per token step!
-            # To avoid UnboundLocalError on logits, we pre-calculate logits and entropy first using a lightweight pass.
-            p_dist_pre = F.softmax(raw_logits, dim=-1)
-            entropy_pre = -(p_dist_pre * torch.log(p_dist_pre + 1e-9)).sum(dim=-1)
-
-            bundled_metrics = torch.cat([
-                effective_hu_st[0],         # [0:6] -> curiosity, energy, stability, health, NA, DA
-                entropy_pre.mean().view(1), # [6] -> entropy_val
-                phasic_gain.mean().view(1)  # [7] -> phasic_gain_val
-            ])
-            metrics_list = bundled_metrics.cpu().tolist()
-
-            curiosity_scalar = metrics_list[0]
-            stability_scalar = metrics_list[2]
-            na_scalar = metrics_list[4]
-            da_scalar = metrics_list[5]
-            entropy_val = metrics_list[6]
-            phasic_gain_val = metrics_list[7]
+            curiosity_scalar = float(effective_hu_st[0, 0].item())
+            stability_scalar = float(effective_hu_st[0, 2].item())
+            na_scalar = float(effective_hu_st[0, 4].item())
+            da_scalar = float(effective_hu_st[0, 5].item())
 
             # Dynamic Allostatic Refractory Scaling (EXP-162 Validated 🟢 - No Static Constants!)
             lambda_refractory = 1.20 * (1.0 + 1.80 * curiosity_scalar + 1.20 * na_scalar)
@@ -2289,6 +2273,11 @@ class CoREAgent(nn.Module):
 
             p_dist = F.softmax(logits, dim=-1)
             entropy = -(p_dist * torch.log(p_dist + 1e-9)).sum(dim=-1)
+
+            # Continuous Active Inference PAC Decoding (Modulated by LC Phasic Gain & Local Surprise)
+            # Fetch scalar values in a single step to avoid multiple GPU-CPU synchronizations
+            entropy_val = float(entropy.mean().cpu().tolist())
+            phasic_gain_val = float(phasic_gain.mean().cpu().tolist())
 
             # Event-Related Phase Reset (ERPR) & Biophysical PAC Decoding
             # On entropy peaks (word/concept boundaries H > 0.65), trigger a phase-reset that
