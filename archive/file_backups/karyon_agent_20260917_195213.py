@@ -2108,14 +2108,12 @@ class CoREAgent(nn.Module):
         prompt_tokens = torch.tensor([prompt_ids], dtype=torch.long, device=self.device)
         prompt_embs = self.pos_embeddings(prompt_tokens, start_pos=0, apply_rf=True)
         
-        if hu is None or not hasattr(hu, 'state'):
-            hu = HomeostaticUnit(batch_size=1, device=self.device_str)
-        elif hu.state.size(0) > 1:
+        if hu is not None and hasattr(hu, 'state') and hu.state.size(0) > 1:
             diag_hu = HomeostaticUnit(batch_size=1, device=self.device_str)
             diag_hu.state.copy_(hu.state[0:1])
             hu = diag_hu
         
-        hu_st = hu.state
+        hu_st = hu.state if hu is not None else torch.tensor([[0.5, 1.0, 1.0, 1.0, 0.0, 0.0]], device=self.device)
         
         m_s1 = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
         m_s2 = torch.zeros(1, self.num_heads, self.head_k, self.head_v, device=self.device)
