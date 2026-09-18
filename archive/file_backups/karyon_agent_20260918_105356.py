@@ -1012,11 +1012,9 @@ class GateOp(nn.Module):
 
 class ContinuousDynamicNeuralGraph(nn.Module):
     """
-    Continuous Epigenetic Evolutionary LEGO-Graph (AGN v6.0 - EXP-186 & EXP-225 Validated 🟢).
+    Continuous Epigenetic Evolutionary LEGO-Graph (AGN v6.0 - EXP-186 Validated 🟢).
     Autonomously executes stream-time neurogenesis (sprouting operator bricks with zero-weight
     Net2Net Smooth Grafting identity) and differentiable Darwinian synaptic pruning without epochs.
-    Operates with parallel multi-branch topology routing: candidate operators execute concurrently
-    over hidden residual state representations and are smoothly fused via Epigenetic Grafting Gates.
     """
     def __init__(self, dim: int, max_bricks: int = 12, device: str = 'cpu'):
         super().__init__()
@@ -1035,7 +1033,6 @@ class ContinuousDynamicNeuralGraph(nn.Module):
         ])
 
     def forward(self, h: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
-        branch_outputs = []
         for idx, brick in enumerate(self.bricks):
             gate = torch.tanh(self.alpha_epi[idx])
             # Strict short-circuit optimization: if gate is exact zero, skip forward pass entirely
@@ -1045,9 +1042,7 @@ class ContinuousDynamicNeuralGraph(nn.Module):
                 out = brick(h, u_t)
             else:
                 out = brick(h)
-            branch_outputs.append(gate * out)
-        if branch_outputs:
-            h = h + torch.stack(branch_outputs, dim=0).sum(dim=0)
+            h = h + gate * out
         return h
 
     def sprout_brick(self, brick_type: str = "NonLinearOp") -> bool:
@@ -1529,8 +1524,7 @@ class CoREAgent(nn.Module):
             'critic', 'efe_action_evaluator', 'local_plasticity', 'predictive_self_model',
             'stage1', 'stage2', 'boundary_detector', 'pw_lper', 'entropy_macro_gate',
             'thalamic_router', 'fast_weight_hebbian', 'predictive_residual_router',
-            'pw_hpc_generator', 'will_engine', 'reflex_circuit', 'affective_core', 'lc_gain', 'volitional_head',
-            'dynamic_graph'
+            'pw_hpc_generator', 'will_engine', 'reflex_circuit', 'affective_core', 'lc_gain', 'volitional_head'
         ]:
             sub = getattr(self, sub_name, None)
             if sub is not None and hasattr(sub, 'named_parameters'):
