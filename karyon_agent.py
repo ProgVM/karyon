@@ -1709,6 +1709,13 @@ class CoREAgent(nn.Module):
         total_pruned_weights = 0
         is_structural_change = False
         try:
+            # First, trigger the Darwinian Epigenetic Pruning on the dynamic neural graph
+            if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
+                pruned_bricks = self.dynamic_graph.prune_inactive_bricks(threshold=1e-3)
+                if pruned_bricks > 0:
+                    logger.info(f"🪓 [Darwinian Sleep] Pruned {pruned_bricks} obsolete operator bricks from the ContinuousDynamicNeuralGraph.")
+                    is_structural_change = True
+
             from kcore_evolution import AutonomousSelfEvolutionOrchestrator, StructuralSynaptogenesisPruner
             # 1. Gentle SHY Synaptic Scaling & Dead Synapse Pruning
             prune_info = StructuralSynaptogenesisPruner.prune_quiescent_synapses(self, prune_ratio=pruning_percentile)
