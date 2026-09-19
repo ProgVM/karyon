@@ -1,1 +1,1 @@
-{"loss": 4.3474, "tok_per_sec": 62434.3, "delta_loss": 1.2068, "free_energy": 0.0049, "energy": 0.9876919388771057}
+{"loss": 3.4435, "tok_per_sec": 39355.8, "delta_loss": 2.1088, "free_energy": 0.0027, "energy": 0.9598953127861023}
