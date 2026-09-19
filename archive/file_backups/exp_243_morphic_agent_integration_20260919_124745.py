@@ -67,7 +67,7 @@ def run_experiment():
     cfg.train.seq_len = 128
 
     print("\n[1/4] Initializing CoREAgent with Universal Morphic Engine...")
-    agent = CoREAgent(config=cfg, device=device).to(device)
+    agent = CoREAgent(cfg=cfg, device=device).to(device)
 
     # Verify that the agent's dynamic graph contains UniversalMorphicOperator bricks
     graph_bricks = agent.dynamic_graph.bricks
