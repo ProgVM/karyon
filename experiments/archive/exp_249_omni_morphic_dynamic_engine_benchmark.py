@@ -68,7 +68,7 @@ def run_benchmark():
     agent = CoREAgent(config=config, device=str(device)).to(device)
 
     hu = HomeostaticUnit(device=device)
-    episodic_mem = BatchedEpisodicMemory(capacity=100, memory_dim=config.net.unified_dim, device=device)
+    episodic_mem = BatchedEpisodicMemory(batch_size=2, memory_dim=config.net.unified_dim, max_capacity=100, device=str(device))
     criterion_speech = nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(agent.parameters(), lr=1e-3, weight_decay=1e-4)
 
