@@ -195,26 +195,36 @@ public:
 
     // Update homeostasis based on active inference surprise (Free Energy)
     torch::Tensor update(torch::Tensor free_energy, torch::Tensor reward) {
+        // free_energy: scalar or 1D tensor [batch]
+        // reward: scalar or 1D tensor [batch]
         auto device = current_values.device();
         
         auto mean_fe = free_energy.mean().item<float>();
         auto mean_r = reward.mean().item<float>();
 
+        // Dynamic update loop on current values
         auto old_vals = current_values.clone();
         auto target_diff = target_values - old_vals;
         
-        // Base SDE allostatic update
+        // Base SDE allostatic update: drift towards target + perturbation from Free Energy & Reward
         auto updated = old_vals + decay_rates * target_diff;
 
-        // Influence of surprise
-        updated[0] = (updated[0] + 0.01f * mean_fe).clamp(0.0f, 1.0f); // Reduced sensitivity from 0.1 to 0.01
-        updated[1] = (updated[1] - 0.005f * mean_fe).clamp(0.0f, 1.0f); // Reduced energy drain
-        updated[2] = (updated[2] - 0.01f * mean_fe).clamp(0.0f, 1.0f);
-        updated[4] = (updated[4] + sensitivities[4] * 0.05f * mean_fe).clamp(0.0f, 1.0f); // Dampened NA spike
-        updated[5] = (updated[5] + sensitivities[5] * mean_r - 0.01f * mean_fe).clamp(0.0f, 1.0f);
+        // Influence of surprise (Free Energy) and Reward on specific nodes
+        // Curiosity (idx 0): boosted by surprise (epistemic drive)
+        updated[0] = (updated[0] + 0.1f * mean_fe).clamp(0.0f, 1.0f);
+        // Energy (idx 1): depleted by high cognitive effort (Free Energy)
+        updated[1] = (updated[1] - 0.05f * mean_fe).clamp(0.0f, 1.0f);
+        // Stability (idx 2): disrupted by sudden surprise
+        updated[2] = (updated[2] - 0.1f * mean_fe).clamp(0.0f, 1.0f);
+        // Noradrenaline (idx 4): arousal spikes on high surprise
+        updated[4] = (updated[4] + sensitivities[4] * mean_fe).clamp(0.0f, 1.0f);
+        // Dopamine (idx 5): spikes on external reward or surprise resolution
+        updated[5] = (updated[5] + sensitivities[5] * mean_r - 0.05f * mean_fe).clamp(0.0f, 1.0f);
 
+        // Update sprouted dimensions with random noise drift + general sensitivity to surprise
         for (size_t i = 6; i < variable_names.size(); ++i) {
-            updated[i] = (updated[i] - sensitivities[i] * 0.01f * mean_fe).clamp(0.0f, 1.0f);
+            float noise = (torch::randn({1}, torch::TensorOptions().device(device)).item<float>()) * 0.01f;
+            updated[i] = (updated[i] - sensitivities[i] * mean_fe + noise).clamp(0.0f, 1.0f);
         }
 
         current_values.copy_(updated);
