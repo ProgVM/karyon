@@ -997,88 +997,6 @@ class DelayOp(nn.Module):
         y = torch.matmul(attn, v).transpose(1, 2).contiguous().view(B, S, D)
         return self.out_norm(self.out_proj(y))
 
-class HierarchicalTwoTierMemoryCache(nn.Module):
-    """
-    Two-Tier Biophysical Memory Cache (EXP-247 Master).
-    L1 Cache: High-velocity operational buffer for high-surprise events (instant read/write).
-    L2 Cache: Long-term hippocampal attractor storage with automatic consolidation and
-              noradrenaline-gated (NA > 0.12) precision recall.
-    """
-    def __init__(self, memory_dim: int = 256, l1_capacity: int = 100, l2_capacity: int = 1000, device: str = 'cpu'):
-        super().__init__()
-        self.memory_dim = memory_dim
-        self.l1_capacity = l1_capacity
-        self.l2_capacity = l2_capacity
-        self.device = torch.device(device)
-
-        # L1 Operational Memory Buffer
-        self.register_buffer("l1_keys", torch.zeros(l1_capacity, memory_dim, device=self.device))
-        self.register_buffer("l1_values", torch.zeros(l1_capacity, memory_dim, device=self.device))
-        self.register_buffer("l1_surprise", torch.zeros(l1_capacity, device=self.device))
-        self.l1_ptr = 0
-        self.l1_size = 0
-
-        # L2 Hippocampal Attractor Memory
-        self.register_buffer("l2_keys", torch.zeros(l2_capacity, memory_dim, device=self.device))
-        self.register_buffer("l2_values", torch.zeros(l2_capacity, memory_dim, device=self.device))
-        self.l2_ptr = 0
-        self.l2_size = 0
-
-    def write_l1(self, key: torch.Tensor, value: torch.Tensor, surprise: float):
-        """Writes high-surprise events to L1 operational buffer."""
-        idx = self.l1_ptr % self.l1_capacity
-        self.l1_keys[idx] = key.detach().mean(dim=0) if key.dim() > 1 else key.detach()
-        self.l1_values[idx] = value.detach().mean(dim=0) if value.dim() > 1 else value.detach()
-        self.l1_surprise[idx] = float(surprise)
-        self.l1_ptr += 1
-        self.l1_size = min(self.l1_size + 1, self.l1_capacity)
-
-        # Auto-consolidate to L2 when L1 fills with high-surprise memories
-        if self.l1_size >= self.l1_capacity and surprise > 0.50:
-            self.consolidate_l1_to_l2()
-
-    def consolidate_l1_to_l2(self):
-        """Consolidates high-surprise memories from L1 into L2 hippocampal attractors."""
-        if self.l1_size == 0:
-            return
-        top_k = min(10, self.l1_size)
-        _, indices = torch.topk(self.l1_surprise[:self.l1_size], top_k)
-        for idx in indices:
-            l2_idx = self.l2_ptr % self.l2_capacity
-            self.l2_keys[l2_idx] = self.l1_keys[idx]
-            self.l2_values[l2_idx] = self.l1_values[idx]
-            self.l2_ptr += 1
-            self.l2_size = min(self.l2_size + 1, self.l2_capacity)
-
-    def recall(self, query: torch.Tensor, na_level: float = 0.15) -> torch.Tensor:
-        """
-        Recalls contextual memory.
-        If NA > 0.12, executes high-precision search across both L1 and L2 memories.
-        """
-        batch_size = query.size(0)
-        q_flat = query.mean(dim=1) if query.dim() == 3 else query  # [batch, dim]
-
-        # Noradrenaline-gated memory activation
-        if na_level < 0.12 or (self.l1_size == 0 and self.l2_size == 0):
-            return torch.zeros_like(q_flat)
-
-        retrieved = torch.zeros_like(q_flat)
-        # Search L1
-        if self.l1_size > 0:
-            l1_k = self.l1_keys[:self.l1_size]  # [cap, dim]
-            sim_l1 = F.cosine_similarity(q_flat.unsqueeze(1), l1_k.unsqueeze(0), dim=-1)  # [batch, cap]
-            weights_l1 = F.softmax(sim_l1 * 10.0, dim=-1)
-            retrieved = retrieved + torch.matmul(weights_l1, self.l1_values[:self.l1_size])
-
-        # Search L2 if NA is very high (hyper-focused arousal)
-        if na_level >= 0.25 and self.l2_size > 0:
-            l2_k = self.l2_keys[:self.l2_size]
-            sim_l2 = F.cosine_similarity(q_flat.unsqueeze(1), l2_k.unsqueeze(0), dim=-1)
-            weights_l2 = F.softmax(sim_l2 * 12.0, dim=-1)
-            retrieved = retrieved + torch.matmul(weights_l2, self.l2_values[:self.l2_size]) * 0.5
-
-        return retrieved
-
 class GateOp(nn.Module):
     """
     Primitive Mathematical Operator: Neuromodulated Multiplicative Gating.
@@ -1443,11 +1361,8 @@ class CoREAgent(nn.Module):
         # 12. Dynamic Epigenetic Grafted Pathways & Mutational Structures (EXP-185 Validated 🟢)
         self.grafted_pathways = nn.ModuleDict()
 
-        # 13. Continuous Epigenetic Evolutionary LEGO-Graph Assembly (AGN v7.0 / Dynamic DAG Routing)
-        self.dynamic_graph = ContinuousDynamicNeuralGraph(dim=self.hidden_dim, max_bricks=16, device=self.device_str)
-
-        # 14. Two-Tier Biophysical Memory Cache L1/L2
-        self.two_tier_memory = HierarchicalTwoTierMemoryCache(memory_dim=self.unified_dim, l1_capacity=100, l2_capacity=1000, device=self.device_str)
+        # 13. Continuous Epigenetic Evolutionary LEGO-Graph Assembly (AGN v6.0 / CEE - EXP-186 Validated 🟢)
+        self.dynamic_graph = ContinuousDynamicNeuralGraph(dim=self.hidden_dim, max_bricks=12, device=self.device_str)
 
     def register_grafted_pathway(self, name: str, pathway: nn.Module):
         """Hot-registers a new sprouted pathway into the active agent runtime."""
@@ -2145,11 +2060,7 @@ class CoREAgent(nn.Module):
             na_t = curr_u_t[:, 4:5].unsqueeze(1) if curr_u_t.dim() == 2 else curr_u_t[..., 4:5]
 
             dt_base = 0.35 + 0.50 * na_t
-            # BLT Entropy-Adaptive Scan Engine (Vector 2):
-            # Slow down step (higher dt) on word boundaries/high entropy H > 0.70 to deepen concept processing;
-            # Speed up step (lower dt) inside low-entropy character/morpheme chunks H <= 0.30.
-            entropy_scan_scale = torch.where(predicted_entropy > 0.70, 1.50, torch.where(predicted_entropy <= 0.30, 0.70, 1.00))
-            dt_entropy_gain = (1.0 + 1.20 * curiosity_t) * predicted_entropy * entropy_scan_scale
+            dt_entropy_gain = (1.0 + 1.20 * curiosity_t) * predicted_entropy
             energy_scale = torch.clamp(1.20 * energy_t, min=0.30, max=1.00)
 
             dynamic_dt_scale = torch.clamp((dt_base + dt_entropy_gain) * energy_scale, min=0.20, max=2.50)

@@ -1443,11 +1443,8 @@ class CoREAgent(nn.Module):
         # 12. Dynamic Epigenetic Grafted Pathways & Mutational Structures (EXP-185 Validated 🟢)
         self.grafted_pathways = nn.ModuleDict()
 
-        # 13. Continuous Epigenetic Evolutionary LEGO-Graph Assembly (AGN v7.0 / Dynamic DAG Routing)
-        self.dynamic_graph = ContinuousDynamicNeuralGraph(dim=self.hidden_dim, max_bricks=16, device=self.device_str)
-
-        # 14. Two-Tier Biophysical Memory Cache L1/L2
-        self.two_tier_memory = HierarchicalTwoTierMemoryCache(memory_dim=self.unified_dim, l1_capacity=100, l2_capacity=1000, device=self.device_str)
+        # 13. Continuous Epigenetic Evolutionary LEGO-Graph Assembly (AGN v6.0 / CEE - EXP-186 Validated 🟢)
+        self.dynamic_graph = ContinuousDynamicNeuralGraph(dim=self.hidden_dim, max_bricks=12, device=self.device_str)
 
     def register_grafted_pathway(self, name: str, pathway: nn.Module):
         """Hot-registers a new sprouted pathway into the active agent runtime."""
@@ -2145,11 +2142,7 @@ class CoREAgent(nn.Module):
             na_t = curr_u_t[:, 4:5].unsqueeze(1) if curr_u_t.dim() == 2 else curr_u_t[..., 4:5]
 
             dt_base = 0.35 + 0.50 * na_t
-            # BLT Entropy-Adaptive Scan Engine (Vector 2):
-            # Slow down step (higher dt) on word boundaries/high entropy H > 0.70 to deepen concept processing;
-            # Speed up step (lower dt) inside low-entropy character/morpheme chunks H <= 0.30.
-            entropy_scan_scale = torch.where(predicted_entropy > 0.70, 1.50, torch.where(predicted_entropy <= 0.30, 0.70, 1.00))
-            dt_entropy_gain = (1.0 + 1.20 * curiosity_t) * predicted_entropy * entropy_scan_scale
+            dt_entropy_gain = (1.0 + 1.20 * curiosity_t) * predicted_entropy
             energy_scale = torch.clamp(1.20 * energy_t, min=0.30, max=1.00)
 
             dynamic_dt_scale = torch.clamp((dt_base + dt_entropy_gain) * energy_scale, min=0.20, max=2.50)

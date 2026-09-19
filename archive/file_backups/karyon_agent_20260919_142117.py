@@ -1443,11 +1443,8 @@ class CoREAgent(nn.Module):
         # 12. Dynamic Epigenetic Grafted Pathways & Mutational Structures (EXP-185 Validated 🟢)
         self.grafted_pathways = nn.ModuleDict()
 
-        # 13. Continuous Epigenetic Evolutionary LEGO-Graph Assembly (AGN v7.0 / Dynamic DAG Routing)
-        self.dynamic_graph = ContinuousDynamicNeuralGraph(dim=self.hidden_dim, max_bricks=16, device=self.device_str)
-
-        # 14. Two-Tier Biophysical Memory Cache L1/L2
-        self.two_tier_memory = HierarchicalTwoTierMemoryCache(memory_dim=self.unified_dim, l1_capacity=100, l2_capacity=1000, device=self.device_str)
+        # 13. Continuous Epigenetic Evolutionary LEGO-Graph Assembly (AGN v6.0 / CEE - EXP-186 Validated 🟢)
+        self.dynamic_graph = ContinuousDynamicNeuralGraph(dim=self.hidden_dim, max_bricks=12, device=self.device_str)
 
     def register_grafted_pathway(self, name: str, pathway: nn.Module):
         """Hot-registers a new sprouted pathway into the active agent runtime."""
