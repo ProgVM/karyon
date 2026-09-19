@@ -166,10 +166,6 @@ class OmniContinuousGraphSubstrate(nn.Module):
         if not signal_list:
             raise ValueError("signal_list cannot be empty")
 
-        # Fast short-circuit bypass if no nodes are registered, preventing any precision drift
-        if len(self.nodes) == 0:
-            return signal_list[0], signal_list
-
         # Determine reference shape (2D or 3D)
         sample = signal_list[0]
         is_3d = (sample.dim() == 3)
