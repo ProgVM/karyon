@@ -19,16 +19,12 @@ Hypothesis:
 ===============================================================================
 """
 
-import os
 import sys
 import time
 import torch
 import torch.nn as nn
 
-# Ensure root repository directory is in sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from karyon_config import CoREConfig
+from karyon_config import get_standard_karyon_config
 from karyon_agent import CoREAgent
 from karyon_core import HomeostaticUnit, BatchedEpisodicMemory
 
@@ -59,12 +55,7 @@ def run_benchmark():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"🔧 Device: {device}")
 
-    config = CoREConfig()
-    config.net.hidden_dim = 256
-    config.net.num_heads = 4
-    config.net.head_dim = 64
-    config.net.unified_dim = 256
-
+    config = get_standard_karyon_config(model_dim=256)
     agent = CoREAgent(config, device_str=device).to(device)
 
     hu = HomeostaticUnit(device=device)
