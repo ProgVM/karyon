@@ -1065,12 +1065,9 @@ class UniversalMorphicOperator(nn.Module):
         alpha = torch.sigmoid(meta_params[:, ptr:ptr + 1]).unsqueeze(1)  # Decay rate [batch, 1, 1]
         beta = torch.sigmoid(meta_params[:, ptr + 1:ptr + 2]).unsqueeze(1)   # Input gain [batch, 1, 1]
 
-        # 2. Fast Vectorized Dynamic low-rank transformation:
-        # Instead of BMM looping or unrolling over sequence length, compute (x @ U) @ V using batched Linear/Einsum
-        # x: [batch, seq_len, dim], u_flat: [batch, dim, rank] -> x_low: [batch, seq_len, rank]
-        x_low = torch.matmul(x, u_flat)
-        # x_low: [batch, seq_len, rank], v_flat: [batch, rank, dim] -> dynamic_transformed: [batch, seq_len, dim]
-        dynamic_transformed = torch.matmul(x_low, v_flat) * 0.1
+        # 2. Dynamic low-rank transformation: W_dyn = (x @ U) @ V
+        x_low = torch.bmm(x, u_flat)
+        dynamic_transformed = torch.bmm(x_low, v_flat) * 0.1
 
         # Static + Dynamic combination
         h_linear = self.base_proj(x) + dynamic_transformed
