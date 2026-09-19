@@ -1106,9 +1106,6 @@ class UniversalCognitiveOrganelle(nn.Module):
         # Base projection to stabilize gradient flow
         self.base_in = nn.Linear(dim, state_dim, bias=False, device=self.device)
         self.base_out = nn.Linear(state_dim, dim, bias=False, device=self.device)
-        
-        # State LayerNorm for strict bounded numerical stability
-        self.state_norm = nn.LayerNorm(state_dim, device=self.device)
 
     def forward(self, x: torch.Tensor, u_t: torch.Tensor = None) -> torch.Tensor:
         orig_dim = x.dim()
@@ -1133,14 +1130,11 @@ class UniversalCognitiveOrganelle(nn.Module):
 
         morphic_params = self.parameter_generator(context)  # [batch, total_params]
 
-        # 2. Extract synthesized projection weights with strict spectral scaling
-        scale_in = (1.0 / (dim ** 0.5))
-        scale_out = (1.0 / (self.state_dim ** 0.5))
-
+        # 2. Extract synthesized projection weights
         ptr = 0
-        w_in_flat = morphic_params[:, ptr:ptr + (dim * self.state_dim)].view(batch, dim, self.state_dim) * scale_in
+        w_in_flat = morphic_params[:, ptr:ptr + (dim * self.state_dim)].view(batch, dim, self.state_dim)
         ptr += dim * self.state_dim
-        w_out_flat = morphic_params[:, ptr:ptr + (self.state_dim * dim)].view(batch, self.state_dim, dim) * scale_out
+        w_out_flat = morphic_params[:, ptr:ptr + (self.state_dim * dim)].view(batch, self.state_dim, dim)
         ptr += self.state_dim * dim
 
         # Operator coefficients (Identity, GELU, SiLU, Tanh, Sin, Abs, Complex Phase, Fractal Gate)
@@ -1149,12 +1143,11 @@ class UniversalCognitiveOrganelle(nn.Module):
 
         # Dynamic state integration factors (decay, gain, coupling, feedback)
         factors = torch.sigmoid(morphic_params[:, ptr:ptr + 4])
-        decay, gain = factors[:, 0:1], factors[:, 1:2]
+        decay, gain, coupling, feedback = factors[:, 0:1], factors[:, 1:2], factors[:, 2:3], factors[:, 3:4]
 
         # 3. Project input into the organelle's dynamic state space
         # Mix base projection with synthesized context-dependent projection
         projected_in = self.base_in(x_3d) + torch.matmul(x_3d, w_in_flat)  # [batch, seq_len, state_dim]
-        projected_in = self.state_norm(projected_in)
 
         # 4. Synthesize internal state dynamics (Memory / Sandbox simulation)
         # Update private internal state buffer with decay and new input
@@ -1162,8 +1155,6 @@ class UniversalCognitiveOrganelle(nn.Module):
         current_state = self.internal_state.expand(batch, -1)
         
         new_state = (1.0 - decay) * current_state + gain * state_update
-        new_state = torch.tanh(new_state)  # Strictly bounded state manifold [-1, 1]
-        
         if not self.training:
             self.internal_state.copy_(new_state.mean(dim=0, keepdim=True).detach())
 
@@ -1175,7 +1166,7 @@ class UniversalCognitiveOrganelle(nn.Module):
         op_1 = F.gelu(h_state)                                      # GELU
         op_2 = F.silu(h_state)                                      # SiLU
         op_3 = torch.tanh(h_state)                                  # Tanh
-        op_4 = torch.sin(h_state * 3.14159265)                      # Sinusoidal phase oscillation
+        op_4 = torch.sin(h_state * 3.1415)                          # Sinusoidal phase oscillation
         op_5 = torch.abs(h_state)                                   # Absolute threshold
         op_6 = h_state * torch.sigmoid(h_state)                      # Fractal self-gating
         op_7 = torch.cos(h_state) * torch.sin(h_state)              # High-frequency resonance
