@@ -208,11 +208,12 @@ public:
     std::string device_str;
 
     std::vector<std::shared_ptr<OmniMorphicNodeImpl>> nodes;
-    std::vector<torch::Tensor> alpha_nodes;
+    torch::nn::ParameterList alpha_nodes{nullptr};
     std::vector<std::string> node_names;
 
     OmniContinuousGraphSubstrateImpl(int64_t dim, int64_t max_nodes = 16, std::string device_str = "cpu")
         : dim(dim), max_nodes(max_nodes), device_str(device_str) {
+        alpha_nodes = register_parameter_list("alpha_nodes");
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
         this->to(device);
     }
@@ -229,8 +230,8 @@ public:
 
         // Zero-Shock Net2Net birth identity parameter (initially 0.0)
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        auto alpha = register_parameter(node_key + "_alpha", torch::zeros({}, torch::TensorOptions().device(device)));
-        alpha_nodes.push_back(alpha);
+        auto alpha = torch::zeros({}, torch::TensorOptions().device(device));
+        alpha_nodes->append(register_parameter(node_key + "_alpha", alpha));
         node_names.push_back(name);
 
         return true;
@@ -268,7 +269,7 @@ public:
             torch::Tensor node_out, attn_w;
             std::tie(node_out, attn_w) = nodes[i]->forward(manifold_stack, u_t);
 
-            auto alpha = alpha_nodes[i];
+            auto alpha = alpha_nodes[i].as<torch::Tensor>();
             auto gate = torch::tanh(alpha);
             auto gated_signal = gate * node_out;
             current_signals.push_back(gated_signal);

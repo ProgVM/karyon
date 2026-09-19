@@ -3,7 +3,7 @@
 ===============================================================================
 KARYON CORE C++20 LIBTORCH COMPILATION & PYTHON BRIDGE v30.0 MASTER
 Python as Client, C++20 as Engine (KEP Principle 1)
-Universal Multimodal & Cross-Modal State-Space Cognitive Engine
+Clean Slate AGN Parallel Evolution Core
 ===============================================================================
 """
 import os
@@ -15,88 +15,58 @@ from torch.utils.cpp_extension import load
 def _is_valid_karyon_cpp_module(mod):
     if mod is None:
         return False
-    required_attrs = ["ByteTokenizer", "SensoryGateway", "ParallelLogDecaySSDLayer", "FusedCascadedLaminarStack", "PredictiveSelfModel"]
+    required_attrs = ["UniversalManifold", "ParallelOperatorBank", "OmniMorphicNode", "OmniContinuousGraphSubstrate", "CognitiveEvolvableAgent"]
     return all(hasattr(mod, attr) and isinstance(getattr(mod, attr), type) for attr in required_attrs)
 
-# Step 1: Check sys.modules for any already loaded C++ extension binary (excluding Python wrappers & __main__)
+# Step 1: Check sys.modules for any already loaded C++ extension binary
 karyon_cpp = None
 for mod_name, mod in list(sys.modules.items()):
-    if mod_name not in ["__main__", "karyon_core", "karyon_agent", "dialogue"] and (mod_name.startswith("karyon_cpp_ext") or mod_name.startswith("karyon_core_ext")):
+    if "karyon_cpp_ext" in mod_name or "karyon_core_ext" in mod_name:
         if _is_valid_karyon_cpp_module(mod):
-            print(f"[C++ JIT] Reusing already loaded C++ module: '{mod_name}'")
             karyon_cpp = mod
             break
 
-# Step 2: Try importing candidate names directly from disk / cache (prefer newest compiled build)
+# Step 2: Attempt dynamic JIT compilation if not loaded
 if karyon_cpp is None:
-    for path in [
-        "/kaggle/working/karyon/build/karyon_core_jit",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "build/karyon_core_jit"),
-        "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v40",
-        "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v39",
-        "/root/.cache/torch_extensions/py312_cu128/karyon_cpp_ext_v38"
-    ]:
-        if os.path.exists(path) and path not in sys.path:
-            sys.path.insert(0, path)
-            
-    for candidate_name in ["karyon_cpp_ext_v40"]:
-        try:
-            mod = importlib.import_module(candidate_name)
-            if _is_valid_karyon_cpp_module(mod):
-                print(f"[C++ JIT] Successfully imported existing compiled module: '{candidate_name}'")
-                karyon_cpp = mod
-                break
-        except Exception:
-            pass
+    # Use workspace directory as root
+    workspace_dir = os.path.dirname(os.path.abspath(__file__))
+    source_path = os.path.join(workspace_dir, "karyon_core.cpp")
 
-# Step 3: Compile and load if not found
-if karyon_cpp is None:
-    print("[C++ JIT] Compiling and linking native Karyon C++20 architecture (v40.0 Master with Dynamic Allostatic Habituation & Sanitized Fast-Weights)...")
+    if not os.path.exists(source_path):
+        raise FileNotFoundError(f"Karyon-CoRE C++ source file not found at: {source_path}")
+
+    # Build directory setup
+    build_dir = os.path.join(workspace_dir, "build", "karyon_core_jit")
+    os.makedirs(build_dir, exist_ok=True)
+
+    # Detect active compiler flags
+    extra_cflags = ["-O3", "-std=c++20", "-ffast-math", "-march=native", "-w"]
+    if torch.cuda.is_available():
+        extra_cflags.append("-D__CUDA_INTERNAL__")
+
+    # Generate unique candidate module name to prevent registration collisions
+    import uuid
+    candidate_name = f"karyon_core_ext_{uuid.uuid4().hex[:8]}"
+
     try:
+        # Load C++ extension dynamically
         karyon_cpp = load(
-            name="karyon_cpp_ext_v40",
-            sources=["karyon_core.cpp"],
-            extra_cflags=["-O3", "-std=c++20"],
+            name=candidate_name,
+            sources=[source_path],
+            extra_cflags=extra_cflags,
+            build_directory=build_dir,
             verbose=False
         )
-        sys.modules["karyon_cpp_ext_v40"] = karyon_cpp
-        print("[C++ JIT] Native C++20 v40.0 Master architecture successfully compiled and initialized!")
     except Exception as e:
-        if "already registered" in str(e):
-            print("[C++ JIT] PyBind11 type registration conflict detected. Attempting fallback import...")
-            for candidate_name in ["karyon_cpp_ext_v40", "karyon_cpp_ext_v39", "karyon_cpp_ext_v38"]:
-                try:
-                    mod = importlib.import_module(candidate_name)
-                    if _is_valid_karyon_cpp_module(mod):
-                        print(f"[C++ JIT] Fallback successful! Reusing '{candidate_name}'")
-                        karyon_cpp = mod
-                        break
-                except Exception:
-                    pass
-            if karyon_cpp is None:
-                raise e
-        else:
-            raise e
+        sys.stderr.write(f"❌ Karyon C++ JIT Compilation Failed: {str(e)}\n")
+        raise e
 
-# Export all native C++ classes to Python interface
-ByteTokenizer = karyon_cpp.ByteTokenizer
-HomeostaticUnit = karyon_cpp.HomeostaticUnit
-SensoryGateway = karyon_cpp.SensoryGateway
-MotorGateway = karyon_cpp.MotorGateway
-CausalByteReceptiveField = karyon_cpp.CausalByteReceptiveField
-MultiScaleBytePyramidReceptiveField = karyon_cpp.MultiScaleBytePyramidReceptiveField
-ParallelLogDecaySSDLayer = karyon_cpp.ParallelLogDecaySSDLayer
-CalibratedParallelSSDCore = karyon_cpp.ParallelLogDecaySSDLayer # Alias for backward compatibility
-CausalConvSwiGLUBlock = karyon_cpp.CausalConvSwiGLUBlock
-ParallelSwiGLUBlock = karyon_cpp.CausalConvSwiGLUBlock # Alias for backward compatibility
-EntropyAdaptiveBoundaryDetector = karyon_cpp.EntropyAdaptiveBoundaryDetector
-CorticalStage = karyon_cpp.CorticalStage
-PrecisionWeightedLPER = karyon_cpp.PrecisionWeightedLPER
-FusedCascadedLaminarStack = karyon_cpp.FusedCascadedLaminarStack
-DesaturatedHopfieldAttractorHead = karyon_cpp.DesaturatedHopfieldAttractorHead
-LatentPredictor = karyon_cpp.LatentPredictor
-TDFreeEnergyCritic = karyon_cpp.TDFreeEnergyCritic
-BatchedEpisodicMemory = karyon_cpp.BatchedEpisodicMemory
-VolitionalActionEvaluator = karyon_cpp.VolitionalActionEvaluator
-LocalNeuromodulatedPlasticity = karyon_cpp.LocalNeuromodulatedPlasticity
-PredictiveSelfModel = karyon_cpp.PredictiveSelfModel
+# Step 3: Inject C++ classes into python namespace
+if karyon_cpp is not None:
+    globals()["UniversalManifold"] = getattr(karyon_cpp, "UniversalManifold")
+    globals()["ParallelOperatorBank"] = getattr(karyon_cpp, "ParallelOperatorBank")
+    globals()["OmniMorphicNode"] = getattr(karyon_cpp, "OmniMorphicNode")
+    globals()["OmniContinuousGraphSubstrate"] = getattr(karyon_cpp, "OmniContinuousGraphSubstrate")
+    globals()["CognitiveEvolvableAgent"] = getattr(karyon_cpp, "CognitiveEvolvableAgent")
+else:
+    raise ImportError("Failed to load or compile Karyon C++ extension module.")
