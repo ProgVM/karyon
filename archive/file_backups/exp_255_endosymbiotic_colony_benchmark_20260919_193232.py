@@ -54,7 +54,7 @@ class AlpacaByteStreamDataset:
 
         self.tensor = torch.tensor(list(raw_bytes), dtype=torch.long, device=device)
         self.total_bytes = len(self.tensor)
-        print(f"  • Packed Alpaca Byte Stream: {self.total_bytes:,} bytes on {str(device).upper()}")
+        print(f"  • Packed Alpaca Byte Stream: {self.total_bytes:,} bytes on {device.upper()}")
 
     def get_batch(self, batch_size=16, seq_len=512):
         max_idx = self.total_bytes - seq_len - 1
