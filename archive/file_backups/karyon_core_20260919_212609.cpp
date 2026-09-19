@@ -193,18 +193,13 @@ public:
         auto fe_scalar = free_energy.mean().item<float>();
         auto rew_scalar = reward.mean().item<float>();
 
-        auto val_cpu = values.cpu().contiguous();
-        auto val_acc = val_cpu.accessor<float, 1>();
-
-        float na = std::clamp(val_acc[4] + 0.1f * fe_scalar - 0.05f, 0.0f, 1.0f);
-        float da = std::clamp(val_acc[5] + 0.2f * rew_scalar - 0.05f, 0.0f, 1.0f);
-        float energy = std::clamp(val_acc[0] - 0.001f - 0.002f * fe_scalar + 0.005f * rew_scalar, 0.0f, 1.0f);
-        float integrity = std::clamp(val_acc[1] - 0.005f * fe_scalar + 0.002f * rew_scalar, 0.0f, 1.0f);
-        float curiosity = std::clamp(val_acc[2] + 0.01f * fe_scalar - 0.005f, 0.0f, 1.0f);
-        float stability = std::clamp(val_acc[3] - 0.01f * fe_scalar + 0.01f * (1.0f - na), 0.0f, 1.0f);
-
-        auto new_vals = torch::tensor({energy, integrity, curiosity, stability, na, da}, values.options());
-        values.copy_(new_vals);
+        auto val_acc = values.accessor<float, 1>();
+        val_acc[4] = std::clamp(val_acc[4] + 0.1f * fe_scalar - 0.05f, 0.0f, 1.0f);
+        val_acc[5] = std::clamp(val_acc[5] + 0.2f * rew_scalar - 0.05f, 0.0f, 1.0f);
+        val_acc[0] = std::clamp(val_acc[0] - 0.001f - 0.002f * fe_scalar + 0.005f * rew_scalar, 0.0f, 1.0f);
+        val_acc[1] = std::clamp(val_acc[1] - 0.005f * fe_scalar + 0.002f * rew_scalar, 0.0f, 1.0f);
+        val_acc[2] = std::clamp(val_acc[2] + 0.01f * fe_scalar - 0.005f, 0.0f, 1.0f);
+        val_acc[3] = std::clamp(val_acc[3] - 0.01f * fe_scalar + 0.01f * (1.0f - val_acc[4]), 0.0f, 1.0f);
 
         return values.clone();
     }
@@ -248,11 +243,11 @@ public:
         // x: [batch, seq_len, dim] or [batch, dim]
         int64_t batch = x.size(0);
         int64_t seq_len = (x.dim() == 3) ? x.size(1) : 1;
-        int64_t d = x.size(-1);
-        auto x_2d = x.reshape({-1, d}); // [batch * seq_len, d]
+        auto x_2d = x.reshape({-1, x.size(-1)}); // [batch * seq_len, dim_in]
+        int64_t dim_in = x_2d.size(-1);
 
-        auto norm_x = x_2d / (torch::sqrt(torch::sum(x_2d * x_2d, -1, true)) + 1e-6f);
-        auto norm_k = memory_keys / (torch::sqrt(torch::sum(memory_keys * memory_keys, -1, true)) + 1e-6f);
+        auto norm_x = x_2d / (torch::norm(x_2d, -1, true) + 1e-6f);
+        auto norm_k = memory_keys / (torch::norm(memory_keys, -1, true) + 1e-6f);
 
         // sim: [batch * seq_len, num_basins]
         auto sim = torch::matmul(norm_x, norm_k.t()) * 8.0f;
@@ -264,9 +259,9 @@ public:
         auto out = gate * retrieved;
 
         if (x.dim() == 3) {
-            return out.view({batch, seq_len, d});
+            return out.view({batch, seq_len, dim});
         }
-        return out.view({batch, d});
+        return out.view({batch, dim});
     }
 };
 TORCH_MODULE(ContinuousHopfieldMemory);

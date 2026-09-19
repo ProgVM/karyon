@@ -64,11 +64,7 @@ if karyon_cpp is None:
 # Step 3: Inject C++ classes into python namespace
 if karyon_cpp is not None:
     globals()["UniversalManifold"] = getattr(karyon_cpp, "UniversalManifold")
-    globals()["CausalParallelSSD"] = getattr(karyon_cpp, "CausalParallelSSD", None)
     globals()["ParallelOperatorBank"] = getattr(karyon_cpp, "ParallelOperatorBank")
-    globals()["ContinuousHopfieldMemory"] = getattr(karyon_cpp, "ContinuousHopfieldMemory", None)
-    globals()["LatentPredictor"] = getattr(karyon_cpp, "LatentPredictor", None)
-    globals()["HomeostaticNexus"] = getattr(karyon_cpp, "HomeostaticNexus", None)
     globals()["OmniMorphicNode"] = getattr(karyon_cpp, "OmniMorphicNode")
     globals()["OmniContinuousGraphSubstrate"] = getattr(karyon_cpp, "OmniContinuousGraphSubstrate")
     globals()["CognitiveEvolvableAgent"] = getattr(karyon_cpp, "CognitiveEvolvableAgent")

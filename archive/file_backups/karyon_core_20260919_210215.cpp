@@ -193,18 +193,13 @@ public:
         auto fe_scalar = free_energy.mean().item<float>();
         auto rew_scalar = reward.mean().item<float>();
 
-        auto val_cpu = values.cpu().contiguous();
-        auto val_acc = val_cpu.accessor<float, 1>();
-
-        float na = std::clamp(val_acc[4] + 0.1f * fe_scalar - 0.05f, 0.0f, 1.0f);
-        float da = std::clamp(val_acc[5] + 0.2f * rew_scalar - 0.05f, 0.0f, 1.0f);
-        float energy = std::clamp(val_acc[0] - 0.001f - 0.002f * fe_scalar + 0.005f * rew_scalar, 0.0f, 1.0f);
-        float integrity = std::clamp(val_acc[1] - 0.005f * fe_scalar + 0.002f * rew_scalar, 0.0f, 1.0f);
-        float curiosity = std::clamp(val_acc[2] + 0.01f * fe_scalar - 0.005f, 0.0f, 1.0f);
-        float stability = std::clamp(val_acc[3] - 0.01f * fe_scalar + 0.01f * (1.0f - na), 0.0f, 1.0f);
-
-        auto new_vals = torch::tensor({energy, integrity, curiosity, stability, na, da}, values.options());
-        values.copy_(new_vals);
+        auto val_acc = values.accessor<float, 1>();
+        val_acc[4] = std::clamp(val_acc[4] + 0.1f * fe_scalar - 0.05f, 0.0f, 1.0f);
+        val_acc[5] = std::clamp(val_acc[5] + 0.2f * rew_scalar - 0.05f, 0.0f, 1.0f);
+        val_acc[0] = std::clamp(val_acc[0] - 0.001f - 0.002f * fe_scalar + 0.005f * rew_scalar, 0.0f, 1.0f);
+        val_acc[1] = std::clamp(val_acc[1] - 0.005f * fe_scalar + 0.002f * rew_scalar, 0.0f, 1.0f);
+        val_acc[2] = std::clamp(val_acc[2] + 0.01f * fe_scalar - 0.005f, 0.0f, 1.0f);
+        val_acc[3] = std::clamp(val_acc[3] - 0.01f * fe_scalar + 0.01f * (1.0f - val_acc[4]), 0.0f, 1.0f);
 
         return values.clone();
     }
@@ -245,28 +240,19 @@ public:
     }
 
     torch::Tensor forward(torch::Tensor x) {
-        // x: [batch, seq_len, dim] or [batch, dim]
-        int64_t batch = x.size(0);
-        int64_t seq_len = (x.dim() == 3) ? x.size(1) : 1;
-        int64_t d = x.size(-1);
-        auto x_2d = x.reshape({-1, d}); // [batch * seq_len, d]
+        // x: [batch, seq_len, dim]
+        auto norm_x = x / (torch::norm(x, -1, true) + 1e-6f);
+        auto norm_k = memory_keys / (torch::norm(memory_keys, -1, true) + 1e-6f);
 
-        auto norm_x = x_2d / (torch::sqrt(torch::sum(x_2d * x_2d, -1, true)) + 1e-6f);
-        auto norm_k = memory_keys / (torch::sqrt(torch::sum(memory_keys * memory_keys, -1, true)) + 1e-6f);
-
-        // sim: [batch * seq_len, num_basins]
-        auto sim = torch::matmul(norm_x, norm_k.t()) * 8.0f;
+        // sim: [batch, seq_len, num_basins]
+        auto sim = torch::matmul(norm_x, norm_k.transpose(0, 1)) * 8.0f;
         auto attn = torch::softmax(sim, -1);
 
-        // retrieved: [batch * seq_len, dim]
+        // retrieved: [batch, seq_len, dim]
         auto retrieved = torch::matmul(attn, memory_values);
-        auto gate = torch::sigmoid(mem_gate->forward(x_2d));
-        auto out = gate * retrieved;
+        auto gate = torch::sigmoid(mem_gate->forward(x));
 
-        if (x.dim() == 3) {
-            return out.view({batch, seq_len, d});
-        }
-        return out.view({batch, d});
+        return gate * retrieved;
     }
 };
 TORCH_MODULE(ContinuousHopfieldMemory);
@@ -361,25 +347,21 @@ public:
         }
 
         auto w1_raw = hyper_w1->forward(context).view({batch, num_operators, state_dim});
-        auto w1 = torch::softmax(w1_raw, 1); // [batch, num_operators, state_dim]
-        auto w2 = hyper_w2->forward(context).view({batch, state_dim, dim}); // [batch, state_dim, dim]
+        auto w1 = torch::softmax(w1_raw, 1);
+        auto w2 = hyper_w2->forward(context).view({batch, state_dim, dim});
 
         // Fast temporal scan
-        auto h_ssd = causal_ssd->forward(x_attended); // [batch, seq_len, dim]
+        auto h_ssd = causal_ssd->forward(x_attended);
 
         // Laminar Prediction & Error Residual Extraction (Vector B)
         auto pred = pred_l2->forward(torch::gelu(pred_l1->forward(h_ssd)));
         auto err_residual = ln_residual->forward(x_attended - pred);
-        auto h_effective = h_ssd + err_residual; // [batch, seq_len, dim]
+        auto h_effective = h_ssd + err_residual;
 
-        // Operator bank mixing: ops is [batch, seq_len, dim, num_operators]
+        // Operator bank mixing
         auto ops = operator_bank->compute_operators(h_effective);
-        // We project ops (dim, num_operators) with w1 (num_operators, state_dim) -> [batch, seq_len, state_dim]
-        // ops: [batch, seq_len, dim, num_operators], w1: [batch, num_operators, state_dim]
-        // einsum: b t d k , b k s -> b t s
-        auto h_hidden = torch::einsum("btdk,bks->bts", {ops, w1}) * (1.0f / std::sqrt(dim));
-        // node_output: [batch, seq_len, state_dim] @ w2: [batch, state_dim, dim] -> [batch, seq_len, dim]
-        auto node_output = torch::einsum("bts,bsd->btd", {h_hidden, w2});
+        auto h_hidden = torch::einsum("btdk,bkd->btd", ops, w1);
+        auto node_output = torch::einsum("bts,bsd->btd", h_hidden, w2);
 
         // Episodic Hopfield Memory injection (Vector C)
         auto mem_injection = episodic_memory->forward(node_output);
