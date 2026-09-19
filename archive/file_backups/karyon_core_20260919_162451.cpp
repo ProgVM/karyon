@@ -320,7 +320,7 @@ public:
     }
 
     // High-speed parallel forward pass
-    torch::Tensor forward(torch::Tensor tokens, torch::Tensor u_t) {
+    torch::Tensor forward(torch::Tensor tokens, torch::Tensor u_t = torch::Tensor()) {
         auto emb = manifold->forward(tokens); // [batch, seq_len, dim]
         
         std::vector<torch::Tensor> signals = {emb};
@@ -329,10 +329,6 @@ public:
         std::tie(final_emb, updated_signals) = substrate->forward(signals, u_t);
 
         return motor_head->forward(final_emb); // [batch, seq_len, vocab_size]
-    }
-
-    torch::Tensor forward(torch::Tensor tokens) {
-        return forward(tokens, torch::Tensor());
     }
 };
 TORCH_MODULE(CognitiveEvolvableAgent);
@@ -364,10 +360,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::class_<CognitiveEvolvableAgentImpl, torch::nn::Module, std::shared_ptr<CognitiveEvolvableAgentImpl>>(m, "CognitiveEvolvableAgent")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(), py::arg("vocab_size") = 258, py::arg("dim") = 256, py::arg("max_nodes") = 16, py::arg("device") = "cpu")
         .def("sprout_organelle", &CognitiveEvolvableAgentImpl::sprout_organelle, py::arg("name"), py::arg("state_dim") = 128, py::arg("num_operators") = 8)
-        .def("forward", py::overload_cast<torch::Tensor, torch::Tensor>(&CognitiveEvolvableAgentImpl::forward), py::arg("tokens"), py::arg("u_t"))
-        .def("forward", py::overload_cast<torch::Tensor>(&CognitiveEvolvableAgentImpl::forward), py::arg("tokens"))
-        .def("__call__", py::overload_cast<torch::Tensor, torch::Tensor>(&CognitiveEvolvableAgentImpl::forward), py::arg("tokens"), py::arg("u_t"))
-        .def("__call__", py::overload_cast<torch::Tensor>(&CognitiveEvolvableAgentImpl::forward), py::arg("tokens"))
+        .def("forward", &CognitiveEvolvableAgentImpl::forward, py::arg("tokens"), py::arg("u_t") = torch::Tensor())
+        .def("__call__", &CognitiveEvolvableAgentImpl::forward, py::arg("tokens"), py::arg("u_t") = torch::Tensor())
         .def("parameters", [](std::shared_ptr<CognitiveEvolvableAgentImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<CognitiveEvolvableAgentImpl> m) { return m->named_parameters(); });
 }
