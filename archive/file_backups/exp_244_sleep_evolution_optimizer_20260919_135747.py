@@ -117,9 +117,9 @@ def run_experiment():
 
         optimizer.zero_grad()
 
-        # Deplete somatic energy and increase surprise to trigger sleep homeostasis (vectorized)
-        hu.state[:, 1] = (hu.state[:, 1] - 0.05).clamp_min(0.10)  # Energy
-        hu.state[:, 4] = (hu.state[:, 4] + 0.04).clamp_max(0.90)  # Noradrenaline (Surprise)
+        # Deplete somatic energy and increase surprise to trigger sleep homeostasis
+        hu.state[:, 1] = max(0.10, hu.state[:, 1].item() - 0.05)  # Energy
+        hu.state[:, 4] = min(0.90, hu.state[:, 4].item() + 0.04)  # Noradrenaline (Surprise)
 
         loss, fe, _, logits, _, _, _ = agent.forward_sequence(x_batch, targets, hu, criterion_speech)
         loss.backward()
