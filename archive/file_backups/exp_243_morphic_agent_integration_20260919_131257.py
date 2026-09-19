@@ -68,7 +68,7 @@ def run_experiment():
 
     print("\n[1/4] Initializing CoREAgent with Universal Morphic Engine...")
     agent = CoREAgent(config=cfg, device=device).to(device)
-    hu_batch = HomeostaticUnit(batch_size=4, device=device)
+    hu_batch = HomeostaticUnit(batch_size=4, device_str=device)
     criterion_speech = nn.CrossEntropyLoss()
 
     # Verify that the agent's dynamic graph contains UniversalMorphicOperator bricks
