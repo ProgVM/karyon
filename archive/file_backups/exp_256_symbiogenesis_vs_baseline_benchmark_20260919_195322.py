@@ -64,9 +64,8 @@ class HeterogeneousMultiTaskCorpus:
 
 class SymbioticSuperOrganism(nn.Module):
     """
-    True Endosymbiotic Super-Organism (Latent Integration):
-    Injects the Symbiont's high-speed latent energy directly into the Host's
-    internal continuous manifold via a Zero-Shock synaptic bridge before motor readout.
+    Endosymbiotic Super-Organism:
+    Fuses two specialized micro-Karyons (Host + Symbiont) via a Zero-Shock synaptic bridge.
     """
     def __init__(self, vocab_size=258, dim=256, device_str='cpu'):
         super().__init__()
@@ -78,11 +77,11 @@ class SymbioticSuperOrganism(nn.Module):
         self.host = karyon_core.CognitiveEvolvableAgent(vocab_size, dim, 16, device_str)
         self.host.sprout_organelle("host_context_trunk", state_dim=128, num_operators=8)
 
-        # Symbiont: Fast phonological & high-frequency specialist (Mitochondria-like)
+        # Symbiont: Fast phonological & high-frequency specialist
         self.symbiont = karyon_core.CognitiveEvolvableAgent(vocab_size, dim, 16, device_str)
         self.symbiont.sprout_organelle("symbiont_fast_scanner", state_dim=128, num_operators=8)
 
-        # Zero-Shock Endosymbiotic Bridge Gate
+        # Zero-Shock Synaptic Fusion Gate
         self.alpha_symb = nn.Parameter(torch.zeros(1, device=torch.device(device_str)))
 
     def parameters(self, recurse=True):
@@ -90,22 +89,13 @@ class SymbioticSuperOrganism(nn.Module):
         return list(self.host.parameters()) + list(self.symbiont.parameters()) + [self.alpha_symb]
 
     def forward(self, tokens):
-        # 1. Extract continuous latent representations from both organisms
-        h_host = self.host.forward_latent(tokens)      # [batch, seq_len, dim]
-        h_symb = self.symbiont.forward_latent(tokens)  # [batch, seq_len, dim]
+        logits_host = self.host(tokens)
+        logits_symb = self.symbiont(tokens)
 
-        # 2. Endosymbiotic Latent Fusion (Mitochondrial ATP Injection)
+        # Zero-Shock Net2Net Gating
         gate = torch.tanh(self.alpha_symb)
-        h_fused = h_host + gate * h_symb               # Internal energy injection
-
-        # 3. Single Unified Motor Readout via Host's Motor Head
-        fused_logits = self.host.forward_motor(h_fused)
-
-        # 4. Standalone Motor Readouts for Auxiliary Self-Supervision
-        host_logits = self.host.forward_motor(h_host)
-        symb_logits = self.symbiont.forward_motor(h_symb)
-
-        return fused_logits, host_logits, symb_logits
+        fused_logits = logits_host + gate * logits_symb
+        return fused_logits, logits_host, logits_symb
 
     def duplicate_and_diverge(self, copy_name="divergent_cortex_node"):
         return self.host.sprout_organelle(copy_name, state_dim=128, num_operators=8)

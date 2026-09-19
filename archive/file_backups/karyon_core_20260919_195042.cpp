@@ -513,27 +513,6 @@ public:
         auto u_t = homeostasis->get_values();
         return forward(tokens, u_t);
     }
-    // High-speed parallel forward pass returning final latent embedding
-    torch::Tensor forward_latent(torch::Tensor tokens, torch::Tensor u_t) {
-        auto emb = manifold->forward(tokens); // [batch, seq_len, dim]
-        
-        std::vector<torch::Tensor> signals = {emb};
-        torch::Tensor final_emb;
-        std::vector<torch::Tensor> updated_signals;
-        std::tie(final_emb, updated_signals) = substrate->forward(signals, u_t);
-
-        return final_emb; // [batch, seq_len, dim]
-    }
-
-    torch::Tensor forward_latent(torch::Tensor tokens) {
-        auto u_t = homeostasis->get_values();
-        return forward_latent(tokens, u_t);
-    }
-
-    // Forward pass taking an injected external latent tensor and projecting to logits
-    torch::Tensor forward_motor(torch::Tensor latent) {
-        return motor_head->forward(latent);
-    }
 
     // Active Inference forward pass returning logits, Free Energy, and updated homeostasis
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward_active_inference(torch::Tensor tokens, torch::Tensor reward) {
@@ -646,9 +625,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("forward", py::overload_cast<torch::Tensor>(&CognitiveEvolvableAgentImpl::forward), py::arg("tokens"))
         .def("__call__", py::overload_cast<torch::Tensor, torch::Tensor>(&CognitiveEvolvableAgentImpl::forward), py::arg("tokens"), py::arg("u_t"))
         .def("__call__", py::overload_cast<torch::Tensor>(&CognitiveEvolvableAgentImpl::forward), py::arg("tokens"))
-        .def("forward_latent", py::overload_cast<torch::Tensor, torch::Tensor>(&CognitiveEvolvableAgentImpl::forward_latent), py::arg("tokens"), py::arg("u_t"))
-        .def("forward_latent", py::overload_cast<torch::Tensor>(&CognitiveEvolvableAgentImpl::forward_latent), py::arg("tokens"))
-        .def("forward_motor", &CognitiveEvolvableAgentImpl::forward_motor, py::arg("latent"))
         .def("forward_active_inference", &CognitiveEvolvableAgentImpl::forward_active_inference, py::arg("tokens"), py::arg("reward"))
         .def("generate_thought_and_speech", &CognitiveEvolvableAgentImpl::generate_thought_and_speech, py::arg("seed_tokens"), py::arg("max_new_tokens"), py::arg("temperature") = 0.45f, py::arg("top_p") = 0.90f)
         .def("parameters", [](std::shared_ptr<CognitiveEvolvableAgentImpl> m) { return m->parameters(); })
