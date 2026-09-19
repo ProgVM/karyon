@@ -1547,25 +1547,6 @@ class CoREAgent(nn.Module):
         self.grafted_pathways[name] = pathway.to(self.device)
         logger.info(f"🌱 [CoREAgent] Registered new Epigenetic Grafted Pathway '{name}' into active runtime.")
 
-    def sprout_cognitive_organelle(self, name: str, state_dim: int = 256, num_operators: int = 8):
-        """
-        Sprouts an arbitrary, unconstrained cognitive organelle with zero-shock Net2Net birth identity.
-        """
-        if name in self.cognitive_organelles:
-            return False
-        
-        new_organelle = UniversalCognitiveOrganelle(
-            dim=self.hidden_dim,
-            state_dim=state_dim,
-            num_operators=num_operators,
-            device=str(self.device)
-        )
-        self.cognitive_organelles[name] = new_organelle
-        # Strict zero-shock Net2Net birth identity (alpha_epi = 0.0)
-        self.organelle_alphas[name] = nn.Parameter(torch.tensor(0.0, device=self.device))
-        logger.info(f"🧬 [Open-Ended Morphogenesis] Sprouted new Cognitive Organelle '{name}' (state_dim={state_dim}, operators={num_operators}) with alpha_epi=0.0.")
-        return True
-
     def compute_volitional_logits_with_grafts(self, h_relaxed: torch.Tensor, effective_u_t: torch.Tensor) -> torch.Tensor:
         """Computes base volitional motor text logits and adds contributions from all registered grafted pathways."""
         logits = self.volitional_head.compute_volitional_logits(
@@ -2298,17 +2279,6 @@ class CoREAgent(nn.Module):
                 # KEP Principle 15 & 16: Dynamic Graph modulation is wrapped in residual highway
                 # with strict 0.0 contribution when newly sprouted nodes are initialized at alpha_epi = 0.0
                 h_combined = graph_out
-
-            # AGN v8.0 Open-Ended Cognitive Organelle Pool Integration (EXP-248)
-            # Allows the network to process and integrate emergent, self-parameterized memories,
-            # sandbox simulators, or newly synthesized homeostatic dimensions.
-            if hasattr(self, 'cognitive_organelles') and self.cognitive_organelles is not None:
-                for o_name, organelle in self.cognitive_organelles.items():
-                    gate = torch.tanh(self.organelle_alphas[o_name])
-                    # Strict short-circuit optimization: if gate is zero, completely bypass computation
-                    if gate.item() != 0.0:
-                        organelle_out = organelle(h_combined, effective_u_t)
-                        h_combined = h_combined + gate * organelle_out
 
             h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)

@@ -1077,95 +1077,6 @@ class HierarchicalTwoTierMemoryCache(nn.Module):
             weights_l2 = F.softmax(sim_l2 * 12.0, dim=-1)
             retrieved = retrieved + torch.matmul(weights_l2, self.l2_values[:self.l2_size]) * 0.5
 
-class UniversalCognitiveOrganelle(nn.Module):
-    """
-    Universal Cognitive Organelle (AGN v8.0 / Open-Ended Morphogenesis).
-    An unconstrained, self-parameterizing neural organelle capable of synthesizing
-    arbitrary cognitive structures (emergent memories, sandbox simulators, or new homeostatic dimensions).
-    It operates by dynamically constructing its own internal state space, non-linear operators,
-    and routing paths from a continuous mathematical substrate.
-    """
-    def __init__(self, dim: int, state_dim: int = 256, num_operators: int = 8, device: str = 'cpu'):
-        super().__init__()
-        self.dim = dim
-        self.state_dim = state_dim
-        self.device = torch.device(device)
-        self.num_operators = num_operators
-
-        # Dynamic internal state buffer (the organelle's private memory/sandbox space)
-        self.register_buffer("internal_state", torch.zeros(1, state_dim, device=self.device))
-
-        # Morphic Parameter Generator (HyperNetwork)
-        # Synthesizes projection weights and non-linear routing matrices on-the-fly
-        self.parameter_generator = nn.Sequential(
-            nn.Linear(dim, dim // 2, device=self.device),
-            nn.SiLU(),
-            nn.Linear(dim // 2, (dim * state_dim) + (state_dim * dim) + num_operators + 4, device=self.device)
-        )
-
-        # Base projection to stabilize gradient flow
-        self.base_in = nn.Linear(dim, state_dim, bias=False, device=self.device)
-        self.base_out = nn.Linear(state_dim, dim, bias=False, device=self.device)
-
-    def forward(self, x: torch.Tensor, u_t: torch.Tensor = None) -> torch.Tensor:
-        batch, seq_len, dim = x.size()
-        
-        # 1. Generate contextual morphic parameters from input stream
-        context = torch.mean(x, dim=1)  # [batch, dim]
-        if u_t is not None:
-            u_flat = u_t.view(batch, -1) if u_t.dim() > 2 else u_t
-            if u_flat.size(0) == batch and u_flat.size(-1) <= dim:
-                context = context + F.pad(u_flat, (0, dim - u_flat.size(-1)))
-
-        morphic_params = self.parameter_generator(context)  # [batch, total_params]
-
-        # 2. Extract synthesized projection weights
-        ptr = 0
-        w_in_flat = morphic_params[:, ptr:ptr + (dim * self.state_dim)].view(batch, dim, self.state_dim)
-        ptr += dim * self.state_dim
-        w_out_flat = morphic_params[:, ptr:ptr + (self.state_dim * dim)].view(batch, self.state_dim, dim)
-        ptr += self.state_dim * dim
-
-        # Operator coefficients (Identity, GELU, SiLU, Tanh, Sin, Abs, Complex Phase, Fractal Gate)
-        operator_coeffs = F.softmax(morphic_params[:, ptr:ptr + self.num_operators], dim=-1).unsqueeze(1).unsqueeze(2)
-        ptr += self.num_operators
-
-        # Dynamic state integration factors (decay, gain, coupling, feedback)
-        factors = torch.sigmoid(morphic_params[:, ptr:ptr + 4])
-        decay, gain, coupling, feedback = factors[:, 0:1], factors[:, 1:2], factors[:, 2:3], factors[:, 3:4]
-
-        # 3. Project input into the organelle's dynamic state space
-        # Mix base projection with synthesized context-dependent projection
-        projected_in = self.base_in(x) + torch.matmul(x, w_in_flat)  # [batch, seq_len, state_dim]
-
-        # 4. Synthesize internal state dynamics (Memory / Sandbox simulation)
-        # Update private internal state buffer with decay and new input
-        state_update = projected_in.mean(dim=1)  # [batch, state_dim]
-        current_state = self.internal_state.expand(batch, -1)
-        
-        new_state = (1.0 - decay) * current_state + gain * state_update
-        if not self.training:
-            self.internal_state.copy_(new_state.mean(dim=0, keepdim=True).detach())
-
-        # 5. Apply non-linear morphic operators across the state space
-        h_state = new_state.unsqueeze(1).expand(-1, seq_len, -1)  # [batch, seq_len, state_dim]
-        
-        # Elementary mathematical primitives
-        op_0 = h_state                                              # Identity
-        op_1 = F.gelu(h_state)                                      # GELU
-        op_2 = F.silu(h_state)                                      # SiLU
-        op_3 = torch.tanh(h_state)                                  # Tanh
-        op_4 = torch.sin(h_state * 3.1415)                          # Sinusoidal phase oscillation
-        op_5 = torch.abs(h_state)                                   # Absolute threshold
-        op_6 = h_state * torch.sigmoid(h_state)                      # Fractal self-gating
-        op_7 = torch.cos(h_state) * torch.sin(h_state)              # High-frequency resonance
-
-        all_ops = torch.stack([op_0, op_1, op_2, op_3, op_4, op_5, op_6, op_7], dim=-1) # [batch, seq, state, 8]
-        blended_state = torch.sum(all_ops * operator_coeffs.unsqueeze(-2), dim=-1) # [batch, seq, state_dim]
-
-        # 6. Project back to cortical space
-        output = self.base_out(blended_state) + torch.matmul(blended_state, w_out_flat) # [batch, seq, dim]
-        return output
         return retrieved
 
 class GateOp(nn.Module):
@@ -1532,10 +1443,6 @@ class CoREAgent(nn.Module):
         # 12. Dynamic Epigenetic Grafted Pathways & Mutational Structures (EXP-185 Validated 🟢)
         self.grafted_pathways = nn.ModuleDict()
 
-        # 12.1. Open-Ended Cognitive Organelle Pool (AGN v8.0 / Open-Ended Morphogenesis)
-        self.cognitive_organelles = nn.ModuleDict()
-        self.organelle_alphas = nn.ParameterDict()
-
         # 13. Continuous Epigenetic Evolutionary LEGO-Graph Assembly (AGN v7.0 / Dynamic DAG Routing)
         self.dynamic_graph = ContinuousDynamicNeuralGraph(dim=self.hidden_dim, max_bricks=16, device=self.device_str)
 
@@ -1546,25 +1453,6 @@ class CoREAgent(nn.Module):
         """Hot-registers a new sprouted pathway into the active agent runtime."""
         self.grafted_pathways[name] = pathway.to(self.device)
         logger.info(f"🌱 [CoREAgent] Registered new Epigenetic Grafted Pathway '{name}' into active runtime.")
-
-    def sprout_cognitive_organelle(self, name: str, state_dim: int = 256, num_operators: int = 8):
-        """
-        Sprouts an arbitrary, unconstrained cognitive organelle with zero-shock Net2Net birth identity.
-        """
-        if name in self.cognitive_organelles:
-            return False
-        
-        new_organelle = UniversalCognitiveOrganelle(
-            dim=self.hidden_dim,
-            state_dim=state_dim,
-            num_operators=num_operators,
-            device=str(self.device)
-        )
-        self.cognitive_organelles[name] = new_organelle
-        # Strict zero-shock Net2Net birth identity (alpha_epi = 0.0)
-        self.organelle_alphas[name] = nn.Parameter(torch.tensor(0.0, device=self.device))
-        logger.info(f"🧬 [Open-Ended Morphogenesis] Sprouted new Cognitive Organelle '{name}' (state_dim={state_dim}, operators={num_operators}) with alpha_epi=0.0.")
-        return True
 
     def compute_volitional_logits_with_grafts(self, h_relaxed: torch.Tensor, effective_u_t: torch.Tensor) -> torch.Tensor:
         """Computes base volitional motor text logits and adds contributions from all registered grafted pathways."""
@@ -2298,17 +2186,6 @@ class CoREAgent(nn.Module):
                 # KEP Principle 15 & 16: Dynamic Graph modulation is wrapped in residual highway
                 # with strict 0.0 contribution when newly sprouted nodes are initialized at alpha_epi = 0.0
                 h_combined = graph_out
-
-            # AGN v8.0 Open-Ended Cognitive Organelle Pool Integration (EXP-248)
-            # Allows the network to process and integrate emergent, self-parameterized memories,
-            # sandbox simulators, or newly synthesized homeostatic dimensions.
-            if hasattr(self, 'cognitive_organelles') and self.cognitive_organelles is not None:
-                for o_name, organelle in self.cognitive_organelles.items():
-                    gate = torch.tanh(self.organelle_alphas[o_name])
-                    # Strict short-circuit optimization: if gate is zero, completely bypass computation
-                    if gate.item() != 0.0:
-                        organelle_out = organelle(h_combined, effective_u_t)
-                        h_combined = h_combined + gate * organelle_out
 
             h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
