@@ -65,7 +65,7 @@ def run_benchmark():
     config.net.head_dim = 64
     config.net.unified_dim = 256
 
-    agent = CoREAgent(config=config, device=str(device)).to(device)
+    agent = CoREAgent(config, device_str=device).to(device)
 
     hu = HomeostaticUnit(device=device)
     episodic_mem = BatchedEpisodicMemory(capacity=100, memory_dim=config.net.unified_dim, device=device)
