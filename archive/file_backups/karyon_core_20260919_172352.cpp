@@ -605,7 +605,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<OmniContinuousGraphSubstrateImpl, torch::nn::Module, std::shared_ptr<OmniContinuousGraphSubstrateImpl>>(m, "OmniContinuousGraphSubstrate")
         .def(py::init<int64_t, int64_t, std::string>(), py::arg("dim") = 256, py::arg("max_nodes") = 16, py::arg("device") = "cpu")
-        .def_readonly("node_names", &OmniContinuousGraphSubstrateImpl::node_names)
         .def("sprout_node", &OmniContinuousGraphSubstrateImpl::sprout_node, py::arg("name"), py::arg("state_dim") = 128, py::arg("num_operators") = 8)
         .def("trigger_spontaneous_neurogenesis", &OmniContinuousGraphSubstrateImpl::trigger_spontaneous_neurogenesis)
         .def("execute_neural_darwinism", &OmniContinuousGraphSubstrateImpl::execute_neural_darwinism)
@@ -614,8 +613,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<CognitiveEvolvableAgentImpl, torch::nn::Module, std::shared_ptr<CognitiveEvolvableAgentImpl>>(m, "CognitiveEvolvableAgent")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(), py::arg("vocab_size") = 258, py::arg("dim") = 256, py::arg("max_nodes") = 16, py::arg("device") = "cpu")
-        .def_property_readonly("homeostasis", [](std::shared_ptr<CognitiveEvolvableAgentImpl> a) { return a->homeostasis.ptr(); })
-        .def_property_readonly("substrate", [](std::shared_ptr<CognitiveEvolvableAgentImpl> a) { return a->substrate.ptr(); })
+        .def_readonly("homeostasis", &CognitiveEvolvableAgentImpl::homeostasis)
+        .def_readonly("substrate", &CognitiveEvolvableAgentImpl::substrate)
         .def("sprout_organelle", &CognitiveEvolvableAgentImpl::sprout_organelle, py::arg("name"), py::arg("state_dim") = 128, py::arg("num_operators") = 8)
         .def("sprout_homeostatic_dimension", &CognitiveEvolvableAgentImpl::sprout_homeostatic_dimension, py::arg("name"), py::arg("init_val"), py::arg("target_val"), py::arg("decay"), py::arg("sensitivity"))
         .def("forward", &CognitiveEvolvableAgentImpl::forward, py::arg("tokens"))
