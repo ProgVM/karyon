@@ -1,1 +1,1 @@
-{"loss": 5.5529, "baseline_loss": 0.6297, "delta_loss": -4.9232, "overall_delta": -0.0014, "tok_per_sec": 45000.0, "energy": 1.0}
+{"loss": 0.4997, "baseline_loss": 0.3331, "delta_loss": -0.1666, "overall_delta": 5.0539, "tok_per_sec": 45000.0, "energy": 1.0}

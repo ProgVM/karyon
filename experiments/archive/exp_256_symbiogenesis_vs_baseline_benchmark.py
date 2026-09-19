@@ -84,6 +84,10 @@ class SymbioticSuperOrganism(nn.Module):
         # Zero-Shock Synaptic Fusion Gate
         self.alpha_symb = nn.Parameter(torch.zeros(1, device=torch.device(device_str)))
 
+    def parameters(self, recurse=True):
+        """C++ PyBind11 parameter aggregation override."""
+        return list(self.host.parameters()) + list(self.symbiont.parameters()) + [self.alpha_symb]
+
     def forward(self, tokens):
         logits_host = self.host(tokens)
         logits_symb = self.symbiont(tokens)
