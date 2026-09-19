@@ -98,8 +98,8 @@ def run_experiment():
 
     birth_delta = abs(loss_before - loss_after)
     print(f"   - Loss Delta at Birth t0: {birth_delta:.8f}")
-    assert birth_delta < 5e-4, f"Net2Net Zero-Identity violated! Delta = {birth_delta}"
-    print("✅ Zero-Shock Identity Preserved (Delta < 5e-4)")
+    assert birth_delta < 1e-4, f"Net2Net Zero-Identity violated! Delta = {birth_delta}"
+    print("✅ Zero-Shock Identity Preserved (Delta < 1e-4)")
 
     # 3. Stream Learning Benchmarking on Multi-Turn Dialogue
     print("\n[3/4] Benchmarking Stream Learning Convergence on Dialogue Data...")

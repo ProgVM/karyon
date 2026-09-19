@@ -77,12 +77,11 @@ def run_experiment():
     for idx, b in enumerate(graph_bricks):
         print(f"   - Brick #{idx}: {b.__class__.__name__} (Dim={b.dim}, Rank={b.rank})")
 
-    # 2. Test Net2Net Zero-Shock Identity at Birth via Sprouting (with strict seeding to bypass stochastic Wiener noise)
+    # 2. Test Net2Net Zero-Shock Identity at Birth via Sprouting
     print("\n[2/4] Testing Epigenetic Neurogenesis & Net2Net Zero-Shock Identity...")
     x_test = create_synthetic_dialogue_batch(batch_size=4, seq_len=128, device=device)
     targets_test = x_test.clone()
 
-    torch.manual_seed(1337)
     with torch.no_grad():
         res_before = agent.forward_sequence(x_test, targets_test, hu_batch, criterion_speech)
         loss_before = res_before[0].item()
@@ -91,15 +90,14 @@ def run_experiment():
     sprouted = agent.dynamic_graph.sprout_brick("UniversalMorphicOperator")
     assert sprouted, "Failed to sprout new brick!"
 
-    torch.manual_seed(1337)
     with torch.no_grad():
         res_after = agent.forward_sequence(x_test, targets_test, hu_batch, criterion_speech)
         loss_after = res_after[0].item()
 
     birth_delta = abs(loss_before - loss_after)
     print(f"   - Loss Delta at Birth t0: {birth_delta:.8f}")
-    assert birth_delta < 5e-4, f"Net2Net Zero-Identity violated! Delta = {birth_delta}"
-    print("✅ Zero-Shock Identity Preserved (Delta < 5e-4)")
+    assert birth_delta < 1e-4, f"Net2Net Zero-Identity violated! Delta = {birth_delta}"
+    print("✅ Zero-Shock Identity Preserved (Delta < 1e-4)")
 
     # 3. Stream Learning Benchmarking on Multi-Turn Dialogue
     print("\n[3/4] Benchmarking Stream Learning Convergence on Dialogue Data...")
