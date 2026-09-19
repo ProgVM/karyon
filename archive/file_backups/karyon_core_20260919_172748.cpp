@@ -399,13 +399,12 @@ public:
     // Neural Darwinism Pruning: Decay and prune inactive nodes (where alpha is close to zero)
     int64_t execute_neural_darwinism(float decay_rate = 0.001f, float prune_threshold = 0.005f) {
         int64_t pruned_count = 0;
-        torch::NoGradGuard no_grad;
         for (size_t i = 0; i < alpha_nodes.size(); ++i) {
             // Apply slight L1 decay on alphas to encourage sparsification (Darwinian pressure)
             auto val = alpha_nodes[i].item<float>();
             if (std::abs(val) > 0.0f) {
                 float sign = (val > 0.0f) ? 1.0f : -1.0f;
-                alpha_nodes[i].add_(-decay_rate * sign);
+                alpha_nodes[i].copy_(alpha_nodes[i] - decay_rate * sign);
             }
         }
         return pruned_count;
