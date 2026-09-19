@@ -619,7 +619,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("sprout_organelle", &CognitiveEvolvableAgentImpl::sprout_organelle, py::arg("name"), py::arg("state_dim") = 128, py::arg("num_operators") = 8)
         .def("sprout_homeostatic_dimension", &CognitiveEvolvableAgentImpl::sprout_homeostatic_dimension, py::arg("name"), py::arg("init_val"), py::arg("target_val"), py::arg("decay"), py::arg("sensitivity"))
         .def("forward", &CognitiveEvolvableAgentImpl::forward, py::arg("tokens"))
-        .def("__call__", &CognitiveEvolvableAgentImpl::forward, py::arg("tokens"))
         .def("forward_active_inference", &CognitiveEvolvableAgentImpl::forward_active_inference, py::arg("tokens"), py::arg("reward"))
         .def("generate_thought_and_speech", &CognitiveEvolvableAgentImpl::generate_thought_and_speech, py::arg("seed_tokens"), py::arg("max_new_tokens"), py::arg("temperature") = 0.45f, py::arg("top_p") = 0.90f)
         .def("parameters", [](std::shared_ptr<CognitiveEvolvableAgentImpl> m) { return m->parameters(); })
