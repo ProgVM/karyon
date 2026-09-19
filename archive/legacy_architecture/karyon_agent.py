@@ -28,7 +28,6 @@ Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 
 import time
 import math
-import gc
 from typing import Generator, Dict, Any, List, Tuple, Optional
 import torch
 import torch.nn as nn
@@ -1011,91 +1010,13 @@ class GateOp(nn.Module):
         gate = torch.sigmoid(self.gate_proj(x) * (1.0 + 1.5 * da))
         return x * gate
 
-class UniversalMorphicOperator(nn.Module):
-    """
-    Universal Meta-Plastic Self-Configuring Morphic Operator (EXP-241 Validated 🟢).
-    A fully unconstrained, self-parameterizing neural computational kernel.
-    It dynamically synthesizes its own:
-      1. Transformation weights W(x) via low-rank HyperNetwork projections.
-      2. Non-linear activation basis coefficients c_k(x) across a basis of elementary primitives
-         (Identity, GELU, SiLU, Tanh, Sine oscillation, Absolute threshold).
-      3. Temporal integration dynamics: dh/dt = -alpha(x)*h + beta(x)*W(x)x.
-    """
-    def __init__(self, dim: int, rank: int = 16, device: str = 'cpu'):
-        super().__init__()
-        self.dim = dim
-        self.rank = rank
-        self.device = torch.device(device)
-
-        # Hyper-controller: generates low-rank factor matrices U and V for dynamic W = U @ V
-        self.meta_controller = nn.Sequential(
-            nn.Linear(dim, dim // 2, device=self.device),
-            nn.SiLU(),
-            nn.Linear(dim // 2, rank * dim * 2 + 6 + 2, device=self.device)
-        )
-
-        # Fixed static residual anchor to maintain stable gradient flow during early genesis
-        self.base_proj = nn.Linear(dim, dim, bias=False, device=self.device)
-
-    def forward(self, x: torch.Tensor, u_t: torch.Tensor = None) -> torch.Tensor:
-        batch, seq_len, dim = x.size()
-
-        # Generate contextual meta-control vector from sequence summary
-        context = torch.mean(x, dim=1)  # [batch, dim]
-        if u_t is not None:
-            # Modulate context with interoceptive somatic state if available
-            u_flat = u_t.view(batch, -1) if u_t.dim() > 2 else u_t
-            if u_flat.size(0) == batch and u_flat.size(-1) <= dim:
-                context = context + F.pad(u_flat, (0, dim - u_flat.size(-1)))
-
-        meta_params = self.meta_controller(context)  # [batch, total_meta_dim]
-
-        # 1. Decompose meta-parameters
-        ptr = 0
-        u_flat = meta_params[:, ptr:ptr + self.rank * dim].view(batch, dim, self.rank)
-        ptr += self.rank * dim
-        v_flat = meta_params[:, ptr:ptr + self.rank * dim].view(batch, self.rank, dim)
-        ptr += self.rank * dim
-
-        # Activation coefficients (6 basis functions: Identity, GELU, SiLU, Tanh, Sin, Abs)
-        act_coeffs = F.softmax(meta_params[:, ptr:ptr + 6], dim=-1).unsqueeze(1).unsqueeze(2)  # [batch, 1, 1, 6]
-        ptr += 6
-
-        # Temporal integration parameters
-        alpha = torch.sigmoid(meta_params[:, ptr:ptr + 1]).unsqueeze(1)  # Decay rate [batch, 1, 1]
-        beta = torch.sigmoid(meta_params[:, ptr + 1:ptr + 2]).unsqueeze(1)   # Input gain [batch, 1, 1]
-
-        # 2. Dynamic low-rank transformation: W_dyn = (x @ U) @ V
-        x_low = torch.bmm(x, u_flat)
-        dynamic_transformed = torch.bmm(x_low, v_flat) * 0.1
-
-        # Static + Dynamic combination
-        h_linear = self.base_proj(x) + dynamic_transformed
-
-        # 3. Dynamic Composite Activation Space: phi(h) = sum c_k * psi_k(h)
-        psi_identity = h_linear.unsqueeze(-1)
-        psi_gelu = F.gelu(h_linear).unsqueeze(-1)
-        psi_silu = F.silu(h_linear).unsqueeze(-1)
-        psi_tanh = torch.tanh(h_linear).unsqueeze(-1)
-        psi_sin = torch.sin(h_linear * 2.0).unsqueeze(-1)
-        psi_abs = torch.abs(h_linear).unsqueeze(-1)
-
-        # Stack basis: [batch, seq_len, dim, 6]
-        psi_stack = torch.cat([psi_identity, psi_gelu, psi_silu, psi_tanh, psi_sin, psi_abs], dim=-1)
-        h_activated = torch.sum(psi_stack * act_coeffs, dim=-1)  # [batch, seq_len, dim]
-
-        # 4. Contextual Temporal Integration
-        cum_temporal = torch.cumsum(h_activated * (1.0 - alpha), dim=1)
-        y = beta * cum_temporal + (1.0 - beta) * h_activated
-        return y
-
-
 class ContinuousDynamicNeuralGraph(nn.Module):
     """
-    Continuous Epigenetic Evolutionary LEGO-Graph (AGN v6.0 / Universal Morphic Foundation).
-    Constructed out of Universal Meta-Plastic Self-Configuring Morphic Operators.
-    Autonomously executes stream-time neurogenesis (sprouting Universal Morphic Operators with
-    zero-weight Net2Net Smooth Grafting identity) and differentiable Darwinian synaptic pruning without epochs.
+    Continuous Epigenetic Evolutionary LEGO-Graph (AGN v6.0 - EXP-186 & EXP-225 Validated 🟢).
+    Autonomously executes stream-time neurogenesis (sprouting operator bricks with zero-weight
+    Net2Net Smooth Grafting identity) and differentiable Darwinian synaptic pruning without epochs.
+    Operates with parallel multi-branch topology routing: candidate operators execute concurrently
+    over hidden residual state representations and are smoothly fused via Epigenetic Grafting Gates.
     """
     def __init__(self, dim: int, max_bricks: int = 12, device: str = 'cpu'):
         super().__init__()
@@ -1104,8 +1025,8 @@ class ContinuousDynamicNeuralGraph(nn.Module):
         self.device = torch.device(device)
         
         self.bricks = nn.ModuleList([
-            UniversalMorphicOperator(dim=dim, rank=16, device=device),
-            UniversalMorphicOperator(dim=dim, rank=16, device=device)
+            DelayOp(dim, device=device),
+            NonLinearOp(dim, device=device)
         ])
         # Mature seed bricks have alpha_epi = 5.0 (tanh(5.0) ~ 0.9999)
         self.alpha_epi = nn.ParameterList([
@@ -1113,28 +1034,36 @@ class ContinuousDynamicNeuralGraph(nn.Module):
             nn.Parameter(torch.tensor(5.0, device=self.device))
         ])
 
-    def forward(self, h: torch.Tensor, u_t: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, h: torch.Tensor, u_t: torch.Tensor) -> torch.Tensor:
         branch_outputs = []
         for idx, brick in enumerate(self.bricks):
             gate = torch.tanh(self.alpha_epi[idx])
             # Strict short-circuit optimization: if gate is exact zero, skip forward pass entirely
             if gate.item() == 0.0:
                 continue
-            out = brick(h, u_t)
+            if brick.__class__.__name__ in ("DelayOp", "GateOp"):
+                out = brick(h, u_t)
+            else:
+                out = brick(h)
             branch_outputs.append(gate * out)
         if branch_outputs:
             h = h + torch.stack(branch_outputs, dim=0).sum(dim=0)
         return h
 
-    def sprout_brick(self, brick_type: str = "UniversalMorphicOperator") -> bool:
+    def sprout_brick(self, brick_type: str = "NonLinearOp") -> bool:
         if len(self.bricks) >= self.max_bricks:
             return False
-        new_brick = UniversalMorphicOperator(self.dim, rank=16, device=str(self.device))
+        if brick_type == "DelayOp":
+            new_brick = DelayOp(self.dim, device=str(self.device))
+        elif brick_type == "GateOp":
+            new_brick = GateOp(self.dim, device=str(self.device))
+        else:
+            new_brick = NonLinearOp(self.dim, device=str(self.device))
             
         self.bricks.append(new_brick)
         # Strict zero-shock identity: alpha_epi = 0.0 at birth (KEP Principle 15 & 16)
         self.alpha_epi.append(nn.Parameter(torch.tensor(0.0, device=self.device)))
-        logger.info(f"🌱 [CEE Sprouting] Sprouted new 'UniversalMorphicOperator' brick #{len(self.bricks)-1} with alpha_epi=0.0")
+        logger.info(f"🌱 [CEE Sprouting] Sprouted new '{brick_type}' brick #{len(self.bricks)-1} with alpha_epi=0.0")
         return True
 
     def prune_inactive_bricks(self, threshold: float = 1e-3) -> int:
@@ -1143,7 +1072,7 @@ class ContinuousDynamicNeuralGraph(nn.Module):
             if abs(torch.tanh(self.alpha_epi[i]).item()) < threshold:
                 pruned_indices.append(i)
         for idx in pruned_indices:
-            logger.info(f"🪓 [CEE Pruning] Pruned inactive UniversalMorphicOperator brick #{idx}")
+            logger.info(f"🪓 [CEE Pruning] Pruned inactive brick '{self.bricks[idx].__class__.__name__}' #{idx}")
             del self.bricks[idx]
             new_alpha_list = nn.ParameterList([p for j, p in enumerate(self.alpha_epi) if j != idx])
             self.alpha_epi = new_alpha_list
@@ -1782,7 +1711,6 @@ class CoREAgent(nn.Module):
         try:
             # First, trigger the Darwinian Epigenetic Pruning on the dynamic neural graph
             if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
-                import gc
                 pruned_bricks = self.dynamic_graph.prune_inactive_bricks(threshold=1e-3)
                 if pruned_bricks > 0:
                     logger.info(f"🪓 [Darwinian Sleep] Pruned {pruned_bricks} obsolete operator bricks from the ContinuousDynamicNeuralGraph.")

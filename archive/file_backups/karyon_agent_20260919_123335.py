@@ -28,7 +28,6 @@ Author: Bazilevs (ProgVM member) & Karyon-CoRE Research Team (2026)
 
 import time
 import math
-import gc
 from typing import Generator, Dict, Any, List, Tuple, Optional
 import torch
 import torch.nn as nn
@@ -1782,7 +1781,6 @@ class CoREAgent(nn.Module):
         try:
             # First, trigger the Darwinian Epigenetic Pruning on the dynamic neural graph
             if hasattr(self, 'dynamic_graph') and self.dynamic_graph is not None:
-                import gc
                 pruned_bricks = self.dynamic_graph.prune_inactive_bricks(threshold=1e-3)
                 if pruned_bricks > 0:
                     logger.info(f"🪓 [Darwinian Sleep] Pruned {pruned_bricks} obsolete operator bricks from the ContinuousDynamicNeuralGraph.")
