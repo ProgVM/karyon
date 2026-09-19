@@ -180,17 +180,10 @@ public:
         auto device = current_values.device();
         variable_names.push_back(name);
 
-        // Concatenate parameters
-        auto new_current = torch::cat({current_values, torch::tensor({init_val}, torch::TensorOptions().device(device))});
-        auto new_target = torch::cat({target_values, torch::tensor({target_val}, torch::TensorOptions().device(device))});
-        auto new_decay = torch::cat({decay_rates, torch::tensor({decay}, torch::TensorOptions().device(device))});
-        auto new_sensitivity = torch::cat({sensitivities, torch::tensor({sensitivity}, torch::TensorOptions().device(device))});
-
-        // Re-assign buffers directly without re-registering to avoid PyTorch buffer collision
-        current_values = new_current;
-        target_values = new_target;
-        decay_rates = new_decay;
-        sensitivities = new_sensitivity;
+        current_values = register_buffer("current_values", torch::cat({current_values, torch::tensor({init_val}, torch::TensorOptions().device(device))}));
+        target_values = register_buffer("target_values", torch::cat({target_values, torch::tensor({target_val}, torch::TensorOptions().device(device))}));
+        decay_rates = register_buffer("decay_rates", torch::cat({decay_rates, torch::tensor({decay}, torch::TensorOptions().device(device))}));
+        sensitivities = register_buffer("sensitivities", torch::cat({sensitivities, torch::tensor({sensitivity}, torch::TensorOptions().device(device))}));
     }
 
     // Update homeostasis based on active inference surprise (Free Energy)
