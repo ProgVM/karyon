@@ -2335,7 +2335,7 @@ class CoREAgent(nn.Module):
             # Unifies all internal signals (sensory, cortical s1, s2, prediction errors, prior, thalamic)
             # into a continuous dynamic manifold where OmniMorphicNodes self-govern and freely interact.
             if hasattr(self, 'omni_substrate') and self.omni_substrate is not None and len(self.omni_substrate.nodes) > 0:
-                signal_manifold = [h_combined, h_thalamic, h_s1, h_s2, weighted_error, topdown_prior]
+                signal_manifold = [h_thalamic, h_s1, h_s2, weighted_error, topdown_prior]
                 h_combined, _ = self.omni_substrate(signal_manifold, effective_u_t)
 
             # AGN v8.0 Open-Ended Cognitive Organelle Pool Integration (EXP-248)
