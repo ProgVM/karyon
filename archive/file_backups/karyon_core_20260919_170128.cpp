@@ -9,7 +9,7 @@
 
 // ============================================================================
 // KARYON COGNITIVE SUBSTRATE (C++20 / LibTorch Extension)
-// v31.0 - Clean Slate AGN (Autonomous Graph Network) + Causal Parallel SSD Core
+// v30.0 - Clean Slate AGN (Autonomous Graph Network) Parallel Evolution Core
 // ============================================================================
 
 // 1. BYTE-LEVEL UNIVERSAL REPRESENTATION & EMBEDDING MANIFOLD
@@ -32,57 +32,7 @@ struct UniversalManifoldImpl : public torch::nn::Module {
 };
 TORCH_MODULE(UniversalManifold);
 
-// 2. CAUSAL PARALLEL SSD SCAN OPERATOR (C++20 Native Hardware Accelerated)
-// Computes closed-form causal decay scan across sequence dimension:
-// Y_{b, t, d} = \sum_{s \le t} \exp(-\Delta_d \cdot (t - s)) \cdot X_{b, s, d}
-class CausalParallelSSDImpl : public torch::nn::Module {
-public:
-    int64_t dim;
-    torch::Tensor log_decay; // Learnable per-channel decay rates
-
-    CausalParallelSSDImpl(int64_t dim, std::string device_str = "cpu") : dim(dim) {
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        // Initialize decay log-spaced between [0.01, 0.5]
-        auto init_decay = torch::linspace(std::log(0.01f), std::log(0.5f), dim, torch::TensorOptions().device(device));
-        log_decay = register_parameter("log_decay", init_decay);
-        this->to(device);
-    }
-
-    torch::Tensor forward(torch::Tensor x) {
-        // x: [batch, seq_len, dim]
-        int64_t seq_len = x.size(1);
-        auto device = x.device();
-
-        // 1. Compute causal decay matrix T x T: M_{i, j} = exp(-decay * (i - j)) for i >= j
-        auto decay = torch::exp(log_decay).view({1, 1, dim}); // [1, 1, dim]
-        
-        auto indices = torch::arange(seq_len, torch::TensorOptions().device(device).dtype(torch::kFloat32));
-        auto delta_pos = (indices.view({seq_len, 1}) - indices.view({1, seq_len})).clamp_min(0.0f); // [seq_len, seq_len]
-        
-        // Lower triangular causal mask
-        auto causal_mask = (indices.view({seq_len, 1}) >= indices.view({1, seq_len})).to(torch::kFloat32); // [seq_len, seq_len]
-
-        // Kernel: exp(-delta_pos * decay) * causal_mask
-        // Shape: [seq_len, seq_len, dim]
-        auto decay_kernel = torch::exp(-delta_pos.unsqueeze(-1) * decay) * causal_mask.unsqueeze(-1);
-
-        // 2. Perform parallel causal integration: Y_{b, t, d} = \sum_s decay_kernel_{t, s, d} * x_{b, s, d}
-        // Einsum 'tsd, bsd -> btd'
-        // Using optimized batched matmul: transpose x to [batch, dim, seq_len], decay_kernel to [dim, seq_len, seq_len]
-        auto x_t = x.permute({0, 2, 1}); // [batch, dim, seq_len]
-        auto k_t = decay_kernel.permute({2, 0, 1}); // [dim, seq_len, seq_len]
-
-        // Output: [batch, dim, seq_len] = [dim, seq_len, seq_len] x [batch, dim, seq_len]^T
-        // Using bmm per batch item or batched tensor contract:
-        // x_t: [batch, dim, 1, seq_len], k_t: [1, dim, seq_len, seq_len]
-        // y_t: [batch, dim, seq_len] = (k_t * x_t.unsqueeze(2)).sum(3)
-        auto y = torch::matmul(k_t.unsqueeze(0), x_t.unsqueeze(-1)).squeeze(-1); // [batch, dim, seq_len]
-        return y.permute({0, 2, 1}); // [batch, seq_len, dim]
-    }
-};
-TORCH_MODULE(CausalParallelSSD);
-
-// 3. PARALLEL OPERATOR BANK (ELEMENTARY MATHEMATICAL OPERATORS RUNNING IN BATCH)
+// 2. PARALLEL OPERATOR BANK (ELEMENTARY MATHEMATICAL OPERATORS RUNNING IN BATCH)
 class ParallelOperatorBankImpl : public torch::nn::Module {
 public:
     int64_t dim;
@@ -117,23 +67,21 @@ public:
 };
 TORCH_MODULE(ParallelOperatorBank);
 
-// 4. OMNI-MORPHIC CAUSAL COGNITIVE NODE (C++20 NATIVE - AGN v11.0)
+// 3. OMNI-MORPHIC DYNAMIC COGNITIVE NODE (C++20 NATIVE - AGN v10.0)
 class OmniMorphicNodeImpl : public torch::nn::Module {
 public:
     int64_t dim;
     int64_t state_dim;
     int64_t num_operators;
 
+    torch::Tensor internal_state;
     torch::Tensor affinity_query;
 
     torch::nn::Linear hyper_w1{nullptr};
     torch::nn::Linear hyper_w2{nullptr};
     torch::nn::Linear base_in{nullptr};
     torch::nn::Linear base_out{nullptr};
-    torch::nn::LayerNorm in_norm{nullptr};
     torch::nn::LayerNorm state_norm{nullptr};
-
-    CausalParallelSSD causal_ssd{nullptr};
     std::shared_ptr<ParallelOperatorBankImpl> op_bank{nullptr};
 
     OmniMorphicNodeImpl(int64_t dim, int64_t state_dim = 128, int64_t num_operators = 8, std::string device_str = "cpu")
@@ -141,6 +89,9 @@ public:
 
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
 
+        // Initialize state buffers
+        internal_state = register_buffer("internal_state", torch::zeros({1, state_dim}, torch::TensorOptions().device(device)));
+        
         // Affinity query parameter
         affinity_query = register_parameter("affinity_query", torch::randn({dim}, torch::TensorOptions().device(device)) * (1.0 / std::sqrt(dim)));
 
@@ -151,11 +102,8 @@ public:
         // Base linear mappings for stable gradient flow
         base_in = register_module("base_in", torch::nn::Linear(torch::nn::LinearOptions(dim, state_dim).bias(false)));
         base_out = register_module("base_out", torch::nn::Linear(torch::nn::LinearOptions(state_dim, dim).bias(false)));
-        in_norm = register_module("in_norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({dim})));
         state_norm = register_module("state_norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({state_dim})));
 
-        // Causal Parallel Recurrence Core
-        causal_ssd = register_module("causal_ssd", CausalParallelSSD(state_dim, device_str));
         op_bank = std::make_shared<ParallelOperatorBankImpl>(dim, state_dim, num_operators);
         register_module("op_bank", op_bank);
 
@@ -193,7 +141,6 @@ public:
         // 2. Synthesize input stream
         auto weights_expanded = attn_weights.unsqueeze(-1).unsqueeze(-1); // [batch, num_signals, 1, 1]
         auto x_attended = torch::sum(manifold_ref * weights_expanded, 1); // [batch, seq_len, dim]
-        x_attended = in_norm->forward(x_attended);
 
         // Context projection
         auto context = x_attended.mean(1); // [batch, dim]
@@ -220,18 +167,29 @@ public:
         auto operator_coeffs = torch::softmax(morphic_params.slice(1, ptr, ptr + num_operators), -1).view({batch, 1, 1, num_operators});
         ptr += num_operators;
 
+        auto factors = torch::sigmoid(morphic_params.slice(1, ptr, ptr + 4));
+        auto decay = factors.slice(1, 0, 1);
+        auto gain = factors.slice(1, 1, 2);
+
         // 4. State project
         auto projected = base_in->forward(x_attended) + torch::matmul(x_attended, w_in);
-        projected = state_norm->forward(projected); // [batch, seq_len, state_dim]
+        projected = state_norm->forward(projected);
 
-        // 5. CAUSAL RECURRENT MEMORY SCAN (SSD): Flowing information strictly from past to present!
-        auto causal_states = causal_ssd->forward(projected); // [batch, seq_len, state_dim]
+        // 5. State integration
+        auto state_update = projected.mean(1);
+        auto current_state = internal_state.expand({batch, -1});
+        auto new_state = torch::tanh((1.0 - decay) * current_state + gain * state_update);
 
-        // 6. Parallel non-linear operator execution on causal trajectory
-        auto all_ops = op_bank->compute_operators(causal_states); // [batch, seq_len, state_dim, 8]
+        if (!this->is_training()) {
+            internal_state.copy_(new_state.mean(0, true).detach());
+        }
+
+        // 6. Parallel non-linear operator execution
+        auto h_state = new_state.unsqueeze(1).expand({-1, seq_len, -1});
+        auto all_ops = op_bank->compute_operators(h_state); // [batch, seq_len, state_dim, 8]
         auto blended = torch::sum(all_ops * operator_coeffs, -1); // [batch, seq_len, state_dim]
 
-        // 7. Project back to universal manifold
+        // 7. Project back
         auto broadcast_signal = base_out->forward(blended) + torch::matmul(blended, w_out);
         if (!is_4d) {
             broadcast_signal = broadcast_signal.squeeze(1);
@@ -242,7 +200,7 @@ public:
 };
 TORCH_MODULE(OmniMorphicNode);
 
-// 5. OMNI-CONTINUOUS GRAPH SUBSTRATE WITH MASSIVE PARALLEL BATCH EXECUTION
+// 4. OMNI-CONTINUOUS GRAPH SUBSTRATE WITH MASSIVE PARALLEL BATCH EXECUTION
 class OmniContinuousGraphSubstrateImpl : public torch::nn::Module {
 public:
     int64_t dim;
@@ -303,7 +261,7 @@ public:
 
         std::vector<torch::Tensor> current_signals = norm_signals;
 
-        // Execute nodes sequentially (inner parallelized operators and causal SSD)
+        // Execute nodes sequentially (inner parallelized operators)
         for (size_t i = 0; i < nodes.size(); ++i) {
             auto manifold_stack = torch::stack(current_signals, 1); // [batch, num_signals, seq_len, dim]
             
@@ -330,7 +288,7 @@ public:
 };
 TORCH_MODULE(OmniContinuousGraphSubstrate);
 
-// 6. THE ULTIMATE EVOLVABLE COGNITIVE SYSTEM (AGN v11.0 CORE AGENT)
+// 5. THE ULTIMATE EVOLVABLE COGNITIVE SYSTEM (AGN v10.0 CORE AGENT)
 class CognitiveEvolvableAgentImpl : public torch::nn::Module {
 public:
     int64_t vocab_size;
@@ -387,11 +345,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, int64_t, std::string>(), py::arg("vocab_size") = 258, py::arg("dim") = 256, py::arg("device") = "cpu")
         .def("forward", &UniversalManifoldImpl::forward)
         .def("__call__", &UniversalManifoldImpl::forward);
-
-    py::class_<CausalParallelSSDImpl, torch::nn::Module, std::shared_ptr<CausalParallelSSDImpl>>(m, "CausalParallelSSD")
-        .def(py::init<int64_t, std::string>(), py::arg("dim") = 256, py::arg("device") = "cpu")
-        .def("forward", &CausalParallelSSDImpl::forward)
-        .def("__call__", &CausalParallelSSDImpl::forward);
 
     py::class_<ParallelOperatorBankImpl, torch::nn::Module, std::shared_ptr<ParallelOperatorBankImpl>>(m, "ParallelOperatorBank")
         .def(py::init<int64_t, int64_t, int64_t>(), py::arg("dim") = 256, py::arg("state_dim") = 128, py::arg("num_operators") = 8)
