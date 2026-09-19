@@ -1108,21 +1108,10 @@ class UniversalCognitiveOrganelle(nn.Module):
         self.base_out = nn.Linear(state_dim, dim, bias=False, device=self.device)
 
     def forward(self, x: torch.Tensor, u_t: torch.Tensor = None) -> torch.Tensor:
-        orig_dim = x.dim()
-        if orig_dim == 2:
-            # x is [total_tokens, dim] -> reshape to 3D for sequence context & batch operations
-            total_tokens, dim = x.size()
-            batch = 1
-            seq_len = total_tokens
-            x_3d = x.unsqueeze(0)
-        elif orig_dim == 3:
-            batch, seq_len, dim = x.size()
-            x_3d = x
-        else:
-            raise ValueError(f"UniversalCognitiveOrganelle expects 2D or 3D tensor, got shape {x.shape}")
-
+        batch, seq_len, dim = x.size()
+        
         # 1. Generate contextual morphic parameters from input stream
-        context = torch.mean(x_3d, dim=1)  # [batch, dim]
+        context = torch.mean(x, dim=1)  # [batch, dim]
         if u_t is not None:
             u_flat = u_t.view(batch, -1) if u_t.dim() > 2 else u_t
             if u_flat.size(0) == batch and u_flat.size(-1) <= dim:
@@ -1138,7 +1127,7 @@ class UniversalCognitiveOrganelle(nn.Module):
         ptr += self.state_dim * dim
 
         # Operator coefficients (Identity, GELU, SiLU, Tanh, Sin, Abs, Complex Phase, Fractal Gate)
-        operator_coeffs = F.softmax(morphic_params[:, ptr:ptr + self.num_operators], dim=-1).view(batch, 1, 1, self.num_operators)
+        operator_coeffs = F.softmax(morphic_params[:, ptr:ptr + self.num_operators], dim=-1).unsqueeze(1).unsqueeze(2)
         ptr += self.num_operators
 
         # Dynamic state integration factors (decay, gain, coupling, feedback)
@@ -1147,7 +1136,7 @@ class UniversalCognitiveOrganelle(nn.Module):
 
         # 3. Project input into the organelle's dynamic state space
         # Mix base projection with synthesized context-dependent projection
-        projected_in = self.base_in(x_3d) + torch.matmul(x_3d, w_in_flat)  # [batch, seq_len, state_dim]
+        projected_in = self.base_in(x) + torch.matmul(x, w_in_flat)  # [batch, seq_len, state_dim]
 
         # 4. Synthesize internal state dynamics (Memory / Sandbox simulation)
         # Update private internal state buffer with decay and new input
@@ -1172,14 +1161,12 @@ class UniversalCognitiveOrganelle(nn.Module):
         op_7 = torch.cos(h_state) * torch.sin(h_state)              # High-frequency resonance
 
         all_ops = torch.stack([op_0, op_1, op_2, op_3, op_4, op_5, op_6, op_7], dim=-1) # [batch, seq, state, 8]
-        blended_state = torch.sum(all_ops * operator_coeffs, dim=-1) # [batch, seq, state_dim]
+        blended_state = torch.sum(all_ops * operator_coeffs.unsqueeze(-2), dim=-1) # [batch, seq, state_dim]
 
         # 6. Project back to cortical space
-        output_3d = self.base_out(blended_state) + torch.matmul(blended_state, w_out_flat) # [batch, seq, dim]
-
-        if orig_dim == 2:
-            return output_3d.squeeze(0)
-        return output_3d
+        output = self.base_out(blended_state) + torch.matmul(blended_state, w_out_flat) # [batch, seq, dim]
+        return output
+        return retrieved
 
 class GateOp(nn.Module):
     """
