@@ -1,0 +1,34 @@
+{
+  "Baseline (0)": {
+    "val_loss": 19.712718963623047,
+    "delta": 0.0
+  },
+  "Variant A (Entropy-Adaptive)": {
+    "val_loss": 23.654525756835938,
+    "delta": -3.9418067932128906
+  },
+  "Variant B (Laminar Prediction Error)": {
+    "val_loss": 12.050932884216309,
+    "delta": 7.661786079406738
+  },
+  "Variant C (Episodic Memory)": {
+    "val_loss": 18.6565523147583,
+    "delta": 1.056166648864746
+  },
+  "Variant AB (Entropy + Laminar)": {
+    "val_loss": 14.879851818084717,
+    "delta": 4.83286714553833
+  },
+  "Variant BC (Laminar + Episodic)": {
+    "val_loss": 11.615667819976807,
+    "delta": 8.09705114364624
+  },
+  "Variant AC (Entropy + Episodic)": {
+    "val_loss": 22.57624626159668,
+    "delta": -2.863527297973633
+  },
+  "Variant ABC (Full Symphony)": {
+    "val_loss": 14.373537063598633,
+    "delta": 5.339181900024414
+  }
+}
