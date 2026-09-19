@@ -2331,21 +2331,16 @@ class CoREAgent(nn.Module):
                 # with strict 0.0 contribution when newly sprouted nodes are initialized at alpha_epi = 0.0
                 h_combined = graph_out
 
-            # AGN v9.0 Omni-Continuous Dynamic Graph Substrate (EXP-249)
-            # Unifies all internal signals (sensory, cortical s1, s2, prediction errors, prior, thalamic)
-            # into a continuous dynamic manifold where OmniMorphicNodes self-govern and freely interact.
-            if hasattr(self, 'omni_substrate') and self.omni_substrate is not None and len(self.omni_substrate.nodes) > 0:
-                signal_manifold = [h_thalamic, h_s1, h_s2, weighted_error, topdown_prior]
-                h_combined, _ = self.omni_substrate(signal_manifold, effective_u_t)
-
             # AGN v8.0 Open-Ended Cognitive Organelle Pool Integration (EXP-248)
             # Allows the network to process and integrate emergent, self-parameterized memories,
             # sandbox simulators, or newly synthesized homeostatic dimensions.
             if hasattr(self, 'cognitive_organelles') and self.cognitive_organelles is not None:
                 for o_name, organelle in self.cognitive_organelles.items():
                     gate = torch.tanh(self.organelle_alphas[o_name])
-                    organelle_out = organelle(h_combined, effective_u_t)
-                    h_combined = h_combined + gate * organelle_out
+                    # Strict short-circuit optimization: if gate is zero, completely bypass computation
+                    if gate.item() != 0.0:
+                        organelle_out = organelle(h_combined, effective_u_t)
+                        h_combined = h_combined + gate * organelle_out
 
             h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)

@@ -1565,15 +1565,6 @@ class CoREAgent(nn.Module):
         # 14. Two-Tier Biophysical Memory Cache L1/L2
         self.two_tier_memory = HierarchicalTwoTierMemoryCache(memory_dim=self.unified_dim, l1_capacity=100, l2_capacity=1000, device=self.device_str)
 
-        # 15. Omni-Continuous Dynamic Graph Substrate (AGN v9.0 - EXP-249)
-        self.omni_substrate = OmniContinuousGraphSubstrate(dim=self.hidden_dim, max_nodes=16, device=self.device_str)
-
-    def sprout_omni_node(self, name: str, state_dim: int = 128, num_operators: int = 8) -> bool:
-        """Sprouts an unconstrained omni-morphic node with exact Zero-Shock Net2Net birth identity."""
-        if hasattr(self, 'omni_substrate') and self.omni_substrate is not None:
-            return self.omni_substrate.sprout_node(name=name, state_dim=state_dim, num_operators=num_operators)
-        return False
-
     def register_grafted_pathway(self, name: str, pathway: nn.Module):
         """Hot-registers a new sprouted pathway into the active agent runtime."""
         self.grafted_pathways[name] = pathway.to(self.device)
@@ -2331,21 +2322,16 @@ class CoREAgent(nn.Module):
                 # with strict 0.0 contribution when newly sprouted nodes are initialized at alpha_epi = 0.0
                 h_combined = graph_out
 
-            # AGN v9.0 Omni-Continuous Dynamic Graph Substrate (EXP-249)
-            # Unifies all internal signals (sensory, cortical s1, s2, prediction errors, prior, thalamic)
-            # into a continuous dynamic manifold where OmniMorphicNodes self-govern and freely interact.
-            if hasattr(self, 'omni_substrate') and self.omni_substrate is not None and len(self.omni_substrate.nodes) > 0:
-                signal_manifold = [h_thalamic, h_s1, h_s2, weighted_error, topdown_prior]
-                h_combined, _ = self.omni_substrate(signal_manifold, effective_u_t)
-
             # AGN v8.0 Open-Ended Cognitive Organelle Pool Integration (EXP-248)
             # Allows the network to process and integrate emergent, self-parameterized memories,
             # sandbox simulators, or newly synthesized homeostatic dimensions.
             if hasattr(self, 'cognitive_organelles') and self.cognitive_organelles is not None:
                 for o_name, organelle in self.cognitive_organelles.items():
                     gate = torch.tanh(self.organelle_alphas[o_name])
-                    organelle_out = organelle(h_combined, effective_u_t)
-                    h_combined = h_combined + gate * organelle_out
+                    # Strict short-circuit optimization: if gate is zero, completely bypass computation
+                    if gate.item() != 0.0:
+                        organelle_out = organelle(h_combined, effective_u_t)
+                        h_combined = h_combined + gate * organelle_out
 
             h_flat = self.pre_attractor_norm(h_combined.contiguous().view(-1, self.hidden_dim))
             h_relaxed, commit_loss = self.attractor_head.relax_to_minima(h_flat, effective_u_t)
