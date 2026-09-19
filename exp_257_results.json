@@ -1,0 +1,45 @@
+{
+  "loss": 1.134457164009412,
+  "baseline_loss": 1.2986392865578333,
+  "delta_loss": 0.16418212254842124,
+  "std_colony": 0.10958959765882309,
+  "std_baseline": 0.11222614851124055,
+  "unanimous_win": false,
+  "seeds": [
+    42,
+    1337,
+    2026
+  ],
+  "seed_results": [
+    {
+      "seed": 42,
+      "baseline_initial": 5.553128719329834,
+      "baseline_final": 1.1928691238164901,
+      "colony_initial": 5.553643226623535,
+      "colony_final": 1.1148102521896361,
+      "delta": 0.07805887162685399,
+      "final_gate": -0.17446625232696533,
+      "final_demand": 0.9836724996566772
+    },
+    {
+      "seed": 1337,
+      "baseline_initial": 5.552402019500732,
+      "baseline_final": 1.454001522064209,
+      "colony_initial": 5.551909923553467,
+      "colony_final": 1.0111441522836686,
+      "delta": 0.44285736978054047,
+      "final_gate": 0.20123790204524994,
+      "final_demand": 0.9924271106719971
+    },
+    {
+      "seed": 2026,
+      "baseline_initial": 5.553635120391846,
+      "baseline_final": 1.2490472137928008,
+      "colony_initial": 5.554044723510742,
+      "colony_final": 1.2774170875549316,
+      "delta": -0.028369873762130737,
+      "final_gate": -0.18172059953212738,
+      "final_demand": 0.995474636554718
+    }
+  ]
+}

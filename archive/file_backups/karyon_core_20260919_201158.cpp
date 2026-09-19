@@ -630,7 +630,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::class_<OmniContinuousGraphSubstrateImpl, torch::nn::Module, std::shared_ptr<OmniContinuousGraphSubstrateImpl>>(m, "OmniContinuousGraphSubstrate")
         .def(py::init<int64_t, int64_t, std::string>(), py::arg("dim") = 256, py::arg("max_nodes") = 16, py::arg("device") = "cpu")
         .def_readonly("node_names", &OmniContinuousGraphSubstrateImpl::node_names)
-        .def("sprout_node", &OmniContinuousGraphSubstrateImpl::sprout_node, py::arg("name"), py::arg("state_dim") = 128, py::arg("num_operators") = 8, py::arg("min_decay") = 0.005f, py::arg("max_decay") = 0.2f)
+        .def("sprout_node", &OmniContinuousGraphSubstrateImpl::sprout_node, py::arg("name"), py::arg("state_dim") = 128, py::arg("num_operators") = 8)
         .def("trigger_spontaneous_neurogenesis", &OmniContinuousGraphSubstrateImpl::trigger_spontaneous_neurogenesis)
         .def("execute_neural_darwinism", &OmniContinuousGraphSubstrateImpl::execute_neural_darwinism)
         .def("forward", &OmniContinuousGraphSubstrateImpl::forward, py::arg("signal_list"), py::arg("u_t") = torch::Tensor())
