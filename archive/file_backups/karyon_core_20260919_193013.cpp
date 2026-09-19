@@ -40,35 +40,27 @@ public:
 
     CausalParallelSSDImpl(int64_t dim, std::string device_str = "cpu") : dim(dim) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        auto init_decay = torch::linspace(std::log(0.005f), std::log(0.2f), dim, torch::TensorOptions().device(device));
+        auto init_decay = torch::linspace(std::log(0.01f), std::log(0.5f), dim, torch::TensorOptions().device(device));
         log_decay = register_parameter("log_decay", init_decay);
         this->to(device);
     }
 
     torch::Tensor forward(torch::Tensor x) {
-        // x: [batch, seq_len, dim]
-        int64_t batch = x.size(0);
         int64_t seq_len = x.size(1);
         auto device = x.device();
 
-        auto decay = torch::exp(log_decay).view({dim, 1, 1}); // [dim, 1, 1]
+        auto decay = torch::exp(log_decay).view({1, 1, dim});
         auto indices = torch::arange(seq_len, torch::TensorOptions().device(device).dtype(torch::kFloat32));
-        auto delta_pos = (indices.view({seq_len, 1}) - indices.view({1, seq_len})).clamp_min(0.0f); // [seq_len, seq_len]
+        auto delta_pos = (indices.view({seq_len, 1}) - indices.view({1, seq_len})).clamp_min(0.0f);
         auto causal_mask = (indices.view({seq_len, 1}) >= indices.view({1, seq_len})).to(torch::kFloat32);
 
-        // decay_kernel: [dim, seq_len, seq_len] where decay_kernel[d, t, s] = exp(-decay[d] * (t - s)) for s <= t
-        auto decay_kernel = torch::exp(-delta_pos.unsqueeze(0) * decay) * causal_mask.unsqueeze(0);
+        auto decay_kernel = torch::exp(-delta_pos.unsqueeze(-1) * decay) * causal_mask.unsqueeze(-1);
 
-        // Transpose x to [batch, dim, seq_len]
-        auto x_perm = x.permute({0, 2, 1}); // [batch, dim, seq_len]
+        auto x_t = x.permute({0, 2, 1});
+        auto k_t = decay_kernel.permute({2, 0, 1});
 
-        // For each batch item b and dim d: y[b, d] = decay_kernel[d] @ x[b, d]
-        // decay_kernel: [dim, seq_len, seq_len], x_perm: [batch, dim, seq_len]
-        // Broadcasted bmm: [batch, dim, seq_len, 1] -> [batch, dim, seq_len]
-        auto y_perm = torch::matmul(decay_kernel.unsqueeze(0), x_perm.unsqueeze(-1)).squeeze(-1);
-
-        // Permute back to [batch, seq_len, dim]
-        return y_perm.permute({0, 2, 1});
+        auto y = torch::matmul(k_t.unsqueeze(0), x_t.unsqueeze(-1)).squeeze(-1);
+        return y.permute({0, 2, 1});
     }
 };
 TORCH_MODULE(CausalParallelSSD);
