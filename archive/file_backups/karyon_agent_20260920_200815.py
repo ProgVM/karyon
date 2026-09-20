@@ -115,12 +115,14 @@ class CoREAgent(nn.Module):
 
         # Phase 2: Morphogenetic Graph Sprouting
         sprouted = False
+        sprouted_type = None
         if self.use_graph and random.random() < sprout_probability:
             op_type = random.choice(available_ops)
             node_idx = self.graph.k_nodes
             node_name = f"sleep_sprouted_op_{node_idx}_{op_type.lower()}"
             self.add_node(name=node_name, op_type=op_type, is_core=False, initial_alpha=0.0)
             sprouted = True
+            sprouted_type = op_type
 
         return {
             "scaled_params": float(scaled_params_count),

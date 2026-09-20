@@ -14,6 +14,7 @@ class TestFullSleepMorphogenesisIntegration(unittest.TestCase):
     def test_e2e_sleep_cycle(self):
         """Verify that deep allostatic sleep runs end-to-end with neurogenesis and synaptic scaling."""
         x_sensory = torch.randn(4, self.dim, device=self.device)
+        out_before = self.agent(x_sensory, thinking_steps=3).clone()
 
         # Run Sleep Cycle with mandatory node sprouting (sprout_probability=1.0)
         sleep_metrics = self.agent.execute_deep_allostatic_sleep(
@@ -25,7 +26,7 @@ class TestFullSleepMorphogenesisIntegration(unittest.TestCase):
         self.assertEqual(sleep_metrics["sprouted"], 1.0)
         self.assertEqual(self.agent.graph.k_nodes, 3)
 
-        # Output check: since alpha_epi was initialized to 0.0, output should be preserved
+        # Output check: since alpha_epi was initialized to 0.0, output should be preserved (only slightly scaled)
         out_after = self.agent(x_sensory, thinking_steps=3)
         self.assertFalse(torch.isnan(out_after).any().item(), "NaN detected post-sleep!")
         print(f"✅ [Test Sleep E2E] Sleep completed with dynamic neurogenesis. k_nodes={self.agent.graph.k_nodes}, scaled_params={sleep_metrics['scaled_params']}")

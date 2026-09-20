@@ -1,13 +1,11 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON CORE AGENT MASTER WRAPPER v34.1
+KARYON CORE AGENT MASTER WRAPPER v34.0
 Python Orchestrator Wrapper for C++20 UniversalMorphicSpace & DynamicMorphicGraph
-with Sleep-Consolidation and Morphogenetic Neurogenesis Engine
 ===============================================================================
 """
-from typing import Dict, Tuple
-import random
+from typing import Dict
 
 import torch
 import torch.nn as nn
@@ -85,48 +83,6 @@ class CoREAgent(nn.Module):
         if not self.use_graph:
             raise ValueError("add_node can only be called when use_graph=True")
         self.graph.add_node(name, op_type, is_core, initial_alpha)
-
-    def execute_deep_allostatic_sleep(
-        self,
-        downscaling_factor: float = 0.01,
-        sprout_probability: float = 0.5,
-        available_ops: Tuple[str, ...] = ("LinearAccumulator", "BilinearMultiplicative", "SaturatedAttractor")
-    ) -> Dict[str, float]:
-        """
-        Executes Biophysical Sleep & Morphogenetic Neurogenesis Cycle:
-        1. Tononi SHY Synaptic Scaling (soft downscaling).
-        2. Epigenetic Sprouting of new dynamic graph nodes (AGN v6.0 / Net2Net zero-shock).
-        """
-        # Phase 1: Tononi Synaptic Homeostasis Hypothesis (SHY) downscaling
-        scaled_params_count = 0
-        with torch.no_grad():
-            if self.use_graph:
-                param_map = self.graph.named_parameters_map()
-                for name, param in param_map.items():
-                    if "w_route" in name or "weight" in name:
-                        param.mul_(1.0 - downscaling_factor)
-                        scaled_params_count += 1
-            else:
-                param_map = self.space.named_parameters_map()
-                for name, param in param_map.items():
-                    if "weight" in name or "matrix" in name:
-                        param.mul_(1.0 - downscaling_factor)
-                        scaled_params_count += 1
-
-        # Phase 2: Morphogenetic Graph Sprouting
-        sprouted = False
-        if self.use_graph and random.random() < sprout_probability:
-            op_type = random.choice(available_ops)
-            node_idx = self.graph.k_nodes
-            node_name = f"sleep_sprouted_op_{node_idx}_{op_type.lower()}"
-            self.add_node(name=node_name, op_type=op_type, is_core=False, initial_alpha=0.0)
-            sprouted = True
-
-        return {
-            "scaled_params": float(scaled_params_count),
-            "sprouted": 1.0 if sprouted else 0.0,
-            "total_nodes": float(self.graph.k_nodes if self.use_graph else 0)
-        }
 
     def get_topology_manifest(self) -> str:
         """Returns the JSON manifest representing the evolved graph topology."""
