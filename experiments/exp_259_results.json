@@ -1,0 +1,40 @@
+{
+  "exp_id": "EXP-259",
+  "baseline_loss": 2.826010386943817,
+  "best_variant": "Vector D (Autonomous Circuit & Formula Builder / Signal Transport)",
+  "best_loss": 2.6712240839004515,
+  "delta_loss": 0.1547863030433656,
+  "verdict": "POSITIVE",
+  "variant_results": {
+    "Baseline (No Sub-Organelles)": {
+      "final_loss": 2.826010386943817,
+      "tok_per_sec": 363936.8380958237,
+      "elapsed_s": 0.5583386421203613
+    },
+    "Vector A (Micro-Operator Nodes)": {
+      "final_loss": 2.696740231513977,
+      "tok_per_sec": 510773.67511061596,
+      "elapsed_s": 0.3978278636932373
+    },
+    "Vector B (Micro-Channel Fiber Sprouting)": {
+      "final_loss": 2.7578716397285463,
+      "tok_per_sec": 484650.7479457508,
+      "elapsed_s": 0.41927099227905273
+    },
+    "Vector C (Functional Gene Assembly)": {
+      "final_loss": 2.7646790599822997,
+      "tok_per_sec": 298765.99123069004,
+      "elapsed_s": 0.6801309585571289
+    },
+    "Vector D (Autonomous Circuit & Formula Builder / Signal Transport)": {
+      "final_loss": 2.6712240839004515,
+      "tok_per_sec": 242487.05039184808,
+      "elapsed_s": 0.8379828929901123
+    },
+    "Vector ABCD Synergy (Full Sub-Organellar Architecture)": {
+      "final_loss": 2.6934542942047117,
+      "tok_per_sec": 142649.5520749298,
+      "elapsed_s": 1.4244699478149414
+    }
+  }
+}
