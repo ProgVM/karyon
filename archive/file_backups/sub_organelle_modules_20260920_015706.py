@@ -119,7 +119,7 @@ class SubOrganelleVectorC(nn.Module):
 class SubOrganelleVectorD(nn.Module):
     """
     Vector D: Autonomous Circuit & Formula Builder with Universal Signal Transporters
-    FULLY VECTORIZED with zero Python loops via torch.bmm and einsum.
+    Now FULLY VECTORIZED with zero Python loops via torch.bmm and einsum.
     Achieves 1,000,000+ tok/s throughput on Tensor Cores.
     """
     def __init__(self, dim, num_units=6):
@@ -165,48 +165,24 @@ class SubOrganelleVectorD(nn.Module):
         return final_signal
 
 
-class FastSlowDualFrequencyEngine(nn.Module):
+class SubOrganelleVectorAD_Synergy(nn.Module):
     """
-    Direction 2: Fast-Slow Dual-Frequency Cognitive Engine
-    - Fast Gamma Contour (Vector A Micro-Operators): Runs on every single byte @ 500k+ tok/s
-    - Surprise / Entropy Detector: Computes local signal surprise / boundary state
-    - Slow Theta Contour (Vector D Autonomous Formula & Circuit Builder):
-      Dynamically modulated by boundary surprise. When surprise / entropy spike,
-      Theta Contour engages deep formula synthesis and signal bus routing.
+    Vector AD (High-Speed Operator-Circuit Synergy):
+    Combines the raw speed of Micro-Operator Nodes (Vector A)
+    with the expressiveness of the Batched Circuit & Formula Builder (Vector D).
     """
     def __init__(self, dim, num_units=4):
         super().__init__()
-        self.dim = dim
-        self.num_units = num_units
-
-        # Fast Gamma Contour
-        self.gamma_fast = SubOrganelleVectorA(dim)
-
-        # Surprise / Boundary Discriminator
-        self.boundary_proj = nn.Linear(dim, 1)
-
-        # Slow Theta Contour
-        self.theta_slow = SubOrganelleVectorD(dim, num_units=num_units)
-
+        self.op_node = SubOrganelleVectorA(dim)
+        self.circuit_builder = SubOrganelleVectorD(dim, num_units=num_units)
         self.norm = nn.LayerNorm(dim)
 
-        nn.init.orthogonal_(self.boundary_proj.weight, gain=0.1)
-        nn.init.zeros_(self.boundary_proj.bias)
-
     def forward(self, x):
-        # 1. Fast Gamma Flow (Every Byte)
-        x_fast = self.gamma_fast(x)  # [B, S, D]
-
-        # 2. Dynamic Boundary / Surprise Detector
-        boundary_surprise = torch.sigmoid(self.boundary_proj(x_fast))  # [B, S, 1]
-
-        # 3. Slow Theta Flow (Autonomous Circuit & Formula Synthesis)
-        x_macro = self.theta_slow(x_fast)  # [B, S, D]
-
-        # 4. Entropy-Modulated Dual-Frequency Fusion
-        gated_macro = boundary_surprise * x_macro
-
-        return self.norm(x_fast + gated_macro)
+        # High-speed local temporal & bilinear gating
+        x_op = self.op_node(x)
+        # Deep dynamic formula routing
+        x_circuit = self.circuit_builder(x_op)
+        return self.norm(x_circuit)
 
 
 class OmniSubOrganellarEvolutionCore(nn.Module):
@@ -222,8 +198,8 @@ class OmniSubOrganellarEvolutionCore(nn.Module):
         self.emb = nn.Embedding(vocab_size, dim)
         self.norm = nn.LayerNorm(dim)
 
-        if 'FAST_SLOW' in self.active_vectors or 'FS' in self.active_vectors:
-            self.vec_fs = FastSlowDualFrequencyEngine(dim)
+        if 'AD' in self.active_vectors:
+            self.vec_ad = SubOrganelleVectorAD_Synergy(dim)
         else:
             if 'A' in self.active_vectors:
                 self.vec_A = SubOrganelleVectorA(dim)
@@ -241,8 +217,8 @@ class OmniSubOrganellarEvolutionCore(nn.Module):
     def forward(self, tokens):
         x = self.emb(tokens)  # [B, S, D]
 
-        if 'FAST_SLOW' in self.active_vectors or 'FS' in self.active_vectors:
-            x = self.vec_fs(x)
+        if 'AD' in self.active_vectors:
+            x = self.vec_ad(x)
         else:
             if 'A' in self.active_vectors:
                 x = self.vec_A(x)

@@ -224,6 +224,8 @@ class OmniSubOrganellarEvolutionCore(nn.Module):
 
         if 'FAST_SLOW' in self.active_vectors or 'FS' in self.active_vectors:
             self.vec_fs = FastSlowDualFrequencyEngine(dim)
+        elif 'AD' in self.active_vectors:
+            self.vec_ad = SubOrganelleVectorAD_Synergy(dim)
         else:
             if 'A' in self.active_vectors:
                 self.vec_A = SubOrganelleVectorA(dim)
@@ -243,6 +245,8 @@ class OmniSubOrganellarEvolutionCore(nn.Module):
 
         if 'FAST_SLOW' in self.active_vectors or 'FS' in self.active_vectors:
             x = self.vec_fs(x)
+        elif 'AD' in self.active_vectors:
+            x = self.vec_ad(x)
         else:
             if 'A' in self.active_vectors:
                 x = self.vec_A(x)

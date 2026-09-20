@@ -1,0 +1,30 @@
+{
+  "exp_id": "EXP-261",
+  "baseline_loss": 2.826010386943817,
+  "best_variant": "Vector D (Batched Formula & Circuit Builder)",
+  "best_loss": 2.6761369609832766,
+  "delta_loss": 0.14987342596054054,
+  "verdict": "POSITIVE",
+  "variant_results": {
+    "Baseline (No Sub-Organelles)": {
+      "final_loss": 2.826010386943817,
+      "tok_per_sec": 384728.87764577044,
+      "elapsed_s": 0.5281641483306885
+    },
+    "Vector A (High-Speed Micro-Operators)": {
+      "final_loss": 2.696740231513977,
+      "tok_per_sec": 506603.31834038993,
+      "elapsed_s": 0.40110278129577637
+    },
+    "Vector D (Batched Formula & Circuit Builder)": {
+      "final_loss": 2.6761369609832766,
+      "tok_per_sec": 304635.7816928845,
+      "elapsed_s": 0.6670260429382324
+    },
+    "Fast-Slow Dual-Frequency Engine (FS)": {
+      "final_loss": 2.6830666065216064,
+      "tok_per_sec": 292898.5253393506,
+      "elapsed_s": 0.6937556266784668
+    }
+  }
+}
