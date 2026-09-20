@@ -1,10 +1,9 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON CORE AGENT MASTER WRAPPER v34.2
+KARYON CORE AGENT MASTER WRAPPER v34.1
 Python Orchestrator Wrapper for C++20 UniversalMorphicSpace & DynamicMorphicGraph
-with Integrated Continuous Hopfield Attractor Memory, Sleep-Consolidation,
-and Morphogenetic Neurogenesis Engine.
+with Sleep-Consolidation and Morphogenetic Neurogenesis Engine
 ===============================================================================
 """
 from typing import Dict, Tuple
@@ -27,10 +26,9 @@ class ConfigMock:
 class CoREAgent(nn.Module):
     """
     Master Python wrapper over C++20 UniversalMorphicSpace & DynamicMorphicGraph engines.
-    Equipped with Continuous Hopfield Attractor Memory for zero-shot pattern separation.
     Ensures 100% compliance with karyon_checkpoint.py (.kcore v5.0 serialization).
     """
-    def __init__(self, vocab_size=258, embed_dim=256, num_cells=2, num_operators=4, device='cpu', use_graph=False, use_hopfield=True, num_basins=128):
+    def __init__(self, vocab_size=258, embed_dim=256, num_cells=2, num_operators=4, device='cpu', use_graph=False):
         super().__init__()
         self.config = ConfigMock()
         self.device = device
@@ -41,7 +39,6 @@ class CoREAgent(nn.Module):
         self.latent_dim = 64
         self.action_dim = vocab_size
         self.use_graph = use_graph
-        self.use_hopfield = use_hopfield and (not use_graph) # Hopfield operates on continuous space latent states
 
         if self.use_graph:
             # Instantiate the C++20 DynamicMorphicGraph
@@ -51,12 +48,6 @@ class CoREAgent(nn.Module):
             self.space = kcore.UniversalMorphicSpace(
                 vocab_size, embed_dim, num_cells, num_operators, device
             )
-            if self.use_hopfield:
-                # Integrate Continuous Hopfield Attractor Memory directly
-                self.hopfield = kcore.ContinuousHopfieldMemory(embed_dim, num_basins, device)
-                self.hopfield_head = nn.Linear(embed_dim, vocab_size, bias=False).to(device)
-                nn.init.normal_(self.hopfield_head.weight, 0.0, 0.02)
-                self.gate = nn.Parameter(torch.tensor([0.35], device=device))
 
     def forward(self, input_ids: torch.Tensor, thinking_steps: int = 4) -> torch.Tensor:
         """Direct forward pass returning logits or graph readouts."""
@@ -72,14 +63,7 @@ class CoREAgent(nn.Module):
                 x = input_ids
             return self.graph(x, thinking_steps)
         else:
-            logits_base = self.space(input_ids)
-            if self.use_hopfield:
-                h_latent = self.space.forward_latent(input_ids)
-                recalled = self.hopfield(h_latent, None)
-                logits_hopfield = self.hopfield_head(recalled)
-                g = torch.sigmoid(self.gate)
-                return (1.0 - g) * logits_base + g * logits_hopfield
-            return logits_base
+            return self.space(input_ids)
 
     def forward_latent(self, input_ids: torch.Tensor) -> torch.Tensor:
         """Forward pass returning latent manifold states."""
@@ -128,12 +112,6 @@ class CoREAgent(nn.Module):
                     if "weight" in name or "matrix" in name:
                         param.mul_(1.0 - downscaling_factor)
                         scaled_params_count += 1
-                if self.use_hopfield:
-                    for param in self.hopfield.parameters():
-                        param.mul_(1.0 - downscaling_factor)
-                        scaled_params_count += 1
-                    self.hopfield_head.weight.mul_(1.0 - downscaling_factor)
-                    scaled_params_count += 1
 
         # Phase 2: Morphogenetic Graph Sprouting
         sprouted = False
@@ -166,11 +144,6 @@ class CoREAgent(nn.Module):
                     state[f"graph_emb.{k}"] = v
         else:
             state.update(self.space.named_parameters_map())
-            if self.use_hopfield:
-                state.update(dict(self.hopfield.named_parameters()))
-                for k, v in self.hopfield_head.named_parameters():
-                    state[f"hopfield_head.{k}"] = v
-                state["gate"] = self.gate
         return state
 
     def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor], device: str = 'cpu'):
@@ -216,14 +189,3 @@ class CoREAgent(nn.Module):
                 for name, param in param_map.items():
                     if name in state_dict:
                         param.copy_(state_dict[name].to(device))
-                if self.use_hopfield:
-                    hopfield_params = dict(self.hopfield.named_parameters())
-                    for name, param in hopfield_params.items():
-                        if name in state_dict:
-                            param.copy_(state_dict[name].to(device))
-                    for k, v in self.hopfield_head.named_parameters():
-                        full_key = f"hopfield_head.{k}"
-                        if full_key in state_dict:
-                            v.copy_(state_dict[full_key].to(device))
-                    if "gate" in state_dict:
-                        self.gate.copy_(state_dict["gate"].to(device))
