@@ -1,0 +1,37 @@
+{
+  "exp_id": "EXP-264",
+  "num_steps": 600,
+  "batch_size": 16,
+  "seq_len": 128,
+  "baseline_loss": 2.541779556274414,
+  "best_variant": "Morphic Circuit Space (2 Causal Cells & Tunnels)",
+  "best_loss": 2.1743429136276244,
+  "delta_loss": 0.36743664264678966,
+  "verdict": "POSITIVE",
+  "summary_results": {
+    "Baseline (Pure C++20 Causal SSD)": {
+      "final_loss": 2.541779556274414,
+      "final_ppl": 12.702255247903482,
+      "params": 132608,
+      "avg_tok_per_sec": 181673.0382184466,
+      "elapsed_s": 6.710957288742065,
+      "sample_output": "Instruction: What is energy?\nResponse: The es ant he atre and at he and at on "
+    },
+    "Morphic Circuit Cell (1 Causal Cell)": {
+      "final_loss": 2.2501065254211428,
+      "final_ppl": 9.488746575247923,
+      "params": 593174,
+      "avg_tok_per_sec": 133312.40729100147,
+      "elapsed_s": 9.145435333251953,
+      "sample_output": "Instruction: What is energy?\nResponse: The and the the the the the the the the"
+    },
+    "Morphic Circuit Space (2 Causal Cells & Tunnels)": {
+      "final_loss": 2.1743429136276244,
+      "final_ppl": 8.796403226107286,
+      "params": 1053742,
+      "avg_tok_per_sec": 68912.05555208474,
+      "elapsed_s": 17.69211483001709,
+      "sample_output": "Instruction: What is energy?\nResponse: The the the an the the an the the an th"
+    }
+  }
+}

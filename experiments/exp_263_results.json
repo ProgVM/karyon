@@ -1,0 +1,37 @@
+{
+  "exp_id": "EXP-263",
+  "num_steps": 600,
+  "batch_size": 16,
+  "seq_len": 128,
+  "baseline_loss": 2.472325587272644,
+  "best_variant": "Baseline (No Morphic Cells)",
+  "best_loss": 2.472325587272644,
+  "delta_loss": 0.0,
+  "verdict": "NEUTRAL / INCONCLUSIVE",
+  "summary_results": {
+    "Baseline (No Morphic Cells)": {
+      "final_loss": 2.472325587272644,
+      "final_ppl": 11.849972978375128,
+      "params": 132608,
+      "avg_tok_per_sec": 715656.0751189741,
+      "elapsed_s": 1.7036116123199463,
+      "sample_output": "Instruction: What is energy?\nResponse: the the the the the the the the the the"
+    },
+    "Morphic Circuit Cell (1 Cell Standalone)": {
+      "final_loss": 2.4767132091522215,
+      "final_ppl": 11.902080409345256,
+      "params": 593174,
+      "avg_tok_per_sec": 323955.7592742452,
+      "elapsed_s": 3.763476848602295,
+      "sample_output": "Instruction: What is energy?\nResponse: an an an an an an an an an an an an an "
+    },
+    "Morphic Circuit Space (2 Inter-Connected Cells & Tunnels)": {
+      "final_loss": 2.4773802947998047,
+      "final_ppl": 11.910022765183975,
+      "params": 1053742,
+      "avg_tok_per_sec": 180834.33162847158,
+      "elapsed_s": 6.742082595825195,
+      "sample_output": "Instruction: What is energy?\nResponse: an an an an an an an an an an an an an "
+    }
+  }
+}
