@@ -882,6 +882,23 @@ public:
         auto readout = torch::matmul(motor_latent, w_motor_out.t());
         return readout;
     }
+            aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
+
+            std::vector<torch::Tensor> new_states;
+            for (int64_t j = 0; j < K; ++j) {
+                auto raw_out = node_ops[j]->forward(aggregated_inputs[j]);
+                auto alpha = alpha_epi[j];
+                auto graft_gate = torch::tanh(alpha);
+                auto grafted_out = graft_gate * raw_out;
+                new_states.push_back(grafted_out);
+            }
+            node_states = torch::stack(new_states, 0);
+        }
+
+        auto motor_latent = node_states[1];
+        auto readout = torch::matmul(motor_latent, w_motor_out.t());
+        return readout;
+    }
 
     std::string get_topology_manifest() {
         std::string manifest = "{\"k_nodes\":" + std::to_string(k_nodes) + ",\"nodes\":[";

@@ -805,7 +805,7 @@ public:
         : dim(dim), device_str(device_str) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
 
-        w_route = register_parameter("w_route", torch::zeros({64, 64}, torch::TensorOptions().device(device)));
+        w_route = register_parameter("w_route", torch::zeros({0, 0}, torch::TensorOptions().device(device)));
         w_sensory_in = register_parameter("w_sensory_in", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
         w_motor_out = register_parameter("w_motor_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
         this->to(device);
@@ -841,15 +841,20 @@ public:
         int64_t new_k = old_k + 1;
         k_nodes = new_k;
 
-        // Initialize connection weights in the preallocated w_route table without mutating parameter dimensions
+        // Expand dynamic routing matrix w_route
+        auto new_w_route = torch::zeros({new_k, new_k}, torch::TensorOptions().device(device));
         if (old_k > 0) {
             torch::NoGradGuard no_grad;
+            new_w_route.slice(0, 0, old_k).slice(1, 0, old_k).copy_(w_route.data());
+            // Random connection weights between new node and existing nodes
             auto rand_col = torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k));
             auto rand_row = torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k));
-            w_route.slice(0, 0, old_k).narrow(1, old_k, 1).copy_(rand_col.unsqueeze(1));
-            w_route.narrow(0, old_k, 1).slice(1, 0, old_k).copy_(rand_row.unsqueeze(0));
-            w_route.index_put_({old_k, old_k}, 0.05f);
+            new_w_route.slice(0, 0, old_k).narrow(1, old_k, 1).copy_(rand_col.unsqueeze(1));
+            new_w_route.narrow(0, old_k, 1).slice(1, 0, old_k).copy_(rand_row.unsqueeze(0));
+            new_w_route.index_put_({old_k, old_k}, 0.05f);
         }
+        new_w_route.set_requires_grad(true);
+        w_route.set_data(new_w_route);
     }
 
     torch::Tensor forward(torch::Tensor x_sensory, int64_t thinking_steps = 4) {
@@ -861,10 +866,8 @@ public:
         auto sensory_in = torch::matmul(x_sensory, w_sensory_in.t());
         node_states[0] = sensory_in;
 
-        auto active_w_route = w_route.slice(0, 0, K).slice(1, 0, K);
-
         for (int64_t step = 0; step < thinking_steps; ++step) {
-            auto aggregated_inputs = torch::einsum("ij,ibd->jbd", {torch::tanh(active_w_route), node_states});
+            auto aggregated_inputs = torch::einsum("ij,ibd->jbd", {torch::tanh(w_route), node_states});
             aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
 
             std::vector<torch::Tensor> new_states;
