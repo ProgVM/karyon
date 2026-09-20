@@ -940,9 +940,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::class_<CognitiveEvolvableAgentImpl, torch::nn::Module, std::shared_ptr<CognitiveEvolvableAgentImpl>>(m, "CognitiveEvolvableAgent")
         .def(py::init<int64_t, int64_t, int64_t, std::string>(), py::arg("vocab_size") = 258, py::arg("dim") = 256, py::arg("max_nodes") = 16, py::arg("device") = "cpu")
         .def_property_readonly("homeostasis", [](std::shared_ptr<CognitiveEvolvableAgentImpl> a) { return a->homeostasis.ptr(); })
-        .def("sprout_organelle", &CognitiveEvolvableAgentImpl::sprout_organelle,
-             py::arg("name"), py::arg("state_dim") = 128, py::arg("num_operators") = 8,
-             py::arg("min_decay") = 0.005f, py::arg("max_decay") = 0.2f)
+        .def("sprout_organelle", &CognitiveEvolvableAgentImpl::sprout_organelle)
         .def("sprout_homeostatic_dimension", &CognitiveEvolvableAgentImpl::sprout_homeostatic_dimension)
         .def("forward", &CognitiveEvolvableAgentImpl::forward, py::arg("tokens"), py::arg("u_t") = torch::Tensor())
         .def("__call__", &CognitiveEvolvableAgentImpl::forward, py::arg("tokens"), py::arg("u_t") = torch::Tensor())
