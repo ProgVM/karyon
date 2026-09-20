@@ -846,15 +846,14 @@ public:
         if (old_k > 0) {
             torch::NoGradGuard no_grad;
             new_w_route.slice(0, 0, old_k).slice(1, 0, old_k).copy_(w_route.data());
-            // Random connection weights between new node and existing nodes
-            auto rand_col = torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k));
-            auto rand_row = torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k));
-            new_w_route.slice(0, 0, old_k).narrow(1, old_k, 1).copy_(rand_col.unsqueeze(1));
-            new_w_route.narrow(0, old_k, 1).slice(1, 0, old_k).copy_(rand_row.unsqueeze(0));
-            new_w_route.index_put_({old_k, old_k}, 0.05f);
+            new_w_route.slice(0, 0, old_k).select(1, old_k).copy_(torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k)));
+            new_w_route.select(0, old_k).slice(1, 0, old_k).copy_(torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k)));
+            new_w_route[old_k][old_k] = 0.05f;
         }
         new_w_route.set_requires_grad(true);
-        w_route.set_data(new_w_route);
+        w_route = new_w_route;
+        // In LibTorch, replacing a parameter in-place without re-registering:
+        named_parameters()["w_route"] = w_route;
     }
 
     torch::Tensor forward(torch::Tensor x_sensory, int64_t thinking_steps = 4) {
@@ -1015,7 +1014,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<DynamicMorphicGraphImpl, torch::nn::Module, std::shared_ptr<DynamicMorphicGraphImpl>>(m, "DynamicMorphicGraph")
         .def(py::init<int64_t, std::string>(), py::arg("dim") = 128, py::arg("device_str") = "cpu")
-        .def_readonly("k_nodes", &DynamicMorphicGraphImpl::k_nodes)
         .def("add_node", &DynamicMorphicGraphImpl::add_node, py::arg("name"), py::arg("op_type"), py::arg("is_core") = false, py::arg("initial_alpha") = 0.0f)
         .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("__call__", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)

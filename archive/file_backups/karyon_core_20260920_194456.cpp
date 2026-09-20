@@ -95,7 +95,7 @@ public:
             auto out = torch::matmul(h_flat, w);
             op_outputs.push_back(out.view({batch, seq_len, d, 1}));
         }
-        return torch::cat(op_outputs, -1); // [batch, seq, dim, num_operators]
+        return torch::cat(op_outputs, -1); // [batch, seq_len, dim, num_operators]
     }
 };
 TORCH_MODULE(ParallelOperatorBank);
@@ -734,25 +734,21 @@ TORCH_MODULE(UniversalMorphicSpace);
 // 12. NATIVE C++ DYNAMIC MORPHIC GRAPH OPERATORS (EXP-273)
 // ============================================================================
 
-struct GraphOp : public torch::nn::Module {
-    virtual torch::Tensor forward(torch::Tensor x) = 0;
-};
-
-struct LinearAccumulatorOpImpl : public GraphOp {
+struct LinearAccumulatorOpImpl : public torch::nn::Module {
     torch::Tensor w, b;
     LinearAccumulatorOpImpl(int64_t dim, std::string device_str = "cpu") {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
         w = register_parameter("w", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
         b = register_parameter("b", torch::zeros({dim}, torch::TensorOptions().device(device)));
     }
-    torch::Tensor forward(torch::Tensor x) override {
+    torch::Tensor forward(torch::Tensor x) {
         return torch::matmul(x, w.t()) + b;
     }
 };
 TORCH_MODULE(LinearAccumulatorOp);
 
 
-struct BilinearMultiplicativeOpImpl : public GraphOp {
+struct BilinearMultiplicativeOpImpl : public torch::nn::Module {
     torch::Tensor w_left, w_right, w_out;
     BilinearMultiplicativeOpImpl(int64_t dim, std::string device_str = "cpu") {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
@@ -760,7 +756,7 @@ struct BilinearMultiplicativeOpImpl : public GraphOp {
         w_right = register_parameter("w_right", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
         w_out = register_parameter("w_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.15f / std::sqrt(dim)));
     }
-    torch::Tensor forward(torch::Tensor x) override {
+    torch::Tensor forward(torch::Tensor x) {
         auto left = torch::matmul(x, w_left.t());
         auto right = torch::matmul(x, w_right.t());
         return torch::matmul(torch::silu(left * right), w_out.t());
@@ -769,7 +765,7 @@ struct BilinearMultiplicativeOpImpl : public GraphOp {
 TORCH_MODULE(BilinearMultiplicativeOp);
 
 
-struct SaturatedAttractorOpImpl : public GraphOp {
+struct SaturatedAttractorOpImpl : public torch::nn::Module {
     torch::Tensor w_gate, w_val, w_out;
     SaturatedAttractorOpImpl(int64_t dim, std::string device_str = "cpu") {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
@@ -777,7 +773,7 @@ struct SaturatedAttractorOpImpl : public GraphOp {
         w_val = register_parameter("w_val", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
         w_out = register_parameter("w_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.15f / std::sqrt(dim)));
     }
-    torch::Tensor forward(torch::Tensor x) override {
+    torch::Tensor forward(torch::Tensor x) {
         auto gate = torch::sigmoid(torch::matmul(x, w_gate.t()));
         auto val = torch::tanh(torch::matmul(x, w_val.t()));
         return torch::matmul(gate * val, w_out.t());
@@ -792,7 +788,7 @@ public:
     std::string device_str;
     int64_t k_nodes = 0;
 
-    std::vector<std::shared_ptr<GraphOp>> node_ops;
+    std::vector<torch::nn::AnyModule> node_ops;
     std::vector<torch::Tensor> alpha_epi;
     std::vector<bool> is_core_node;
     std::vector<std::string> node_names;
@@ -814,13 +810,13 @@ public:
     void add_node(std::string name, std::string op_type, bool is_core = false, float initial_alpha = 0.0f) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
         
-        std::shared_ptr<GraphOp> op;
+        torch::nn::AnyModule op;
         if (op_type == "LinearAccumulator") {
-            op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
+            op = torch::nn::AnyModule(LinearAccumulatorOp(dim, device_str));
         } else if (op_type == "BilinearMultiplicative") {
-            op = std::make_shared<BilinearMultiplicativeOpImpl>(dim, device_str);
+            op = torch::nn::AnyModule(BilinearMultiplicativeOp(dim, device_str));
         } else if (op_type == "SaturatedAttractor") {
-            op = std::make_shared<SaturatedAttractorOpImpl>(dim, device_str);
+            op = torch::nn::AnyModule(SaturatedAttractorOp(dim, device_str));
         } else {
             throw std::invalid_argument("Unknown operator type: " + op_type);
         }
@@ -846,15 +842,11 @@ public:
         if (old_k > 0) {
             torch::NoGradGuard no_grad;
             new_w_route.slice(0, 0, old_k).slice(1, 0, old_k).copy_(w_route.data());
-            // Random connection weights between new node and existing nodes
-            auto rand_col = torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k));
-            auto rand_row = torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k));
-            new_w_route.slice(0, 0, old_k).narrow(1, old_k, 1).copy_(rand_col.unsqueeze(1));
-            new_w_route.narrow(0, old_k, 1).slice(1, 0, old_k).copy_(rand_row.unsqueeze(0));
-            new_w_route.index_put_({old_k, old_k}, 0.05f);
+            new_w_route.slice(0, 0, old_k).select(1, old_k).copy_(torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k)));
+            new_w_route.select(0, old_k).slice(1, 0, old_k).copy_(torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k)));
+            new_w_route[old_k][old_k] = 0.05f;
         }
-        new_w_route.set_requires_grad(true);
-        w_route.set_data(new_w_route);
+        w_route = register_parameter("w_route", new_w_route);
     }
 
     torch::Tensor forward(torch::Tensor x_sensory, int64_t thinking_steps = 4) {
@@ -872,7 +864,7 @@ public:
 
             std::vector<torch::Tensor> new_states;
             for (int64_t j = 0; j < K; ++j) {
-                auto raw_out = node_ops[j]->forward(aggregated_inputs[j]);
+                auto raw_out = node_ops[j].forward<torch::Tensor>(aggregated_inputs[j]);
                 auto alpha = alpha_epi[j];
                 auto graft_gate = torch::tanh(alpha);
                 auto grafted_out = graft_gate * raw_out;
@@ -933,7 +925,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<HomeostaticNexusImpl, torch::nn::Module, std::shared_ptr<HomeostaticNexusImpl>>(m, "HomeostaticNexus")
         .def(py::init<std::string>(), py::arg("device") = "cpu")
-        .def("sprout_homeostatic_dimension", &HomeostaticNexusImpl::sprout_homeostatic_dimension)
+        .def("sprout_dimension", &HomeostaticNexusImpl::sprout_dimension)
         .def("update", &HomeostaticNexusImpl::update)
         .def("get_states", &HomeostaticNexusImpl::get_states)
         .def("get_names", &HomeostaticNexusImpl::get_names);
@@ -1015,7 +1007,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<DynamicMorphicGraphImpl, torch::nn::Module, std::shared_ptr<DynamicMorphicGraphImpl>>(m, "DynamicMorphicGraph")
         .def(py::init<int64_t, std::string>(), py::arg("dim") = 128, py::arg("device_str") = "cpu")
-        .def_readonly("k_nodes", &DynamicMorphicGraphImpl::k_nodes)
         .def("add_node", &DynamicMorphicGraphImpl::add_node, py::arg("name"), py::arg("op_type"), py::arg("is_core") = false, py::arg("initial_alpha") = 0.0f)
         .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("__call__", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)

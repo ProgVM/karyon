@@ -1,7 +1,7 @@
 # karyon_core.py
 """
 ===============================================================================
-KARYON CORE C++20 LIBTORCH COMPILATION & PYTHON BRIDGE v34.0 MASTER
+KARYON CORE C++20 LIBTORCH COMPILATION & PYTHON BRIDGE v30.0 MASTER
 Python as Client, C++20 as Engine (KEP Principle 1)
 Clean Slate AGN Parallel Evolution Core
 ===============================================================================
@@ -18,7 +18,7 @@ def _is_valid_karyon_cpp_module(mod):
     required_attrs = [
         "UniversalManifold", "ParallelOperatorBank", "OmniMorphicNode",
         "OmniContinuousGraphSubstrate", "CognitiveEvolvableAgent",
-        "UniversalMorphicCell", "UniversalMorphicSpace", "DynamicMorphicGraph"
+        "UniversalMorphicCell", "UniversalMorphicSpace"
     ]
     return all(hasattr(mod, attr) and isinstance(getattr(mod, attr), type) for attr in required_attrs)
 
@@ -78,9 +78,5 @@ if karyon_cpp is not None:
     globals()["CognitiveEvolvableAgent"] = getattr(karyon_cpp, "CognitiveEvolvableAgent")
     globals()["UniversalMorphicCell"] = getattr(karyon_cpp, "UniversalMorphicCell", None)
     globals()["UniversalMorphicSpace"] = getattr(karyon_cpp, "UniversalMorphicSpace", None)
-    globals()["LinearAccumulatorOp"] = getattr(karyon_cpp, "LinearAccumulatorOp", None)
-    globals()["BilinearMultiplicativeOp"] = getattr(karyon_cpp, "BilinearMultiplicativeOp", None)
-    globals()["SaturatedAttractorOp"] = getattr(karyon_cpp, "SaturatedAttractorOp", None)
-    globals()["DynamicMorphicGraph"] = getattr(karyon_cpp, "DynamicMorphicGraph", None)
 else:
     raise ImportError("Failed to load or compile Karyon C++ extension module.")

@@ -6,11 +6,10 @@
 #include <memory>
 #include <algorithm>
 #include <iostream>
-#include <map>
 
 // ============================================================================
 // KARYON COGNITIVE SUBSTRATE & ALLOSENSORY HOMEOSTASIS CORE
-// v34.0 - Active Inference, Laminar Error Routing, and Continuous Hopfield Memory
+// v33.0 - Active Inference, Laminar Error Routing, and Continuous Hopfield Memory
 // ============================================================================
 
 // 1. BYTE-LEVEL UNIVERSAL REPRESENTATION & EMBEDDING MANIFOLD
@@ -95,138 +94,202 @@ public:
             auto out = torch::matmul(h_flat, w);
             op_outputs.push_back(out.view({batch, seq_len, d, 1}));
         }
-        return torch::cat(op_outputs, -1); // [batch, seq, dim, num_operators]
+        return torch::cat(op_outputs, -1); // [batch, seq_len, dim, num_operators]
     }
 };
 TORCH_MODULE(ParallelOperatorBank);
 
-// 4. CONTINUOUS HOPFIELD ATTRACTOR NETWORK
-class ContinuousHopfieldMemoryImpl : public torch::nn::Module {
-public:
-    int64_t dim;
-    int64_t num_basins;
-    std::string device_str;
-
-    torch::Tensor basins; // [num_basins, dim]
-    torch::Tensor scaling; // [num_basins]
-
-    ContinuousHopfieldMemoryImpl(int64_t dim = 256, int64_t num_basins = 32, std::string device_str = "cpu")
-        : dim(dim), num_basins(num_basins), device_str(device_str) {
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-
-        auto init_basins = torch::randn({num_basins, dim}, torch::TensorOptions().device(device));
-        init_basins = init_basins / init_basins.norm(2, -1, true); // Unit-sphere normalization
-        basins = register_parameter("basins", init_basins);
-
-        scaling = register_parameter("scaling", torch::ones({num_basins}, torch::TensorOptions().device(device)) * 12.0f); // beta=12.0
-        this->to(device);
-    }
-
-    torch::Tensor forward(torch::Tensor x, torch::Tensor u_t) {
-        auto device = x.device();
-        auto norm_x = x / (x.norm(2, -1, true) + 1e-6f);
-
-        // Compute cosine similarities: [batch, seq, dim] * [dim, num_basins] -> [batch, seq, num_basins]
-        auto sim = torch::matmul(norm_x, basins.t());
-
-        // Dynamic Dopaminergic Precision Sharpening
-        float da_val = 0.0f;
-        if (u_t.defined() && u_t.numel() > 0) {
-            da_val = u_t.slice(-1, 5, 6).mean().template item<float>();
-        }
-        auto beta = scaling * (1.0f + 1.5f * da_val);
-
-        auto energy_weights = torch::softmax(sim * beta.view({1, 1, -1}), -1);
-
-        // Retrieve mapped memory representation: [batch, seq, num_basins] * [num_basins, dim] -> [batch, seq, dim]
-        auto recalled = torch::matmul(energy_weights, basins);
-        return recalled;
-    }
-};
-TORCH_MODULE(ContinuousHopfieldMemory);
-
-// 5. LATENT ACTIVE INFERENCE WORLD MODEL
+// 4. ACTIVE INFERENCE LATENT WORLD MODEL
 class LatentPredictorImpl : public torch::nn::Module {
 public:
     int64_t dim;
     int64_t latent_dim;
-    std::string device_str;
 
-    torch::nn::Linear prior_mean{nullptr};
-    torch::nn::Linear prior_logvar{nullptr};
-    torch::nn::Linear post_mean{nullptr};
-    torch::nn::Linear post_logvar{nullptr};
+    torch::nn::Linear mu_prior{nullptr};
+    torch::nn::Linear logvar_prior{nullptr};
+    torch::nn::Linear mu_posterior{nullptr};
+    torch::nn::Linear logvar_posterior{nullptr};
+    torch::nn::Linear decoder{nullptr};
 
     LatentPredictorImpl(int64_t dim = 256, int64_t latent_dim = 64, std::string device_str = "cpu")
-        : dim(dim), latent_dim(latent_dim), device_str(device_str) {
+        : dim(dim), latent_dim(latent_dim) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
 
-        prior_mean = register_module("prior_mean", torch::nn::Linear(dim, latent_dim));
-        prior_logvar = register_module("prior_logvar", torch::nn::Linear(dim, latent_dim));
-        post_mean = register_module("post_mean", torch::nn::Linear(dim * 2, latent_dim));
-        post_logvar = register_module("post_logvar", torch::nn::Linear(dim * 2, latent_dim));
+        mu_prior = register_module("mu_prior", torch::nn::Linear(dim, latent_dim));
+        logvar_prior = register_module("logvar_prior", torch::nn::Linear(dim, latent_dim));
+        mu_posterior = register_module("mu_posterior", torch::nn::Linear(dim, latent_dim));
+        logvar_posterior = register_module("logvar_posterior", torch::nn::Linear(dim, latent_dim));
+        decoder = register_module("decoder", torch::nn::Linear(latent_dim, dim));
+
+        torch::nn::init::normal_(mu_prior->weight, 0.0, 0.02);
+        torch::nn::init::zeros_(mu_prior->bias);
+        torch::nn::init::normal_(logvar_prior->weight, 0.0, 0.02);
+        torch::nn::init::zeros_(logvar_prior->bias);
+
+        torch::nn::init::normal_(mu_posterior->weight, 0.0, 0.02);
+        torch::nn::init::zeros_(mu_posterior->bias);
+        torch::nn::init::normal_(logvar_posterior->weight, 0.0, 0.02);
+        torch::nn::init::zeros_(logvar_posterior->bias);
+
+        torch::nn::init::normal_(decoder->weight, 0.0, 0.02);
+        torch::nn::init::zeros_(decoder->bias);
 
         this->to(device);
     }
 
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward(torch::Tensor h_prev, torch::Tensor x_curr) {
-        auto p_mean = prior_mean->forward(h_prev);
-        auto p_logvar = prior_logvar->forward(h_prev);
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward(torch::Tensor h, torch::Tensor target) {
+        auto mu_p = mu_prior->forward(h);
+        auto logvar_p = logvar_prior->forward(h);
 
-        auto concat_in = torch::cat({h_prev, x_curr}, -1);
-        auto q_mean = post_mean->forward(concat_in);
-        auto q_logvar = post_logvar->forward(concat_in);
+        auto mu_q = mu_posterior->forward(target);
+        auto logvar_q = logvar_posterior->forward(target);
 
-        return std::make_tuple(p_mean, p_logvar, q_mean, q_logvar);
+        auto std = torch::exp(0.5f * logvar_q);
+        auto eps = torch::randn_like(std);
+        auto z = mu_q + eps * std;
+
+        auto recon = decoder->forward(z);
+        return std::make_tuple(recon, mu_p, logvar_p, mu_q, logvar_q);
     }
 };
 TORCH_MODULE(LatentPredictor);
 
-// 6. ALLOSESTATIC HOMEOSTATIC NEXUS
+// 5. HOMEOSTATIC NEXUS & ASHBY ULTRASTABILITY
 class HomeostaticNexusImpl : public torch::nn::Module {
 public:
-    std::vector<std::string> names;
-    std::vector<float> setpoints;
-    std::vector<float> states;
-    std::string device_str;
+    std::vector<std::string> dimension_names;
+    torch::Tensor current_states;
+    torch::Tensor target_states;
+    torch::Tensor decay_rates;
+    torch::Tensor sensitivities;
 
-    HomeostaticNexusImpl(std::string device_str = "cpu") : device_str(device_str) {
-        names = {"Curiosity", "Energy", "Stability", "Health", "Noradrenaline", "Dopamine"};
-        setpoints = {0.8f, 0.9f, 0.7f, 0.95f, 0.3f, 0.5f};
-        states = {0.8f, 0.9f, 0.7f, 0.95f, 0.3f, 0.5f};
+    HomeostaticNexusImpl(std::string device_str = "cpu") {
+        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+
+        dimension_names = {"Curiosity", "Energy", "Stability", "Health", "Noradrenaline", "Dopamine"};
+        current_states = register_buffer("current_states", torch::tensor({0.5f, 1.0f, 0.8f, 1.0f, 0.2f, 0.1f}, torch::TensorOptions().device(device)));
+        target_states = register_buffer("target_states", torch::tensor({0.5f, 1.0f, 1.0f, 1.0f, 0.1f, 0.1f}, torch::TensorOptions().device(device)));
+        decay_rates = register_buffer("decay_rates", torch::tensor({0.01f, 0.005f, 0.002f, 0.001f, 0.05f, 0.05f}, torch::TensorOptions().device(device)));
+        sensitivities = register_buffer("sensitivities", torch::tensor({0.1f, 0.2f, 0.15f, 0.1f, 0.3f, 0.4f}, torch::TensorOptions().device(device)));
+
+        this->to(device);
     }
 
-    void sprout_homeostatic_dimension(std::string name, float setpoint) {
-        if (std::find(names.begin(), names.end(), name) == names.end()) {
-            names.push_back(name);
-            setpoints.push_back(setpoint);
-            states.push_back(setpoint);
-        }
-    }
+    void sprout_dimension(std::string name, float init_val, float target_val, float decay, float sensitivity) {
+        dimension_names.push_back(name);
+        auto device = current_states.device();
 
-    void update(torch::Tensor free_energy_surprise) {
-        float f_t = free_energy_surprise.mean().template item<float>();
-
-        // Allostatic update rules coupled to surprise (Principle 14)
-        states[4] = std::clamp(states[4] * 0.9f + f_t * 0.2f, 0.05f, 0.95f); // Noradrenaline arousal
-        states[5] = std::clamp(states[5] * 0.95f + (0.5f - f_t) * 0.1f, 0.05f, 0.95f); // Dopamine reward
-        states[1] = std::clamp(states[1] - 0.002f + states[5] * 0.001f, 0.05f, 1.0f); // Metabolic energy consumption
-        states[2] = std::clamp(states[2] * 0.98f + (states[1] > 0.3f ? 0.02f : -0.05f), 0.05f, 1.0f); // Stability
-        states[3] = std::clamp(states[3] * 0.999f - (states[1] < 0.15f ? 0.01f : 0.0f), 0.05f, 1.0f); // Health
+        current_states = torch::cat({current_states, torch::tensor({init_val}, torch::TensorOptions().device(device))});
+        target_states = torch::cat({target_states, torch::tensor({target_val}, torch::TensorOptions().device(device))});
+        decay_rates = torch::cat({decay_rates, torch::tensor({decay}, torch::TensorOptions().device(device))});
+        sensitivities = torch::cat({sensitivities, torch::tensor({sensitivity}, torch::TensorOptions().device(device))});
     }
 
     torch::Tensor get_states() {
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        return torch::tensor(states, torch::TensorOptions().device(device));
+        return current_states;
     }
 
     std::vector<std::string> get_names() {
-        return names;
+        return dimension_names;
+    }
+
+    torch::Tensor update(torch::Tensor prediction_error) {
+        torch::NoGradGuard no_grad;
+        auto err = prediction_error.mean().item<float>();
+
+        // Ashby Ultrastability update loop
+        auto diff = target_states - current_states;
+        current_states.add_(diff * decay_rates);
+
+        // Noradrenaline spike on high surprise / prediction error
+        int64_t na_idx = -1;
+        int64_t da_idx = -1;
+        for (size_t i = 0; i < dimension_names.size(); ++i) {
+            if (dimension_names[i] == "Noradrenaline") na_idx = i;
+            if (dimension_names[i] == "Dopamine") da_idx = i;
+        }
+
+        if (na_idx != -1) {
+            current_states[na_idx].add_(err * sensitivities[na_idx]);
+            current_states[na_idx] = torch::clamp(current_states[na_idx], 0.0f, 1.0f);
+        }
+
+        if (da_idx != -1) {
+            // Dopamine spikes on reward (inverse prediction error)
+            float reward = std::exp(-err * 2.0f);
+            current_states[da_idx].add_(reward * sensitivities[da_idx]);
+            current_states[da_idx] = torch::clamp(current_states[da_idx], 0.0f, 1.0f);
+        }
+
+        return current_states;
     }
 };
 TORCH_MODULE(HomeostaticNexus);
 
-// 7. OMNI-MORPHIC NODE COMPONENT
+// 6. CONTINUOUS HOPFIELD ATTRACTOR EPISODIC MEMORY WITH DOPAMINERGIC MODULATION (VECTOR C)
+class ContinuousHopfieldMemoryImpl : public torch::nn::Module {
+public:
+    int64_t dim;
+    int64_t num_basins;
+    torch::Tensor memory_keys;
+    torch::Tensor memory_values;
+    torch::nn::Linear mem_gate{nullptr};
+
+    ContinuousHopfieldMemoryImpl(int64_t dim = 256, int64_t num_basins = 32, std::string device_str = "cpu")
+        : dim(dim), num_basins(num_basins) {
+        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+
+        auto k = torch::randn({num_basins, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt(dim));
+        auto v = torch::randn({num_basins, dim}, torch::TensorOptions().device(device)) * 0.02f;
+
+        memory_keys = register_parameter("memory_keys", k);
+        memory_values = register_parameter("memory_values", v);
+        mem_gate = register_module("mem_gate", torch::nn::Linear(dim, 1));
+        torch::nn::init::zeros_(mem_gate->weight);
+        torch::nn::init::zeros_(mem_gate->bias);
+
+        this->to(device);
+    }
+
+    torch::Tensor forward(torch::Tensor x, torch::Tensor u_t = torch::Tensor()) {
+        // x: [batch, seq_len, dim] or [batch, dim]
+        int64_t batch = x.size(0);
+        int64_t seq_len = (x.dim() == 3) ? x.size(1) : 1;
+        int64_t d = x.size(-1);
+        auto x_2d = x.reshape({-1, d}); // [batch * seq_len, d]
+
+        auto norm_x = x_2d / (torch::sqrt(torch::sum(x_2d * x_2d, -1, true)) + 1e-6f);
+        auto norm_k = memory_keys / (torch::sqrt(torch::sum(memory_keys * memory_keys, -1, true)) + 1e-6f);
+
+        // Dopaminergic precision scaling: higher dopamine -> sharper attractor basins (higher beta)
+        float beta = 8.0f;
+        if (u_t.defined() && u_t.numel() > 0) {
+            // Dopamine is index 5 in homeostasis dimension states
+            auto u_reshaped = u_t.reshape({-1, u_t.size(-1)});
+            if (u_reshaped.size(-1) > 5) {
+                auto da_val = u_reshaped.select(-1, 5).mean().template item<float>();
+                beta = beta * (1.0f + 1.5f * da_val);
+            }
+        }
+
+        // sim: [batch * seq_len, num_basins]
+        auto sim = torch::matmul(norm_x, norm_k.t()) * beta;
+        auto attn = torch::softmax(sim, -1);
+
+        // retrieved: [batch * seq_len, dim]
+        auto retrieved = torch::matmul(attn, memory_values);
+        auto gate = torch::sigmoid(mem_gate->forward(x_2d));
+        auto out = gate * retrieved;
+
+        if (x.dim() == 3) {
+            return out.view({batch, seq_len, d});
+        }
+        return out.view({batch, d});
+    }
+};
+TORCH_MODULE(ContinuousHopfieldMemory);
+
+// 7. OMNI-MORPHIC NODE WITH LAMINAR ERROR RESIDUAL & HOPFIELD MEMORY
 class OmniMorphicNodeImpl : public torch::nn::Module {
 public:
     int64_t dim;
@@ -241,61 +304,112 @@ public:
 
     CausalParallelSSD causal_ssd{nullptr};
     ParallelOperatorBank operator_bank{nullptr};
+    ContinuousHopfieldMemory episodic_memory{nullptr};
 
-    OmniMorphicNodeImpl(int64_t dim = 256, int64_t state_dim = 128, int64_t num_operators = 8, std::string device_str = "cpu", float min_decay = 0.005f, float max_decay = 0.2f)
+    torch::nn::Linear pred_l1{nullptr};
+    torch::nn::Linear pred_l2{nullptr};
+    torch::nn::LayerNorm ln_residual{nullptr};
+
+    OmniMorphicNodeImpl(int64_t dim = 256, int64_t state_dim = 128, int64_t num_operators = 8, std::string device_str = "cpu",
+                        float min_decay = 0.005f, float max_decay = 0.2f)
         : dim(dim), state_dim(state_dim), num_operators(num_operators), device_str(device_str) {
+
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
 
-        affinity_query = register_parameter("affinity_query", torch::randn({dim}, torch::TensorOptions().device(device)) * 0.05f);
+        affinity_query = register_parameter("affinity_query", torch::randn({dim}, torch::TensorOptions().device(device)) * 0.02f);
 
-        hyper_w1 = register_module("hyper_w1", torch::nn::Linear(dim, state_dim));
-        hyper_w2 = register_module("hyper_w2", torch::nn::Linear(state_dim, num_operators));
+        hyper_w1 = register_module("hyper_w1", torch::nn::Linear(dim, num_operators * state_dim));
+        hyper_w2 = register_module("hyper_w2", torch::nn::Linear(dim, state_dim * dim));
+        state_norm = register_module("state_norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({dim})));
+
+        torch::nn::init::normal_(hyper_w1->weight, 0.0, 0.02);
+        torch::nn::init::zeros_(hyper_w1->bias);
+        torch::nn::init::normal_(hyper_w2->weight, 0.0, 0.02);
+        torch::nn::init::zeros_(hyper_w2->bias);
 
         causal_ssd = register_module("causal_ssd", CausalParallelSSD(dim, device_str, min_decay, max_decay));
         operator_bank = register_module("operator_bank", ParallelOperatorBank(dim, state_dim, num_operators));
+        episodic_memory = register_module("episodic_memory", ContinuousHopfieldMemory(dim, 32, device_str));
 
-        state_norm = register_module("state_norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({dim})));
+        pred_l1 = register_module("pred_l1", torch::nn::Linear(dim, dim));
+        pred_l2 = register_module("pred_l2", torch::nn::Linear(dim, dim));
+        ln_residual = register_module("ln_residual", torch::nn::LayerNorm(torch::nn::LayerNormOptions({dim})));
+
+        torch::nn::init::normal_(pred_l1->weight, 0.0, 0.02);
+        torch::nn::init::zeros_(pred_l1->bias);
+        torch::nn::init::normal_(pred_l2->weight, 0.0, 0.02);
+        torch::nn::init::zeros_(pred_l2->bias);
+
         this->to(device);
     }
 
     std::tuple<torch::Tensor, torch::Tensor> forward(torch::Tensor signal_manifold, torch::Tensor u_t) {
-        int64_t batch = signal_manifold.size(0);
-        int64_t seq_len = signal_manifold.size(2);
-        auto device = signal_manifold.device();
+        bool is_4d = (signal_manifold.dim() == 4);
+        int64_t batch, num_signals, seq_len;
+        torch::Tensor manifold_ref = signal_manifold;
 
-        // 1. Softmax Attention Routing
-        auto signal_norm = signal_manifold / (signal_manifold.norm(2, -1, true) + 1e-6f);
-        auto attn_scores = torch::einsum("bnsd, d -> bns", {signal_norm, affinity_query});
-
-        // Noradrenergic gain scaling
-        float na_val = 0.0f;
-        if (u_t.defined() && u_t.numel() > 0) {
-            na_val = u_t.slice(-1, 4, 5).mean().template item<float>();
+        if (is_4d) {
+            batch = signal_manifold.size(0);
+            num_signals = signal_manifold.size(1);
+            seq_len = signal_manifold.size(2);
+        } else {
+            batch = signal_manifold.size(0);
+            num_signals = signal_manifold.size(1);
+            seq_len = 1;
+            manifold_ref = signal_manifold.unsqueeze(2);
         }
-        auto routing_weights = torch::softmax(attn_scores * (1.0f + 2.0f * na_val), 1);
 
-        auto routed_input = torch::einsum("bns, bnsd -> bsd", {routing_weights, signal_manifold});
+        auto keys = manifold_ref.mean(2);
+        auto q = affinity_query.view({1, 1, dim}).expand({batch, 1, dim});
+        auto attn_logits = torch::matmul(q, keys.transpose(1, 2)).squeeze(1) * (1.0 / std::sqrt(dim));
+        auto attn_weights = torch::softmax(attn_logits, -1);
 
-        // 2. State-Space Temporal Scan (Continuous Memory)
-        auto scan_state = causal_ssd->forward(routed_input);
+        auto weights_expanded = attn_weights.view({batch, num_signals, 1, 1});
+        auto x_attended = (manifold_ref * weights_expanded).sum(1);
 
-        // 3. Parallel Operator Mixing
-        auto op_bank_out = operator_bank->compute_operators(scan_state); // [batch, seq, dim, num_operators]
+        auto context = x_attended.mean(1);
+        if (u_t.defined() && u_t.numel() > 0) {
+            auto u_flat = (u_t.dim() > 1) ? u_t.view({batch, -1}) : u_t.unsqueeze(0).expand({batch, -1});
+            if (u_flat.size(0) == batch && u_flat.size(-1) <= dim) {
+                auto u_padded = torch::zeros({batch, dim}, x_attended.options());
+                u_padded.slice(1, 0, u_flat.size(-1)).copy_(u_flat);
+                context = context + u_padded * 0.1f;
+            }
+        }
 
-        // Dynamic operator selection via hypernetwork
-        auto h_mean = scan_state.mean(1); // [batch, dim]
-        auto op_logits = hyper_w2->forward(torch::relu(hyper_w1->forward(h_mean))); // [batch, num_operators]
-        auto op_probs = torch::softmax(op_logits, -1); // [batch, num_operators]
+        auto w1_raw = hyper_w1->forward(context).view({batch, num_operators, state_dim});
+        auto w1 = torch::softmax(w1_raw, 1); // [batch, num_operators, state_dim]
+        auto w2 = hyper_w2->forward(context).view({batch, state_dim, dim}); // [batch, state_dim, dim]
 
-        auto final_out = torch::einsum("bsdo, bo -> bsd", {op_bank_out, op_probs});
-        final_out = state_norm->forward(final_out);
+        // Fast temporal scan
+        auto h_ssd = causal_ssd->forward(x_attended); // [batch, seq_len, dim]
 
-        return std::make_tuple(final_out, routing_weights);
+        // Laminar Prediction & Error Residual Extraction (Vector B)
+        auto pred = pred_l2->forward(torch::gelu(pred_l1->forward(h_ssd)));
+        auto err_residual = ln_residual->forward(x_attended - pred);
+        auto h_effective = h_ssd + err_residual; // [batch, seq_len, dim]
+
+        // Operator bank mixing: ops is [batch, seq_len, dim, num_operators]
+        auto ops = operator_bank->compute_operators(h_effective);
+        auto h_hidden = torch::einsum("btdk,bks->bts", {ops, w1}) * (1.0f / std::sqrt(dim));
+        auto node_output = torch::einsum("bts,bsd->btd", {h_hidden, w2});
+
+        // Episodic Hopfield Memory injection (Vector C) with Dopaminergic Modulation
+        auto mem_injection = episodic_memory->forward(node_output, u_t);
+        node_output = node_output + mem_injection;
+
+        auto normalized_output = state_norm->forward(node_output + x_attended);
+
+        if (!is_4d) {
+            normalized_output = normalized_output.squeeze(1);
+        }
+
+        return std::make_tuple(normalized_output, attn_weights);
     }
 };
 TORCH_MODULE(OmniMorphicNode);
 
-// 8. OMNI-CONTINUOUS GRAPH SUBSTRATE
+// 8. OMNI-CONTINUOUS GRAPH SUBSTRATE WITH EPIGENETIC SPONTANEOUS NEUROGENESIS, RECIRCULATION & ROUTING
 class OmniContinuousGraphSubstrateImpl : public torch::nn::Module {
 public:
     int64_t dim;
@@ -460,185 +574,223 @@ class CognitiveEvolvableAgentImpl : public torch::nn::Module {
 public:
     int64_t vocab_size;
     int64_t dim;
-    int64_t max_nodes;
     std::string device_str;
 
     UniversalManifold manifold{nullptr};
-    HomeostaticNexus homeostasis{nullptr};
     OmniContinuousGraphSubstrate substrate{nullptr};
-    ContinuousHopfieldMemory memory{nullptr};
-    LatentPredictor world_model{nullptr};
-
-    torch::nn::LayerNorm norm{nullptr};
-    torch::nn::Linear head{nullptr};
+    LatentPredictor latent_predictor{nullptr};
+    HomeostaticNexus homeostasis{nullptr};
+    torch::nn::Linear motor_head{nullptr};
 
     CognitiveEvolvableAgentImpl(int64_t vocab_size = 258, int64_t dim = 256, int64_t max_nodes = 16, std::string device_str = "cpu")
-        : vocab_size(vocab_size), dim(dim), max_nodes(max_nodes), device_str(device_str) {
+        : vocab_size(vocab_size), dim(dim), device_str(device_str) {
+
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
 
         manifold = register_module("manifold", UniversalManifold(vocab_size, dim, device_str));
-        homeostasis = register_module("homeostasis", HomeostaticNexus(device_str));
         substrate = register_module("substrate", OmniContinuousGraphSubstrate(dim, max_nodes, device_str));
-        memory = register_module("memory", ContinuousHopfieldMemory(dim, 32, device_str));
-        world_model = register_module("world_model", LatentPredictor(dim, 64, device_str));
+        latent_predictor = register_module("latent_predictor", LatentPredictor(dim, 64, device_str));
+        homeostasis = register_module("homeostasis", HomeostaticNexus(device_str));
+        motor_head = register_module("motor_head", torch::nn::Linear(dim, vocab_size));
 
-        norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({dim})));
-
-        auto head_opts = torch::nn::LinearOptions(dim, vocab_size).bias(false);
-        head = register_module("head", torch::nn::Linear(head_opts));
-        torch::nn::init::normal_(head->weight, 0.0, 0.02);
+        torch::nn::init::normal_(motor_head->weight, 0.0, 0.02);
+        torch::nn::init::zeros_(motor_head->bias);
 
         this->to(device);
     }
 
-    void sprout_organelle(std::string name, int64_t state_dim = 128, int64_t num_operators = 8, float min_decay = 0.005f, float max_decay = 0.2f) {
-        substrate->sprout_node(name, state_dim, num_operators, min_decay, max_decay);
+    bool sprout_organelle(std::string name, int64_t state_dim = 128, int64_t num_operators = 8, float min_decay = 0.005f, float max_decay = 0.2f) {
+        return substrate->sprout_node(name, state_dim, num_operators, min_decay, max_decay);
     }
 
-    void sprout_homeostatic_dimension(std::string name, float setpoint) {
-        homeostasis->sprout_homeostatic_dimension(name, setpoint);
+    void sprout_homeostatic_dimension(std::string name, float init_val, float target_val, float decay, float sensitivity) {
+        homeostasis->sprout_dimension(name, init_val, target_val, decay, sensitivity);
     }
 
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward(torch::Tensor tokens, torch::Tensor u_t = torch::Tensor()) {
-        auto device = tokens.device();
-        auto embed = manifold->forward(tokens); // [batch, seq, dim]
-
-        if (!u_t.defined() || u_t.numel() == 0) {
-            u_t = homeostasis->get_states();
-        }
-
-        // 1. Attractor memory recall
-        auto mem_recalled = memory->forward(embed, u_t);
-
-        // 2. Dynamic graph routing & processing
-        torch::Tensor graph_out;
-        std::vector<torch::Tensor> signals;
-        std::tie(graph_out, signals) = substrate->forward({embed, mem_recalled}, u_t);
-
-        // 3. Active Inference Prediction
-        torch::Tensor p_mu, p_logvar, q_mu, q_logvar;
-        std::tie(p_mu, p_logvar, q_mu, q_logvar) = world_model->forward(embed, graph_out);
-
-        // 4. Readout with Dopaminergic motor resonance gain (Principle 2)
-        float da_val = u_t.slice(-1, 5, 6).mean().template item<float>();
-        auto final_state = norm->forward(graph_out);
-        auto logits = head->forward(final_state) * (1.0f + 1.5f * da_val);
-
-        return std::make_tuple(logits, p_mu, p_logvar, q_mu, q_logvar);
-    }
-
-    torch::Tensor step(torch::Tensor tokens, torch::Tensor target_tokens, torch::Tensor u_t) {
-        torch::Tensor logits, p_mu, p_logvar, q_mu, q_logvar;
-        std::tie(logits, p_mu, p_logvar, q_mu, q_logvar) = forward(tokens, u_t);
-
-        // Reconstruction cross entropy
-        auto loss_rec = torch::nll_loss(torch::log_softmax(logits.view({-1, vocab_size}), -1), target_tokens.view(-1));
-
-        // Dimension-Normalized KL Divergence (Principle 2)
-        auto kl = 0.5f * torch::sum(p_logvar - q_logvar + (torch::exp(q_logvar) + torch::pow(q_mu - p_mu, 2)) / torch::exp(p_logvar) - 1.0f, -1).mean();
+    torch::Tensor forward(torch::Tensor tokens, torch::Tensor u_t) {
+        auto emb = manifold->forward(tokens);
         
-        // Active inference free energy
-        auto free_energy = loss_rec + 0.01f * kl;
+        std::vector<torch::Tensor> signals = {emb};
+        torch::Tensor final_emb;
+        std::vector<torch::Tensor> updated_signals;
 
-        // Update homeostatic Nexus with surprise
-        homeostasis->update(free_energy);
-
-        // Spontaneous Neurogenesis trigger
-        substrate->trigger_spontaneous_neurogenesis(free_energy.template item<float>());
-
-        return free_energy;
+        std::tie(final_emb, updated_signals) = substrate->forward(signals, u_t);
+        return motor_head->forward(final_emb);
     }
 
-    std::vector<int64_t> generate_thought_and_speech(torch::Tensor seed_tokens, int64_t max_new_tokens = 32, float temperature = 0.45f, float top_p = 0.90f) {
-        torch::NoGradGuard no_grad;
-        auto device = seed_tokens.device();
-        std::vector<int64_t> generated;
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> step(torch::Tensor tokens, torch::Tensor target_tokens, torch::Tensor u_t) {
+        auto emb = manifold->forward(tokens);
+        auto target_emb = manifold->forward(target_tokens);
 
-        auto current_tokens = seed_tokens.clone();
+        std::vector<torch::Tensor> signals = {emb};
+        torch::Tensor final_emb;
+        std::vector<torch::Tensor> updated_signals;
+
+        std::tie(final_emb, updated_signals) = substrate->forward(signals, u_t);
+
+        // Active Inference Predictor step
+        torch::Tensor recon, mu_p, logvar_p, mu_q, logvar_q;
+        std::tie(recon, mu_p, logvar_p, mu_q, logvar_q) = latent_predictor->forward(final_emb, target_emb);
+
+        // Compute Variational Free Energy F_t
+        auto recon_loss = torch::mse_loss(recon, target_emb);
+        auto kl_loss = -0.5f * torch::sum(1.0f + logvar_q - logvar_p - (logvar_q.exp() + (mu_q - mu_p).pow(2)) / logvar_p.exp());
+        auto free_energy = recon_loss + 0.01f * kl_loss;
+
+        // Update somatic neurotransmitters based on Free Energy surprise
+        auto updated_u_t = homeostasis->update(free_energy);
+
+        auto logits = motor_head->forward(final_emb);
+
+        float mean_fe = free_energy.mean().item<float>();
+        substrate->trigger_spontaneous_neurogenesis(mean_fe, 1.2f);
+        substrate->execute_neural_darwinism(0.001f, 0.005f);
+
+        return std::make_tuple(logits, free_energy, updated_u_t);
+    }
+
+    torch::Tensor generate_thought_and_speech(torch::Tensor seed_tokens, int64_t max_new_tokens = 32, float temperature = 0.45f, float top_p = 0.90f) {
+        torch::NoGradGuard no_grad;
+        auto current_seq = seed_tokens.clone();
 
         for (int64_t step = 0; step < max_new_tokens; ++step) {
-            torch::Tensor logits, p_mu, p_logvar, q_mu, q_logvar;
-            std::tie(logits, p_mu, p_logvar, q_mu, q_logvar) = forward(current_tokens);
+            auto logits = forward(current_seq, torch::Tensor());
+            auto next_token_logits = logits.select(1, -1);
 
-            auto next_token_logits = logits.select(1, logits.size(1) - 1) / temperature;
-            auto probs = torch::softmax(next_token_logits, -1);
+            if (temperature > 0.0f) {
+                next_token_logits = next_token_logits / temperature;
+                auto probs = torch::softmax(next_token_logits, -1);
 
-            // Simple Top-p nucleus sampling
-            auto sorted_probs_tuple = torch::sort(probs, -1, true);
-            auto sorted_probs = std::get<0>(sorted_probs_tuple);
-            auto sorted_indices = std::get<1>(sorted_probs_tuple);
+                auto sorted_probs_indices = torch::sort(probs, -1, true);
+                auto sorted_probs = std::get<0>(sorted_probs_indices);
+                auto sorted_indices = std::get<1>(sorted_probs_indices);
 
-            auto cumulative_probs = torch::cumsum(sorted_probs, -1);
-            auto cutoff = cumulative_probs > top_p;
-            // Keep first element even if it exceeds top_p
-            cutoff.select(1, 0).copy_(torch::zeros({probs.size(0)}, torch::kBool));
+                auto cumulative_probs = torch::cumsum(sorted_probs, -1);
+                auto sorted_indices_to_remove = cumulative_probs > top_p;
+                sorted_indices_to_remove.slice(-1, 1).copy_(sorted_indices_to_remove.slice(-1, 0, -1).clone());
+                sorted_indices_to_remove.slice(-1, 0, 1).fill_(false);
 
-            sorted_probs.masked_fill_(cutoff, 0.0f);
-            sorted_probs = sorted_probs / sorted_probs.sum(-1, true);
+                sorted_probs.masked_fill_(sorted_indices_to_remove, 0.0f);
+                sorted_probs = sorted_probs / sorted_probs.sum(-1, true);
 
-            auto next_token_idx = torch::multinomial(sorted_probs, 1);
-            auto next_token = sorted_indices.gather(-1, next_token_idx);
+                auto next_token_idx = torch::multinomial(sorted_probs, 1);
+                auto next_token = sorted_indices.gather(-1, next_token_idx);
 
-            generated.push_back(next_token.item<int64_t>());
-            current_tokens = torch::cat({current_tokens, next_token}, -1);
+                current_seq = torch::cat({current_seq, next_token}, 1);
+            } else {
+                auto next_token = next_token_logits.argmax(-1, true);
+                current_seq = torch::cat({current_seq, next_token}, 1);
+            }
         }
-        return generated;
+        return current_seq;
     }
 };
 TORCH_MODULE(CognitiveEvolvableAgent);
 
-// 10. UNIVERSAL MORPHIC CELL
+// 10. UNIVERSAL MORPHIC CIRCUIT CELL (NATIVE C++20 - MCC v2.0)
 class UniversalMorphicCellImpl : public torch::nn::Module {
 public:
     int64_t dim;
     int64_t num_units;
     std::string device_str;
 
-    std::vector<CausalParallelSSD> ssd_units;
-    torch::nn::Linear gate_in{nullptr};
-    torch::nn::Linear gate_out{nullptr};
-    torch::nn::LayerNorm norm{nullptr};
+    CausalParallelSSD ssd{nullptr};
 
-    UniversalMorphicCellImpl(int64_t dim = 256, int64_t num_units = 4, std::string device_str = "cpu", float min_decay = 0.005f, float max_decay = 0.2f)
+    torch::Tensor log_alpha;
+    torch::nn::Linear w_atom{nullptr};
+    torch::nn::Linear gate_atom{nullptr};
+
+    torch::Tensor routing_matrix;
+    torch::Tensor w_units;
+    torch::Tensor formula_gate;
+    torch::Tensor unit_alphas;
+
+    torch::nn::Linear tunnel_proj{nullptr};
+    torch::nn::LayerNorm norm{nullptr};
+    torch::Tensor alpha_epi;
+
+    UniversalMorphicCellImpl(int64_t dim = 256, int64_t num_units = 4, std::string device_str = "cpu",
+                             float min_decay = 0.005f, float max_decay = 0.2f)
         : dim(dim), num_units(num_units), device_str(device_str) {
+
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
 
-        for (int64_t i = 0; i < num_units; ++i) {
-            auto ssd = CausalParallelSSD(dim, device_str, min_decay, max_decay);
-            register_module("ssd_unit_" + std::to_string(i), ssd);
-            ssd_units.push_back(ssd);
-        }
+        // C++20 Causal SSD for temporal context
+        ssd = register_module("ssd", CausalParallelSSD(dim, device_str, min_decay, max_decay));
 
-        gate_in = register_module("gate_in", torch::nn::Linear(dim, dim));
-        gate_out = register_module("gate_out", torch::nn::Linear(dim * num_units, dim));
+        // Fast Micro-Operator Core (Gamma Flow)
+        log_alpha = register_parameter("log_alpha", torch::randn({dim}, torch::TensorOptions().device(device)) * 0.1f - 2.0f);
+
+        auto lin_opts = torch::nn::LinearOptions(dim, dim).bias(false);
+        w_atom = register_module("w_atom", torch::nn::Linear(lin_opts));
+        gate_atom = register_module("gate_atom", torch::nn::Linear(lin_opts));
+
+        torch::nn::init::orthogonal_(w_atom->weight, 0.2);
+        torch::nn::init::orthogonal_(gate_atom->weight, 0.2);
+
+        // Dynamic Circuit Builder & Signal Transporter (Vector D)
+        routing_matrix = register_parameter("routing_matrix", torch::randn({num_units, num_units}, torch::TensorOptions().device(device)) * 0.05f);
+        w_units = register_parameter("w_units", torch::randn({num_units, dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(static_cast<float>(dim))));
+        formula_gate = register_parameter("formula_gate", torch::randn({num_units, 1, 1, dim}, torch::TensorOptions().device(device)) * 0.01f);
+        unit_alphas = register_parameter("unit_alphas", torch::ones({num_units, 1, 1, 1}, torch::TensorOptions().device(device)));
+
+        tunnel_proj = register_module("tunnel_proj", torch::nn::Linear(lin_opts));
+        torch::nn::init::orthogonal_(tunnel_proj->weight, 0.2);
+
         norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({dim})));
+        alpha_epi = register_parameter("alpha_epi", torch::ones({1}, torch::TensorOptions().device(device)));
 
         this->to(device);
     }
 
-    std::tuple<torch::Tensor, torch::Tensor> forward(torch::Tensor x, torch::Tensor tunnel_in) {
-        auto device = x.device();
-        auto gated_in = torch::silu(gate_in->forward(x));
+    std::tuple<torch::Tensor, torch::Tensor> forward(torch::Tensor x, torch::Tensor tunnel_in = torch::Tensor()) {
+        int64_t B = x.size(0);
+        int64_t S = x.size(1);
+        int64_t D = x.size(2);
+        int64_t U = num_units;
 
+        // 1. Temporal context extraction via causal parallel C++ SSD
+        auto x_ssd = ssd->forward(x);
+
+        torch::Tensor x_in;
         if (tunnel_in.defined() && tunnel_in.numel() > 0) {
-            gated_in = gated_in + tunnel_in;
+            x_in = x_ssd + tunnel_in;
+        } else {
+            x_in = x_ssd;
         }
 
-        std::vector<torch::Tensor> unit_outputs;
-        for (int64_t i = 0; i < num_units; ++i) {
-            unit_outputs.push_back(ssd_units[i]->forward(gated_in));
-        }
+        // 2. Local Micro-Operator (Gamma Flow)
+        auto x_proj = torch::silu(w_atom->forward(x_in));
+        auto alpha = torch::sigmoid(log_alpha).view({1, 1, -1});
+        auto integrated = x_proj * (1.0f - alpha);
+        auto gated = integrated * torch::sigmoid(gate_atom->forward(x_in));
+        auto x_local = x_in + gated;
 
-        auto concat_out = torch::cat(unit_outputs, -1); // [batch, seq, dim * num_units]
-        auto mixed_out = gate_out->forward(concat_out);
+        // 3. Dynamic Circuit Builder & Signal Transporter (Vector D)
+        auto route_weights = torch::softmax(routing_matrix, -1);
+        auto bus = x_local.unsqueeze(0).expand({U, -1, -1, -1});
+        auto routed = torch::einsum("uv, vbsd -> ubsd", {route_weights, bus});
 
-        auto final_out = norm->forward(mixed_out + x);
-        return std::make_tuple(final_out, mixed_out);
+        auto routed_flat = routed.reshape({U, B * S, D});
+        auto lin_flat = torch::bmm(routed_flat, w_units);
+        auto lin_out = lin_flat.reshape({U, B, S, D});
+
+        auto gate = torch::sigmoid(routed * formula_gate);
+        auto formula_out = torch::silu(lin_out * gate);
+        auto normed = torch::layer_norm(formula_out, {D});
+
+        auto circuit_out = (routed + torch::tanh(unit_alphas) * normed).mean(0);
+
+        // 4. Epigenetic zero-shock output
+        auto cell_out = x + torch::tanh(alpha_epi) * norm->forward(circuit_out);
+        auto tunnel_out = tunnel_proj->forward(cell_out);
+
+        return std::make_tuple(cell_out, tunnel_out);
     }
 };
 TORCH_MODULE(UniversalMorphicCell);
 
-// 11. UNIVERSAL MORPHIC SPACE
+// 11. UNIVERSAL MORPHIC CIRCUIT SPACE (NATIVE C++20 - MCS v2.0)
 class UniversalMorphicSpaceImpl : public torch::nn::Module {
 public:
     int64_t vocab_size;
@@ -731,175 +883,6 @@ TORCH_MODULE(UniversalMorphicSpace);
 
 
 // ============================================================================
-// 12. NATIVE C++ DYNAMIC MORPHIC GRAPH OPERATORS (EXP-273)
-// ============================================================================
-
-struct GraphOp : public torch::nn::Module {
-    virtual torch::Tensor forward(torch::Tensor x) = 0;
-};
-
-struct LinearAccumulatorOpImpl : public GraphOp {
-    torch::Tensor w, b;
-    LinearAccumulatorOpImpl(int64_t dim, std::string device_str = "cpu") {
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        w = register_parameter("w", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
-        b = register_parameter("b", torch::zeros({dim}, torch::TensorOptions().device(device)));
-    }
-    torch::Tensor forward(torch::Tensor x) override {
-        return torch::matmul(x, w.t()) + b;
-    }
-};
-TORCH_MODULE(LinearAccumulatorOp);
-
-
-struct BilinearMultiplicativeOpImpl : public GraphOp {
-    torch::Tensor w_left, w_right, w_out;
-    BilinearMultiplicativeOpImpl(int64_t dim, std::string device_str = "cpu") {
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        w_left = register_parameter("w_left", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
-        w_right = register_parameter("w_right", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
-        w_out = register_parameter("w_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.15f / std::sqrt(dim)));
-    }
-    torch::Tensor forward(torch::Tensor x) override {
-        auto left = torch::matmul(x, w_left.t());
-        auto right = torch::matmul(x, w_right.t());
-        return torch::matmul(torch::silu(left * right), w_out.t());
-    }
-};
-TORCH_MODULE(BilinearMultiplicativeOp);
-
-
-struct SaturatedAttractorOpImpl : public GraphOp {
-    torch::Tensor w_gate, w_val, w_out;
-    SaturatedAttractorOpImpl(int64_t dim, std::string device_str = "cpu") {
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        w_gate = register_parameter("w_gate", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
-        w_val = register_parameter("w_val", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
-        w_out = register_parameter("w_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.15f / std::sqrt(dim)));
-    }
-    torch::Tensor forward(torch::Tensor x) override {
-        auto gate = torch::sigmoid(torch::matmul(x, w_gate.t()));
-        auto val = torch::tanh(torch::matmul(x, w_val.t()));
-        return torch::matmul(gate * val, w_out.t());
-    }
-};
-TORCH_MODULE(SaturatedAttractorOp);
-
-
-class DynamicMorphicGraphImpl : public torch::nn::Module {
-public:
-    int64_t dim;
-    std::string device_str;
-    int64_t k_nodes = 0;
-
-    std::vector<std::shared_ptr<GraphOp>> node_ops;
-    std::vector<torch::Tensor> alpha_epi;
-    std::vector<bool> is_core_node;
-    std::vector<std::string> node_names;
-    std::vector<std::string> node_types;
-
-    torch::Tensor w_route;
-    torch::Tensor w_sensory_in, w_motor_out;
-
-    DynamicMorphicGraphImpl(int64_t dim = 128, std::string device_str = "cpu")
-        : dim(dim), device_str(device_str) {
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-
-        w_route = register_parameter("w_route", torch::zeros({0, 0}, torch::TensorOptions().device(device)));
-        w_sensory_in = register_parameter("w_sensory_in", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
-        w_motor_out = register_parameter("w_motor_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
-        this->to(device);
-    }
-
-    void add_node(std::string name, std::string op_type, bool is_core = false, float initial_alpha = 0.0f) {
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        
-        std::shared_ptr<GraphOp> op;
-        if (op_type == "LinearAccumulator") {
-            op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
-        } else if (op_type == "BilinearMultiplicative") {
-            op = std::make_shared<BilinearMultiplicativeOpImpl>(dim, device_str);
-        } else if (op_type == "SaturatedAttractor") {
-            op = std::make_shared<SaturatedAttractorOpImpl>(dim, device_str);
-        } else {
-            throw std::invalid_argument("Unknown operator type: " + op_type);
-        }
-
-        std::string module_key = "op_" + std::to_string(k_nodes);
-        register_module(module_key, op);
-        node_ops.push_back(op);
-        
-        is_core_node.push_back(is_core);
-        node_names.push_back(name);
-        node_types.push_back(op_type);
-
-        auto alpha_val = torch::tensor(initial_alpha, torch::TensorOptions().device(device).requires_grad(!is_core));
-        auto alpha_param = register_parameter(module_key + "_alpha", alpha_val);
-        alpha_epi.push_back(alpha_param);
-
-        int64_t old_k = k_nodes;
-        int64_t new_k = old_k + 1;
-        k_nodes = new_k;
-
-        // Expand dynamic routing matrix w_route
-        auto new_w_route = torch::zeros({new_k, new_k}, torch::TensorOptions().device(device));
-        if (old_k > 0) {
-            torch::NoGradGuard no_grad;
-            new_w_route.slice(0, 0, old_k).slice(1, 0, old_k).copy_(w_route.data());
-            // Random connection weights between new node and existing nodes
-            auto rand_col = torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k));
-            auto rand_row = torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k));
-            new_w_route.slice(0, 0, old_k).narrow(1, old_k, 1).copy_(rand_col.unsqueeze(1));
-            new_w_route.narrow(0, old_k, 1).slice(1, 0, old_k).copy_(rand_row.unsqueeze(0));
-            new_w_route.index_put_({old_k, old_k}, 0.05f);
-        }
-        new_w_route.set_requires_grad(true);
-        w_route.set_data(new_w_route);
-    }
-
-    torch::Tensor forward(torch::Tensor x_sensory, int64_t thinking_steps = 4) {
-        int64_t B = x_sensory.size(0);
-        int64_t K = k_nodes;
-        auto device = x_sensory.device();
-
-        auto node_states = torch::zeros({K, B, dim}, torch::TensorOptions().device(device));
-        auto sensory_in = torch::matmul(x_sensory, w_sensory_in.t());
-        node_states[0] = sensory_in;
-
-        for (int64_t step = 0; step < thinking_steps; ++step) {
-            auto aggregated_inputs = torch::einsum("ij,ibd->jbd", {torch::tanh(w_route), node_states});
-            aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
-
-            std::vector<torch::Tensor> new_states;
-            for (int64_t j = 0; j < K; ++j) {
-                auto raw_out = node_ops[j]->forward(aggregated_inputs[j]);
-                auto alpha = alpha_epi[j];
-                auto graft_gate = torch::tanh(alpha);
-                auto grafted_out = graft_gate * raw_out;
-                new_states.push_back(grafted_out);
-            }
-            node_states = torch::stack(new_states, 0);
-        }
-
-        auto motor_latent = node_states[1];
-        auto readout = torch::matmul(motor_latent, w_motor_out.t());
-        return readout;
-    }
-
-    std::string get_topology_manifest() {
-        std::string manifest = "{\"k_nodes\":" + std::to_string(k_nodes) + ",\"nodes\":[";
-        for (int64_t i = 0; i < k_nodes; ++i) {
-            manifest += "{\"name\":\"" + node_names[i] + "\",\"type\":\"" + node_types[i] + "\",\"is_core\":" + (is_core_node[i] ? "true" : "false") + "}";
-            if (i < k_nodes - 1) manifest += ",";
-        }
-        manifest += "]}";
-        return manifest;
-    }
-};
-TORCH_MODULE(DynamicMorphicGraph);
-
-
-// ============================================================================
 // PYBIND11 MODULE BINDINGS
 // ============================================================================
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -933,7 +916,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<HomeostaticNexusImpl, torch::nn::Module, std::shared_ptr<HomeostaticNexusImpl>>(m, "HomeostaticNexus")
         .def(py::init<std::string>(), py::arg("device") = "cpu")
-        .def("sprout_homeostatic_dimension", &HomeostaticNexusImpl::sprout_homeostatic_dimension)
+        .def("sprout_dimension", &HomeostaticNexusImpl::sprout_dimension)
         .def("update", &HomeostaticNexusImpl::update)
         .def("get_states", &HomeostaticNexusImpl::get_states)
         .def("get_names", &HomeostaticNexusImpl::get_names);
@@ -991,36 +974,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("parameters", [](std::shared_ptr<UniversalMorphicSpaceImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<UniversalMorphicSpaceImpl> m) { return m->named_parameters(); })
         .def("named_parameters_map", [](std::shared_ptr<UniversalMorphicSpaceImpl> m) {
-            std::map<std::string, torch::Tensor> params;
-            for (const auto& pair : m->named_parameters()) {
-                params[pair.key()] = pair.value();
-            }
-            return params;
-        });
-
-    py::class_<LinearAccumulatorOpImpl, torch::nn::Module, std::shared_ptr<LinearAccumulatorOpImpl>>(m, "LinearAccumulatorOp")
-        .def(py::init<int64_t, std::string>(), py::arg("dim"), py::arg("device_str") = "cpu")
-        .def("forward", &LinearAccumulatorOpImpl::forward)
-        .def("__call__", &LinearAccumulatorOpImpl::forward);
-
-    py::class_<BilinearMultiplicativeOpImpl, torch::nn::Module, std::shared_ptr<BilinearMultiplicativeOpImpl>>(m, "BilinearMultiplicativeOp")
-        .def(py::init<int64_t, std::string>(), py::arg("dim"), py::arg("device_str") = "cpu")
-        .def("forward", &BilinearMultiplicativeOpImpl::forward)
-        .def("__call__", &BilinearMultiplicativeOpImpl::forward);
-
-    py::class_<SaturatedAttractorOpImpl, torch::nn::Module, std::shared_ptr<SaturatedAttractorOpImpl>>(m, "SaturatedAttractorOp")
-        .def(py::init<int64_t, std::string>(), py::arg("dim"), py::arg("device_str") = "cpu")
-        .def("forward", &SaturatedAttractorOpImpl::forward)
-        .def("__call__", &SaturatedAttractorOpImpl::forward);
-
-    py::class_<DynamicMorphicGraphImpl, torch::nn::Module, std::shared_ptr<DynamicMorphicGraphImpl>>(m, "DynamicMorphicGraph")
-        .def(py::init<int64_t, std::string>(), py::arg("dim") = 128, py::arg("device_str") = "cpu")
-        .def_readonly("k_nodes", &DynamicMorphicGraphImpl::k_nodes)
-        .def("add_node", &DynamicMorphicGraphImpl::add_node, py::arg("name"), py::arg("op_type"), py::arg("is_core") = false, py::arg("initial_alpha") = 0.0f)
-        .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
-        .def("__call__", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
-        .def("get_topology_manifest", &DynamicMorphicGraphImpl::get_topology_manifest)
-        .def("named_parameters_map", [](std::shared_ptr<DynamicMorphicGraphImpl> m) {
             std::map<std::string, torch::Tensor> params;
             for (const auto& pair : m->named_parameters()) {
                 params[pair.key()] = pair.value();

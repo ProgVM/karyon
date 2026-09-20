@@ -474,13 +474,6 @@ def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu', v
             for h_dim in topo.get("homeo_dimensions", []):
                 if hasattr(target_obj, 'sprout_homeostatic_dimension'):
                     target_obj.sprout_homeostatic_dimension(h_dim, 0.5, 0.5, 0.005, 0.05)
-        elif "nodes" in topo and hasattr(agent, 'add_node'):
-            # Re-sprout DynamicMorphicGraph nodes from topology manifest
-            for node_info in topo.get("nodes", []):
-                n_name = node_info["name"]
-                n_type = node_info["type"]
-                n_core = node_info.get("is_core", False)
-                agent.add_node(n_name, n_type, is_core=n_core)
 
     # Deserializing Model Weights
     agent_state_dict = {}

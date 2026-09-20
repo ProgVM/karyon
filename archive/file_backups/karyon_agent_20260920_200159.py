@@ -5,13 +5,12 @@ KARYON CORE AGENT MASTER WRAPPER v34.0
 Python Orchestrator Wrapper for C++20 UniversalMorphicSpace & DynamicMorphicGraph
 ===============================================================================
 """
-from typing import Dict
-
 import torch
 import torch.nn as nn
+from typing import Dict, Any, Tuple, Optional, List
 
 import karyon_core as kcore
-
+from karyon_config import CoREConfig
 
 class ConfigMock:
     class NetMock:
@@ -19,7 +18,6 @@ class ConfigMock:
         text_gen_dim = 256
         vocab_size = 258
     net = NetMock()
-
 
 class CoREAgent(nn.Module):
     """
@@ -50,13 +48,18 @@ class CoREAgent(nn.Module):
     def forward(self, input_ids: torch.Tensor, thinking_steps: int = 4) -> torch.Tensor:
         """Direct forward pass returning logits or graph readouts."""
         if self.use_graph:
+            # For graph, input_ids is projected into embed_dim space or used as sensory features
+            # Let's project token embeddings using a small embedding layer if input_ids is token indices
             if input_ids.dtype == torch.long or input_ids.dtype == torch.int32:
+                # We can use an embedding layer or similar, but since DynamicMorphicGraph takes continuous vectors,
+                # let's map tokens to continuous space using a simple one-hot or embedding map.
+                # To keep it self-contained, we can dynamically initialize a small embedding weight if needed.
                 if not hasattr(self, 'graph_emb'):
                     self.graph_emb = nn.Embedding(self.vocab_size, self.embed_dim).to(self.device)
                     nn.init.normal_(self.graph_emb.weight, 0.0, 0.02)
                 x = self.graph_emb(input_ids)
                 if x.dim() == 3:
-                    x = x.mean(dim=1)  # Pool sequence to batch for graph forward
+                    x = x.mean(dim=1) # Pool sequence to batch for graph forward
             else:
                 x = input_ids
             return self.graph(x, thinking_steps)
@@ -105,16 +108,24 @@ class CoREAgent(nn.Module):
     def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor], device: str = 'cpu'):
         """Restores parameters into C++20 core engine."""
         if self.use_graph:
+            # Reconstruct evolved nodes from state_dict if they aren't created yet
+            # Let's parse node names from state_dict keys to auto-sprout them!
+            # Keys look like: op_0_alpha, op_0.w, op_0.b, op_1.w_left, etc.
             op_indices = set()
             for key in state_dict.keys():
                 if key.startswith("op_") and "_" in key:
                     parts = key.split("_")
                     if parts[1].isdigit():
                         op_indices.add(int(parts[1]))
-
+            
+            # Sort indices and sprout them if they don't exist
             sorted_indices = sorted(list(op_indices))
             for idx in sorted_indices:
                 if idx >= self.graph.k_nodes:
+                    # We need to determine the op_type from the state_dict keys
+                    # e.g., if we see "op_idx.w_left", it's BilinearMultiplicative
+                    # if we see "op_idx.w_gate", it's SaturatedAttractor
+                    # otherwise LinearAccumulator
                     op_type = "LinearAccumulator"
                     for k in state_dict.keys():
                         if k.startswith(f"op_{idx}."):
@@ -131,7 +142,7 @@ class CoREAgent(nn.Module):
                 for name, param in param_map.items():
                     if name in state_dict:
                         param.copy_(state_dict[name].to(device))
-
+            
             if hasattr(self, 'graph_emb'):
                 emb_state = {}
                 for k, v in state_dict.items():

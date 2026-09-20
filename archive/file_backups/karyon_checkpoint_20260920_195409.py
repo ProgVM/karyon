@@ -191,13 +191,10 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
     state_sha256 = compute_sha256(state_bytes)
 
     # 4. Genome DNA & Manifest Structure (Section 1)
-    try:
-        from kcore_evolution import SleepMetaGeneticsEngine
-        biophysical_genome = SleepMetaGeneticsEngine.get_active_genome(agent)
-    except Exception:
-        biophysical_genome = {}
+    from kcore_evolution import SleepMetaGeneticsEngine
+    biophysical_genome = SleepMetaGeneticsEngine.get_active_genome(agent)
 
-    net_dim = agent.dim if hasattr(agent, 'dim') else (agent.config.net.text_dim if hasattr(agent, 'config') and hasattr(agent.config, 'net') else 256)
+    net_dim = agent.dim if hasattr(agent, 'dim') else (agent.config.net.text_dim if hasattr(agent, 'config') else 256)
     unified_dim = getattr(agent, 'unified_dim', net_dim)
     hidden_dim = getattr(agent, 'hidden_dim', net_dim)
     latent_dim = getattr(agent, 'latent_dim', 64)
@@ -210,30 +207,17 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
         "hidden_dim": hidden_dim,
         "latent_dim": latent_dim,
         "action_dim": action_dim,
-        "max_capacity": getattr(memory, 'max_capacity', 100) if memory is not None else 100,
+        "max_capacity": getattr(memory, 'max_capacity', 100),
         "biophysical_genome": biophysical_genome
     }
+
 
     # Capture C++20 Dynamic Architecture Topology Manifest if available
     topology_manifest = {}
     if hasattr(agent, 'get_topology_manifest'):
-        raw_topo = agent.get_topology_manifest()
-        if isinstance(raw_topo, str):
-            try:
-                topology_manifest = json.loads(raw_topo)
-            except Exception:
-                topology_manifest = {"raw": raw_topo}
-        elif isinstance(raw_topo, dict):
-            topology_manifest = raw_topo
+        topology_manifest = agent.get_topology_manifest()
     elif hasattr(agent, 'space') and hasattr(agent.space, 'get_topology_manifest'):
-        raw_topo = agent.space.get_topology_manifest()
-        if isinstance(raw_topo, str):
-            try:
-                topology_manifest = json.loads(raw_topo)
-            except Exception:
-                topology_manifest = {"raw": raw_topo}
-        elif isinstance(raw_topo, dict):
-            topology_manifest = raw_topo
+        topology_manifest = agent.space.get_topology_manifest()
 
     manifest = {
         "version": "5.0.0",
@@ -474,13 +458,6 @@ def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu', v
             for h_dim in topo.get("homeo_dimensions", []):
                 if hasattr(target_obj, 'sprout_homeostatic_dimension'):
                     target_obj.sprout_homeostatic_dimension(h_dim, 0.5, 0.5, 0.005, 0.05)
-        elif "nodes" in topo and hasattr(agent, 'add_node'):
-            # Re-sprout DynamicMorphicGraph nodes from topology manifest
-            for node_info in topo.get("nodes", []):
-                n_name = node_info["name"]
-                n_type = node_info["type"]
-                n_core = node_info.get("is_core", False)
-                agent.add_node(n_name, n_type, is_core=n_core)
 
     # Deserializing Model Weights
     agent_state_dict = {}

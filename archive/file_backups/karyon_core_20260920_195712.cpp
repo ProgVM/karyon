@@ -854,7 +854,9 @@ public:
             new_w_route.index_put_({old_k, old_k}, 0.05f);
         }
         new_w_route.set_requires_grad(true);
-        w_route.set_data(new_w_route);
+        w_route = new_w_route;
+        // In LibTorch, replacing a parameter in-place without re-registering:
+        named_parameters()["w_route"] = w_route;
     }
 
     torch::Tensor forward(torch::Tensor x_sensory, int64_t thinking_steps = 4) {
