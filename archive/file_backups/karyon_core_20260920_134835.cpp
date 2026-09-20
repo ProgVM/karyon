@@ -265,11 +265,8 @@ public:
         float beta = 8.0f;
         if (u_t.defined() && u_t.numel() > 0) {
             // Dopamine is index 5 in homeostasis dimension states
-            auto u_reshaped = u_t.reshape({-1, u_t.size(-1)});
-            if (u_reshaped.size(-1) > 5) {
-                auto da_val = u_reshaped.select(-1, 5).mean().template item<float>();
-                beta = beta * (1.0f + 1.5f * da_val);
-            }
+            auto da_val = u_t.reshape({batch, -1}).select(-1, 5).mean().item<float>();
+            beta = beta * (1.0f + 1.5f * da_val);
         }
 
         // sim: [batch * seq_len, num_basins]
@@ -507,11 +504,8 @@ public:
         // 1. Dynamic Recirculation Gate (System 2 Mental Sandbox)
         float recirc_gamma = 0.0f;
         if (u_t.defined() && u_t.numel() > 0) {
-            auto u_flat = u_t.reshape({-1, u_t.size(-1)}).slice(1, 0, 6);
-            if (u_flat.size(0) != batch) {
-                u_flat = u_flat.expand({batch, -1});
-            }
-            recirc_gamma = torch::sigmoid(recirc_gate->forward(u_flat)).mean().template item<float>();
+            auto u_flat = u_t.reshape({batch, -1}).select(-1, torch::indexing::Slice(0, 6));
+            recirc_gamma = torch::sigmoid(recirc_gate->forward(u_flat)).mean().item<float>();
         }
 
         // We run up to 3 recirculation steps if recirc_gamma > 0.15
