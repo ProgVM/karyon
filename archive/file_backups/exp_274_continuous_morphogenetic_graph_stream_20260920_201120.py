@@ -10,13 +10,7 @@ Hypothesis:
   stream learning without experiencing catastrophic forgetting or training instability.
 ===============================================================================
 """
-import os
-import sys
 import time
-
-# Ensure repository root is on sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 import torch
 import torch.nn as nn
 from karyon_agent import CoREAgent
