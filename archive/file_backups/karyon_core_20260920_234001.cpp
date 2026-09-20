@@ -65,10 +65,7 @@ public:
 
         auto x_scaled = (x * (1.0f - alpha.view({1, 1, dim}))).permute({0, 2, 1}); // [batch, dim, seq_len]
         auto x_pad = torch::nn::functional::pad(x_scaled, torch::nn::functional::PadFuncOptions({seq_len - 1, 0}));
-        std::vector<int64_t> stride = {1};
-        std::vector<int64_t> padding = {0};
-        std::vector<int64_t> dilation = {1};
-        auto h = at::conv1d(x_pad, kernel, std::nullopt, stride, padding, dilation, dim);
+        auto h = torch::conv1d(x_pad, kernel, /*bias=*/torch::Tensor(), /*stride=*/{1}, /*padding=*/{0}, /*dilation=*/{1}, /*groups=*/dim);
         
         return h.permute({0, 2, 1}); // [batch, seq_len, dim]
     }

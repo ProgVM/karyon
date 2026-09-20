@@ -33,7 +33,7 @@ struct UniversalManifoldImpl : public torch::nn::Module {
 };
 TORCH_MODULE(UniversalManifold);
 
-// 2. CAUSAL PARALLEL SSD SCAN OPERATOR (Vectorized Zero-Loop 1D Causal Convolution Engine)
+// 2. CAUSAL PARALLEL SSD SCAN OPERATOR
 class CausalParallelSSDImpl : public torch::nn::Module {
 public:
     int64_t dim;
@@ -51,38 +51,24 @@ public:
         int64_t seq_len = x.size(1);
         auto device = x.device();
 
-        // 1-step fast path (for autoregressive inference step)
-        if (seq_len == 1) {
-            auto alpha = torch::sigmoid(log_decay).view({1, 1, dim});
-            return (1.0f - alpha) * x;
+        auto alpha = torch::sigmoid(log_decay).view({1, 1, dim});
+        auto alpha_cum = torch::cumprod(alpha.expand({batch, seq_len, dim}), 1);
+
+        auto h = torch::zeros({batch, seq_len, dim}, x.options());
+        auto current_state = torch::zeros({batch, dim}, x.options());
+
+        for (int64_t t = 0; t < seq_len; ++t) {
+            auto xt = x.select(1, t);
+            auto decay = alpha.select(1, 0);
+            current_state = decay * current_state + (1.0f - decay) * xt;
+            h.select(1, t).copy_(current_state);
         }
-
-        // Parallel Causal Depthwise Convolution SSM (Zero Loops on CUDA Tensor Cores)
-        // Mathematically identical to: h_t = alpha * h_{t-1} + (1 - alpha) * x_t
-        auto alpha = torch::sigmoid(log_decay).view({dim, 1, 1}); // [dim, 1, 1]
-        auto k = torch::arange(seq_len, torch::TensorOptions().device(device).dtype(x.dtype())); // [seq_len]
-        auto kernel = torch::flip(torch::pow(alpha, k.view({1, 1, seq_len})), {-1}); // [dim, 1, seq_len]
-
-        auto x_scaled = (x * (1.0f - alpha.view({1, 1, dim}))).permute({0, 2, 1}); // [batch, dim, seq_len]
-        auto x_pad = torch::nn::functional::pad(x_scaled, torch::nn::functional::PadFuncOptions({seq_len - 1, 0}));
-        std::vector<int64_t> stride = {1};
-        std::vector<int64_t> padding = {0};
-        std::vector<int64_t> dilation = {1};
-        auto h = at::conv1d(x_pad, kernel, std::nullopt, stride, padding, dilation, dim);
-        
-        return h.permute({0, 2, 1}); // [batch, seq_len, dim]
-    }
-
-    // Step function for O(1) autoregressive state update without history recomputation
-    std::pair<torch::Tensor, torch::Tensor> step(torch::Tensor xt, torch::Tensor state_prev) {
-        auto alpha = torch::sigmoid(log_decay).view({1, dim});
-        auto state_next = alpha * state_prev + (1.0f - alpha) * xt;
-        return {state_next, state_next};
+        return h;
     }
 };
 TORCH_MODULE(CausalParallelSSD);
 
-// 3. PARALLEL OPERATOR BANK (Batched Single-GEMM Engine)
+// 3. PARALLEL OPERATOR BANK
 class ParallelOperatorBankImpl : public torch::nn::Module {
 public:
     int64_t dim;
@@ -101,14 +87,18 @@ public:
         int64_t seq_len = h.size(1);
         int64_t d = h.size(2);
 
-        // Single Batched Tensor Core GEMM: [B*S, D] @ [D, num_operators * D]
-        auto w_merged = op_weights.permute({1, 0, 2}).reshape({d, num_operators * d});
-        auto out_all = torch::matmul(h.reshape({batch * seq_len, d}), w_merged);
-        return out_all.view({batch, seq_len, num_operators, d}).permute({0, 1, 3, 2}); // [batch, seq, dim, num_operators]
+        auto h_flat = h.reshape({batch * seq_len, d});
+        std::vector<torch::Tensor> op_outputs;
+
+        for (int64_t i = 0; i < num_operators; ++i) {
+            auto w = op_weights[i];
+            auto out = torch::matmul(h_flat, w);
+            op_outputs.push_back(out.view({batch, seq_len, d, 1}));
+        }
+        return torch::cat(op_outputs, -1); // [batch, seq, dim, num_operators]
     }
 };
 TORCH_MODULE(ParallelOperatorBank);
-
 
 // 4. CONTINUOUS HOPFIELD ATTRACTOR NETWORK
 class ContinuousHopfieldMemoryImpl : public torch::nn::Module {
