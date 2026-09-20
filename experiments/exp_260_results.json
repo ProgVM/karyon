@@ -1,0 +1,30 @@
+{
+  "exp_id": "EXP-260",
+  "baseline_loss": 2.826010386943817,
+  "best_variant": "Vector D (Batched Vectorized Circuit Builder)",
+  "best_loss": 2.6761369609832766,
+  "delta_loss": 0.14987342596054054,
+  "verdict": "POSITIVE",
+  "variant_results": {
+    "Baseline (No Sub-Organelles)": {
+      "final_loss": 2.826010386943817,
+      "tok_per_sec": 387087.8042820789,
+      "elapsed_s": 0.5249454975128174
+    },
+    "Vector A (Micro-Operator Nodes)": {
+      "final_loss": 2.696740231513977,
+      "tok_per_sec": 497276.7213956473,
+      "elapsed_s": 0.40862560272216797
+    },
+    "Vector D (Batched Vectorized Circuit Builder)": {
+      "final_loss": 2.6761369609832766,
+      "tok_per_sec": 301753.83096766425,
+      "elapsed_s": 0.6733965873718262
+    },
+    "Vector AD Synergy (Micro-Operator + Vectorized Circuit)": {
+      "final_loss": 2.678766531944275,
+      "tok_per_sec": 324083.1327688095,
+      "elapsed_s": 0.6269996166229248
+    }
+  }
+}
