@@ -1,0 +1,30 @@
+{
+  "exp_id": "EXP-262.1",
+  "baseline_loss": 2.826010386943817,
+  "best_variant": "Morphic Circuit Cell (1 Cell Standalone)",
+  "best_loss": 2.676888427734375,
+  "delta_loss": 0.14912195920944216,
+  "verdict": "POSITIVE",
+  "variant_results": {
+    "Baseline (No Morphic Cells)": {
+      "final_loss": 2.826010386943817,
+      "tok_per_sec": 382255.1464220088,
+      "elapsed_s": 0.5315821170806885
+    },
+    "Morphic Circuit Cell (1 Cell Standalone)": {
+      "final_loss": 2.676888427734375,
+      "tok_per_sec": 275016.53676013375,
+      "elapsed_s": 0.7388646602630615
+    },
+    "Morphic Circuit Space (2 Inter-Connected Cells & Tunnels)": {
+      "final_loss": 2.677130153179169,
+      "tok_per_sec": 180000.1209740438,
+      "elapsed_s": 1.1288881301879883
+    },
+    "Morphic Circuit Space (3 Inter-Connected Cells & Tunnels)": {
+      "final_loss": 2.6827839040756225,
+      "tok_per_sec": 123238.21246424638,
+      "elapsed_s": 1.6488392353057861
+    }
+  }
+}

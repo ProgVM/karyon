@@ -1,0 +1,25 @@
+{
+  "exp_id": "EXP-262",
+  "baseline_loss": 2.826010386943817,
+  "best_variant": "Universal Morphic Space (3 Inter-Connected Cells & Tunnels)",
+  "best_loss": 2.781096992492676,
+  "delta_loss": 0.044913394451141286,
+  "verdict": "REJECTED",
+  "variant_results": {
+    "Baseline (Standard Linear Recurrence)": {
+      "final_loss": 2.826010386943817,
+      "tok_per_sec": 392895.6363398324,
+      "elapsed_s": 0.5171856880187988
+    },
+    "Universal Morphic Cell (1 Cell Standalone)": {
+      "final_loss": 2.8175258660316467,
+      "tok_per_sec": 225268.42136285026,
+      "elapsed_s": 0.9020349979400635
+    },
+    "Universal Morphic Space (3 Inter-Connected Cells & Tunnels)": {
+      "final_loss": 2.781096992492676,
+      "tok_per_sec": 134930.84281652322,
+      "elapsed_s": 1.5059566497802734
+    }
+  }
+}
