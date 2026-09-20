@@ -182,11 +182,13 @@ public:
         dimension_names.push_back(name);
 
         torch::NoGradGuard no_grad;
-        values = register_parameter("values", torch::cat({values, torch::tensor({init_val}, torch::TensorOptions().device(device))}));
+        auto new_val = torch::cat({values.data(), torch::tensor({init_val}, torch::TensorOptions().device(device))});
+        values.copy_(new_val);
         setpoints = register_buffer("setpoints", torch::cat({setpoints, torch::tensor({target_val}, torch::TensorOptions().device(device))}));
         decay_rates = register_buffer("decay_rates", torch::cat({decay_rates, torch::tensor({decay}, torch::TensorOptions().device(device))}));
         sensitivity = register_buffer("sensitivity", torch::cat({sensitivity, torch::tensor({sens}, torch::TensorOptions().device(device))}));
     }
+
 
     torch::Tensor update(torch::Tensor free_energy, torch::Tensor reward) {
         torch::NoGradGuard no_grad;
@@ -897,7 +899,41 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("forward_active_inference", &CognitiveEvolvableAgentImpl::forward_active_inference, py::arg("tokens"), py::arg("reward"))
         .def("generate_thought_and_speech", &CognitiveEvolvableAgentImpl::generate_thought_and_speech, py::arg("seed_tokens"), py::arg("max_new_tokens"), py::arg("temperature") = 0.45f, py::arg("top_p") = 0.90f)
         .def("parameters", [](std::shared_ptr<CognitiveEvolvableAgentImpl> m) { return m->parameters(); })
-        .def("named_parameters", [](std::shared_ptr<CognitiveEvolvableAgentImpl> m) { return m->named_parameters(); });
+        .def("named_parameters_map", [](std::shared_ptr<CognitiveEvolvableAgentImpl> m) {
+            std::map<std::string, torch::Tensor> params;
+            for (const auto& pair : m->named_parameters()) {
+                params[pair.key()] = pair.value();
+            }
+            return params;
+        })
+        .def("get_topology_manifest", [](std::shared_ptr<CognitiveEvolvableAgentImpl> m) {
+            py::dict manifest;
+            manifest["type"] = "CognitiveEvolvableAgent";
+            manifest["vocab_size"] = m->vocab_size;
+            manifest["dim"] = m->dim;
+            manifest["device_str"] = m->device_str;
+
+            // Substrate organelles / nodes
+            py::list node_specs;
+            for (size_t i = 0; i < m->substrate->nodes.size(); ++i) {
+                py::dict node_spec;
+                node_spec["name"] = m->substrate->node_names[i];
+                node_spec["state_dim"] = m->substrate->nodes[i]->state_dim;
+                node_spec["num_operators"] = m->substrate->nodes[i]->num_operators;
+                node_specs.append(node_spec);
+            }
+            manifest["organelles"] = node_specs;
+
+            // Homeostatic dimensions
+            py::list homeo_dims;
+            for (const auto& d_name : m->homeostasis->dimension_names) {
+                homeo_dims.append(d_name);
+            }
+            manifest["homeo_dimensions"] = homeo_dims;
+
+            return manifest;
+        });
+
 
     py::class_<UniversalMorphicCellImpl, torch::nn::Module, std::shared_ptr<UniversalMorphicCellImpl>>(m, "UniversalMorphicCell")
         .def(py::init<int64_t, int64_t, std::string, float, float>(),
@@ -929,7 +965,18 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
                 params[pair.key()] = pair.value();
             }
             return params;
+        })
+        .def("get_topology_manifest", [](std::shared_ptr<UniversalMorphicSpaceImpl> m) {
+            py::dict manifest;
+            manifest["type"] = "UniversalMorphicSpace";
+            manifest["vocab_size"] = m->vocab_size;
+            manifest["dim"] = m->dim;
+            manifest["num_cells"] = m->num_cells;
+            manifest["num_units"] = m->num_units;
+            manifest["device_str"] = m->device_str;
+            return manifest;
         });
+
 
 }
 

@@ -112,8 +112,11 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
     """
     if hasattr(agent, 'get_complete_state_dict'):
         state_dict = agent.get_complete_state_dict()
+    elif hasattr(agent, 'named_parameters_map'):
+        state_dict = agent.named_parameters_map()
     else:
         state_dict = agent.state_dict()
+
     
     # 1. Dynamic Ingestion of Core Codebase Files into Section 2
     logic_bundle = {}
@@ -191,16 +194,30 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
     from kcore_evolution import SleepMetaGeneticsEngine
     biophysical_genome = SleepMetaGeneticsEngine.get_active_genome(agent)
 
+    net_dim = agent.dim if hasattr(agent, 'dim') else (agent.config.net.text_dim if hasattr(agent, 'config') else 256)
+    unified_dim = getattr(agent, 'unified_dim', net_dim)
+    hidden_dim = getattr(agent, 'hidden_dim', net_dim)
+    latent_dim = getattr(agent, 'latent_dim', 64)
+    action_dim = getattr(agent, 'action_dim', 258)
+
     genome_dna = {
-        "text_dim": agent.config.net.text_dim,
-        "text_gen_dim": agent.config.net.text_gen_dim,
-        "unified_dim": agent.unified_dim,
-        "hidden_dim": agent.hidden_dim,
-        "latent_dim": agent.latent_dim,
-        "action_dim": agent.action_dim,
-        "max_capacity": memory.max_capacity,
+        "text_dim": net_dim,
+        "text_gen_dim": net_dim,
+        "unified_dim": unified_dim,
+        "hidden_dim": hidden_dim,
+        "latent_dim": latent_dim,
+        "action_dim": action_dim,
+        "max_capacity": getattr(memory, 'max_capacity', 100),
         "biophysical_genome": biophysical_genome
     }
+
+
+    # Capture C++20 Dynamic Architecture Topology Manifest if available
+    topology_manifest = {}
+    if hasattr(agent, 'get_topology_manifest'):
+        topology_manifest = agent.get_topology_manifest()
+    elif hasattr(agent, 'space') and hasattr(agent.space, 'get_topology_manifest'):
+        topology_manifest = agent.space.get_topology_manifest()
 
     manifest = {
         "version": "5.0.0",
@@ -208,6 +225,7 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
         "epoch": epoch,
         "story_idx": story_idx,
         "genome": genome_dna,
+        "architecture_topology": topology_manifest,
         "tensors": tensor_index,
         "states": state_index,
         "source_files": list(logic_bundle.keys()),
@@ -217,6 +235,7 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
             "state_sha256": state_sha256
         }
     }
+
     raw_manifest_bytes = json.dumps(manifest, indent=2).encode('utf-8')
     compressed_manifest_bytes = zlib.compress(raw_manifest_bytes, level=6)
 
@@ -423,6 +442,23 @@ def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu', v
         "torch.float16": np.float16
     }
 
+    # Restore dynamic C++20 architecture topology if present before loading parameters
+    if "architecture_topology" in manifest and manifest["architecture_topology"]:
+        topo = manifest["architecture_topology"]
+        target_obj = agent.space if hasattr(agent, 'space') else agent
+        if topo.get("type") == "CognitiveEvolvableAgent" or hasattr(target_obj, 'sprout_organelle'):
+            # Re-sprout organelles
+            for organelle in topo.get("organelles", []):
+                o_name = organelle["name"]
+                o_sdim = organelle.get("state_dim", 128)
+                o_numop = organelle.get("num_operators", 8)
+                if hasattr(target_obj, 'sprout_organelle'):
+                    target_obj.sprout_organelle(o_name, state_dim=o_sdim, num_operators=o_numop)
+            # Re-sprout homeostatic dimensions
+            for h_dim in topo.get("homeo_dimensions", []):
+                if hasattr(target_obj, 'sprout_homeostatic_dimension'):
+                    target_obj.sprout_homeostatic_dimension(h_dim, 0.5, 0.5, 0.005, 0.05)
+
     # Deserializing Model Weights
     agent_state_dict = {}
     for name, meta in manifest["tensors"].items():
@@ -438,8 +474,15 @@ def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu', v
 
     if hasattr(agent, 'load_complete_state_dict'):
         agent.load_complete_state_dict(agent_state_dict, device=device)
+    elif hasattr(agent, 'named_parameters_map'):
+        param_map = agent.named_parameters_map()
+        with torch.no_grad():
+            for name, param in param_map.items():
+                if name in agent_state_dict:
+                    param.copy_(agent_state_dict[name].to(device))
     else:
         agent.load_state_dict(agent_state_dict, strict=False)
+
 
     # Deserializing Recurrent & Homeostatic States
     states_dict = {}
@@ -459,11 +502,13 @@ def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu', v
     if "homeostasis_state" in states_dict:
         adapt_and_copy_batch_buffer(hu.state, states_dict["homeostasis_state"])
 
-    h_fast_saved = states_dict.get("thought_fast_state", torch.zeros(1, agent.hidden_dim, device=device))
-    h_slow_saved = states_dict.get("thought_slow_state", torch.zeros(1, agent.hidden_dim, device=device))
+    agent_hidden_dim = getattr(agent, 'hidden_dim', getattr(agent, 'dim', 256))
+    h_fast_saved = states_dict.get("thought_fast_state", torch.zeros(1, agent_hidden_dim, device=device))
+    h_slow_saved = states_dict.get("thought_slow_state", torch.zeros(1, agent_hidden_dim, device=device))
 
-    h_fast = torch.zeros(memory.batch_size, agent.hidden_dim, device=device)
-    h_slow = torch.zeros(memory.batch_size, agent.hidden_dim, device=device)
+    h_fast = torch.zeros(memory.batch_size, agent_hidden_dim, device=device)
+    h_slow = torch.zeros(memory.batch_size, agent_hidden_dim, device=device)
+
 
     adapt_and_copy_batch_buffer(h_fast, h_fast_saved)
     adapt_and_copy_batch_buffer(h_slow, h_slow_saved)
