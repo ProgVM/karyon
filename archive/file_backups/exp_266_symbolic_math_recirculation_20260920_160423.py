@@ -12,11 +12,7 @@ import torch.optim as optim
 import json
 import random
 
-import sys
-import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import karyon_core as kcore
-
 from karyon_logger import get_logger
 
 logger = get_logger()

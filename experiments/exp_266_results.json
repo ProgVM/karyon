@@ -1,5 +1,5 @@
 {
-    "epoch_loss": 0.46300221541348624,
+    "epoch_loss": 0.8947839070768917,
     "in_domain_low_recirc_acc": 0.0,
     "in_domain_high_recirc_acc": 0.0,
     "ood_low_recirc_acc": 0.0,
