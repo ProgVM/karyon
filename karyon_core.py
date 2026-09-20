@@ -15,7 +15,11 @@ from torch.utils.cpp_extension import load
 def _is_valid_karyon_cpp_module(mod):
     if mod is None:
         return False
-    required_attrs = ["UniversalManifold", "ParallelOperatorBank", "OmniMorphicNode", "OmniContinuousGraphSubstrate", "CognitiveEvolvableAgent"]
+    required_attrs = [
+        "UniversalManifold", "ParallelOperatorBank", "OmniMorphicNode",
+        "OmniContinuousGraphSubstrate", "CognitiveEvolvableAgent",
+        "UniversalMorphicCell", "UniversalMorphicSpace"
+    ]
     return all(hasattr(mod, attr) and isinstance(getattr(mod, attr), type) for attr in required_attrs)
 
 # Step 1: Check sys.modules for any already loaded C++ extension binary
@@ -72,5 +76,7 @@ if karyon_cpp is not None:
     globals()["OmniMorphicNode"] = getattr(karyon_cpp, "OmniMorphicNode")
     globals()["OmniContinuousGraphSubstrate"] = getattr(karyon_cpp, "OmniContinuousGraphSubstrate")
     globals()["CognitiveEvolvableAgent"] = getattr(karyon_cpp, "CognitiveEvolvableAgent")
+    globals()["UniversalMorphicCell"] = getattr(karyon_cpp, "UniversalMorphicCell", None)
+    globals()["UniversalMorphicSpace"] = getattr(karyon_cpp, "UniversalMorphicSpace", None)
 else:
     raise ImportError("Failed to load or compile Karyon C++ extension module.")

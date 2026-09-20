@@ -635,6 +635,200 @@ public:
     }
 };
 TORCH_MODULE(CognitiveEvolvableAgent);
+// 10. UNIVERSAL MORPHIC CIRCUIT CELL (NATIVE C++20 - MCC v2.0)
+class UniversalMorphicCellImpl : public torch::nn::Module {
+public:
+    int64_t dim;
+    int64_t num_units;
+    std::string device_str;
+
+    CausalParallelSSD ssd{nullptr};
+
+    torch::Tensor log_alpha;
+    torch::nn::Linear w_atom{nullptr};
+    torch::nn::Linear gate_atom{nullptr};
+
+    torch::Tensor routing_matrix;
+    torch::Tensor w_units;
+    torch::Tensor formula_gate;
+    torch::Tensor unit_alphas;
+
+    torch::nn::Linear tunnel_proj{nullptr};
+    torch::nn::LayerNorm norm{nullptr};
+    torch::Tensor alpha_epi;
+
+    UniversalMorphicCellImpl(int64_t dim = 256, int64_t num_units = 4, std::string device_str = "cpu",
+                             float min_decay = 0.005f, float max_decay = 0.2f)
+        : dim(dim), num_units(num_units), device_str(device_str) {
+
+        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+
+        // C++20 Causal SSD for temporal context
+        ssd = register_module("ssd", CausalParallelSSD(dim, device_str, min_decay, max_decay));
+
+        // Fast Micro-Operator Core (Gamma Flow)
+        log_alpha = register_parameter("log_alpha", torch::randn({dim}, torch::TensorOptions().device(device)) * 0.1f - 2.0f);
+
+        auto lin_opts = torch::nn::LinearOptions(dim, dim).bias(false);
+        w_atom = register_module("w_atom", torch::nn::Linear(lin_opts));
+        gate_atom = register_module("gate_atom", torch::nn::Linear(lin_opts));
+
+        torch::nn::init::orthogonal_(w_atom->weight, 0.2);
+        torch::nn::init::orthogonal_(gate_atom->weight, 0.2);
+
+        // Dynamic Circuit Builder & Signal Transporter (Vector D)
+        routing_matrix = register_parameter("routing_matrix", torch::randn({num_units, num_units}, torch::TensorOptions().device(device)) * 0.05f);
+        w_units = register_parameter("w_units", torch::randn({num_units, dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(static_cast<float>(dim))));
+        formula_gate = register_parameter("formula_gate", torch::randn({num_units, 1, 1, dim}, torch::TensorOptions().device(device)) * 0.01f);
+        unit_alphas = register_parameter("unit_alphas", torch::ones({num_units, 1, 1, 1}, torch::TensorOptions().device(device)));
+
+        tunnel_proj = register_module("tunnel_proj", torch::nn::Linear(lin_opts));
+        torch::nn::init::orthogonal_(tunnel_proj->weight, 0.2);
+
+        norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({dim})));
+        alpha_epi = register_parameter("alpha_epi", torch::ones({1}, torch::TensorOptions().device(device)));
+
+        this->to(device);
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor> forward(torch::Tensor x, torch::Tensor tunnel_in = torch::Tensor()) {
+        int64_t B = x.size(0);
+        int64_t S = x.size(1);
+        int64_t D = x.size(2);
+        int64_t U = num_units;
+
+        // 1. Temporal context extraction via causal parallel C++ SSD
+        auto x_ssd = ssd->forward(x);
+
+        torch::Tensor x_in;
+        if (tunnel_in.defined() && tunnel_in.numel() > 0) {
+            x_in = x_ssd + tunnel_in;
+        } else {
+            x_in = x_ssd;
+        }
+
+        // 2. Local Micro-Operator (Gamma Flow)
+        auto x_proj = torch::silu(w_atom->forward(x_in));
+        auto alpha = torch::sigmoid(log_alpha).view({1, 1, -1});
+        auto integrated = x_proj * (1.0f - alpha);
+        auto gated = integrated * torch::sigmoid(gate_atom->forward(x_in));
+        auto x_local = x_in + gated;
+
+        // 3. Dynamic Circuit Builder & Signal Transporter (Vector D)
+        auto route_weights = torch::softmax(routing_matrix, -1);
+        auto bus = x_local.unsqueeze(0).expand({U, -1, -1, -1});
+        auto routed = torch::einsum("uv, vbsd -> ubsd", {route_weights, bus});
+
+        auto routed_flat = routed.reshape({U, B * S, D});
+        auto lin_flat = torch::bmm(routed_flat, w_units);
+        auto lin_out = lin_flat.reshape({U, B, S, D});
+
+        auto gate = torch::sigmoid(routed * formula_gate);
+        auto formula_out = torch::silu(lin_out * gate);
+        auto normed = torch::layer_norm(formula_out, {D});
+
+        auto circuit_out = (routed + torch::tanh(unit_alphas) * normed).mean(0);
+
+        // 4. Epigenetic zero-shock output
+        auto cell_out = x + torch::tanh(alpha_epi) * norm->forward(circuit_out);
+        auto tunnel_out = tunnel_proj->forward(cell_out);
+
+        return std::make_tuple(cell_out, tunnel_out);
+    }
+};
+TORCH_MODULE(UniversalMorphicCell);
+
+// 11. UNIVERSAL MORPHIC CIRCUIT SPACE (NATIVE C++20 - MCS v2.0)
+class UniversalMorphicSpaceImpl : public torch::nn::Module {
+public:
+    int64_t vocab_size;
+    int64_t dim;
+    int64_t num_cells;
+    int64_t num_units;
+    std::string device_str;
+
+    torch::nn::Embedding emb{nullptr};
+    std::vector<UniversalMorphicCell> cells;
+    torch::Tensor cross_cell_routing;
+    torch::nn::LayerNorm norm{nullptr};
+    torch::nn::Linear head{nullptr};
+
+    UniversalMorphicSpaceImpl(int64_t vocab_size = 258, int64_t dim = 256, int64_t num_cells = 2, int64_t num_units = 4,
+                              std::string device_str = "cpu", float min_decay = 0.005f, float max_decay = 0.2f)
+        : vocab_size(vocab_size), dim(dim), num_cells(num_cells), num_units(num_units), device_str(device_str) {
+
+        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+
+        emb = register_module("emb", torch::nn::Embedding(vocab_size, dim));
+        torch::nn::init::normal_(emb->weight, 0.0, 0.02);
+
+        for (int64_t i = 0; i < num_cells; ++i) {
+            auto cell = UniversalMorphicCell(dim, num_units, device_str, min_decay, max_decay);
+            register_module("cell_" + std::to_string(i), cell);
+            cells.push_back(cell);
+        }
+
+        cross_cell_routing = register_parameter("cross_cell_routing", torch::randn({num_cells, num_cells}, torch::TensorOptions().device(device)) * 0.05f);
+
+        norm = register_module("norm", torch::nn::LayerNorm(torch::nn::LayerNormOptions({dim})));
+
+        auto head_opts = torch::nn::LinearOptions(dim, vocab_size).bias(false);
+        head = register_module("head", torch::nn::Linear(head_opts));
+        torch::nn::init::normal_(head->weight, 0.0, 0.02);
+
+        this->to(device);
+    }
+
+    torch::Tensor forward_latent(torch::Tensor tokens) {
+        auto x = emb->forward(tokens);
+        int64_t C = num_cells;
+
+        auto cross_weights = torch::softmax(cross_cell_routing, -1);
+        std::vector<torch::Tensor> cell_states(C, x);
+        std::vector<torch::Tensor> cell_tunnels(C, torch::Tensor());
+
+        for (int64_t i = 0; i < C; ++i) {
+            bool has_tunnel = false;
+            for (int64_t k = 0; k < C; ++k) {
+                if (cell_tunnels[k].defined() && cell_tunnels[k].numel() > 0) {
+                    has_tunnel = true;
+                    break;
+                }
+            }
+
+            torch::Tensor tunnel_sig;
+            if (has_tunnel) {
+                std::vector<torch::Tensor> tunnel_list;
+                for (int64_t k = 0; k < C; ++k) {
+                    if (cell_tunnels[k].defined() && cell_tunnels[k].numel() > 0) {
+                        tunnel_list.push_back(cell_tunnels[k]);
+                    } else {
+                        tunnel_list.push_back(torch::zeros_like(x));
+                    }
+                }
+                auto stacked = torch::stack(tunnel_list, 0); // [C, B, S, D]
+                auto w_i = cross_weights[i]; // [C]
+                tunnel_sig = torch::einsum("c, cbsd -> bsd", {w_i, stacked});
+            }
+
+            torch::Tensor c_out, t_out;
+            std::tie(c_out, t_out) = cells[i]->forward(cell_states[i], tunnel_sig);
+            cell_states[i] = c_out;
+            cell_tunnels[i] = t_out;
+        }
+
+        auto stacked_states = torch::stack(cell_states, 0);
+        auto final_state = norm->forward(stacked_states.mean(0));
+        return final_state;
+    }
+
+    torch::Tensor forward(torch::Tensor tokens) {
+        auto final_state = forward_latent(tokens);
+        return head->forward(final_state);
+    }
+};
+TORCH_MODULE(UniversalMorphicSpace);
+
 
 // ============================================================================
 // PYBIND11 MODULE BINDINGS
@@ -704,4 +898,30 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("generate_thought_and_speech", &CognitiveEvolvableAgentImpl::generate_thought_and_speech, py::arg("seed_tokens"), py::arg("max_new_tokens"), py::arg("temperature") = 0.45f, py::arg("top_p") = 0.90f)
         .def("parameters", [](std::shared_ptr<CognitiveEvolvableAgentImpl> m) { return m->parameters(); })
         .def("named_parameters", [](std::shared_ptr<CognitiveEvolvableAgentImpl> m) { return m->named_parameters(); });
+
+    py::class_<UniversalMorphicCellImpl, torch::nn::Module, std::shared_ptr<UniversalMorphicCellImpl>>(m, "UniversalMorphicCell")
+        .def(py::init<int64_t, int64_t, std::string, float, float>(),
+             py::arg("dim") = 256, py::arg("num_units") = 4, py::arg("device") = "cpu",
+             py::arg("min_decay") = 0.005f, py::arg("max_decay") = 0.2f)
+        .def("forward", [](UniversalMorphicCellImpl& self, torch::Tensor x, std::optional<torch::Tensor> tunnel_in) {
+            return self.forward(x, tunnel_in.has_value() ? tunnel_in.value() : torch::Tensor());
+        }, py::arg("x"), py::arg("tunnel_in") = py::none())
+        .def("__call__", [](UniversalMorphicCellImpl& self, torch::Tensor x, std::optional<torch::Tensor> tunnel_in) {
+            return self.forward(x, tunnel_in.has_value() ? tunnel_in.value() : torch::Tensor());
+        }, py::arg("x"), py::arg("tunnel_in") = py::none())
+        .def("parameters", [](std::shared_ptr<UniversalMorphicCellImpl> m) { return m->parameters(); })
+        .def("named_parameters", [](std::shared_ptr<UniversalMorphicCellImpl> m) { return m->named_parameters(); });
+
+
+
+    py::class_<UniversalMorphicSpaceImpl, torch::nn::Module, std::shared_ptr<UniversalMorphicSpaceImpl>>(m, "UniversalMorphicSpace")
+        .def(py::init<int64_t, int64_t, int64_t, int64_t, std::string, float, float>(),
+             py::arg("vocab_size") = 258, py::arg("dim") = 256, py::arg("num_cells") = 2, py::arg("num_units") = 4,
+             py::arg("device") = "cpu", py::arg("min_decay") = 0.005f, py::arg("max_decay") = 0.2f)
+        .def("forward", &UniversalMorphicSpaceImpl::forward, py::arg("tokens"))
+        .def("__call__", &UniversalMorphicSpaceImpl::forward, py::arg("tokens"))
+        .def("forward_latent", &UniversalMorphicSpaceImpl::forward_latent, py::arg("tokens"))
+        .def("parameters", [](std::shared_ptr<UniversalMorphicSpaceImpl> m) { return m->parameters(); })
+        .def("named_parameters", [](std::shared_ptr<UniversalMorphicSpaceImpl> m) { return m->named_parameters(); });
 }
+
