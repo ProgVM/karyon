@@ -922,6 +922,14 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("__call__", &UniversalMorphicSpaceImpl::forward, py::arg("tokens"))
         .def("forward_latent", &UniversalMorphicSpaceImpl::forward_latent, py::arg("tokens"))
         .def("parameters", [](std::shared_ptr<UniversalMorphicSpaceImpl> m) { return m->parameters(); })
-        .def("named_parameters", [](std::shared_ptr<UniversalMorphicSpaceImpl> m) { return m->named_parameters(); });
+        .def("named_parameters", [](std::shared_ptr<UniversalMorphicSpaceImpl> m) { return m->named_parameters(); })
+        .def("named_parameters_map", [](std::shared_ptr<UniversalMorphicSpaceImpl> m) {
+            std::map<std::string, torch::Tensor> params;
+            for (const auto& pair : m->named_parameters()) {
+                params[pair.key()] = pair.value();
+            }
+            return params;
+        });
+
 }
 
