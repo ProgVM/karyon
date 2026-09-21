@@ -1,0 +1,71 @@
+[
+  {
+    "mechanism": "Paradigm_E_Allostatic_GRN",
+    "phase1_loss": 2.8436813354492188,
+    "phase3_shift_loss": 3.3029966354370117,
+    "domain_adaptation_gain": 0.5067071914672852,
+    "retention_loss": 3.0707430243492126,
+    "forgetting_delta": 0.2270616888999939,
+    "avg_throughput_tok_s": 8644.28895411949,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "mean_lock": 0.05000000000000001,
+      "noradrenaline": 0.9991014948500426,
+      "dopamine": 0.18300464272506453,
+      "plasticity_index": 19.98163026439556
+    },
+    "composite_score": -0.901316995028534
+  },
+  {
+    "mechanism": "Paradigm_G_Theta_Gamma_PAC",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.528745174407959,
+    "domain_adaptation_gain": 2.138935089111328,
+    "retention_loss": 5.500898122787476,
+    "forgetting_delta": 2.678987741470337,
+    "avg_throughput_tok_s": 16561.707690318814,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "theta_phase": 6.283185307179569,
+      "plv_coherence": 0.1639999999999993,
+      "gamma_burst_density": 2.7643814086914062
+    },
+    "composite_score": -1.9570150703270452
+  },
+  {
+    "mechanism": "Paradigm_F_Hopfield_Basin_Sprouting",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.528745174407959,
+    "domain_adaptation_gain": 2.138935089111328,
+    "retention_loss": 5.500898122787476,
+    "forgetting_delta": 2.678987741470337,
+    "avg_throughput_tok_s": 15563.705839893148,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "basin_orthogonality": 0.009901762008666992,
+      "energy_depth": 0.20018029697464607,
+      "unfamiliar_triggers": 30.0
+    },
+    "composite_score": -2.1566154404121787
+  },
+  {
+    "mechanism": "Paradigm_H_System2_Recurrent_Depth",
+    "phase1_loss": 2.817507266998291,
+    "phase3_shift_loss": 5.534073352813721,
+    "domain_adaptation_gain": 2.332601547241211,
+    "retention_loss": 5.516013145446777,
+    "forgetting_delta": 2.6985058784484863,
+    "avg_throughput_tok_s": 10833.905253246188,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "current_thinking_steps": 4.0,
+      "equilibrium_delta": 1.367674882803455,
+      "recirculation_efficiency": 0.731167920515001
+    },
+    "composite_score": -2.749848025354791
+  }
+]
