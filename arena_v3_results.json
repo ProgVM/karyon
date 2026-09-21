@@ -1,0 +1,70 @@
+[
+  {
+    "mechanism": "Paradigm_N_Fisher_Curvature",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.528745174407959,
+    "domain_adaptation_gain": 2.138935089111328,
+    "retention_loss": 5.500898122787476,
+    "forgetting_delta": 2.678987741470337,
+    "avg_throughput_tok_s": 16874.385060902103,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "fisher_trace": 1.8311260585162534,
+      "curvature_index": 1.3968557120178258,
+      "geodesic_efficiency": 0.7158935539272353
+    },
+    "composite_score": -1.8944795962103878
+  },
+  {
+    "mechanism": "Paradigm_M_Memristive_Flux",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.528745174407959,
+    "domain_adaptation_gain": 2.138935089111328,
+    "retention_loss": 5.500898122787476,
+    "forgetting_delta": 2.678987741470337,
+    "avg_throughput_tok_s": 16815.566954156213,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "flux_integral": 71.2072863051387,
+      "conductance": 1.0,
+      "sprouting_margin": 0.0
+    },
+    "composite_score": -1.9062432175595654
+  },
+  {
+    "mechanism": "Paradigm_L_Immune_Clonal_Selection",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.528745174407959,
+    "domain_adaptation_gain": 2.138935089111328,
+    "retention_loss": 5.500898122787476,
+    "forgetting_delta": 2.678987741470337,
+    "avg_throughput_tok_s": 16437.51367826312,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "antigen_load": 2.208868330168325,
+      "mean_antibody_titer": 2.0,
+      "clonal_repertoire": 3.0
+    },
+    "composite_score": -1.981853872738184
+  },
+  {
+    "mechanism": "Paradigm_K_Quantum_Collapse",
+    "phase1_loss": 2.827016830444336,
+    "phase3_shift_loss": 5.552645206451416,
+    "domain_adaptation_gain": 1.4811925888061523,
+    "retention_loss": 5.552052021026611,
+    "forgetting_delta": 2.7250351905822754,
+    "avg_throughput_tok_s": 8563.531618869216,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "quantum_purity": 0.9999999985477015,
+      "mean_phase_angle": 0.04723977293625481,
+      "superposition_nodes": 3.0
+    },
+    "composite_score": -4.965106490938681
+  }
+]

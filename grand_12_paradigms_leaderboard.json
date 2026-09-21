@@ -1,0 +1,211 @@
+[
+  {
+    "mechanism": "Paradigm_A_Epigenetic_GRN",
+    "phase1_loss": 2.880427122116089,
+    "phase3_shift_loss": 3.2363924980163574,
+    "domain_adaptation_gain": 2.209832191467285,
+    "retention_loss": 3.1039284467697144,
+    "forgetting_delta": 0.2235013246536255,
+    "avg_throughput_tok_s": 8393.041230077612,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "efficiency_score": 0.46782038597756226,
+    "final_local_metrics": {
+      "gene_entropy": 1.0986122886651097,
+      "mean_methylation": 0.7666666666666667,
+      "mean_expression": 1.0
+    },
+    "composite_score": 2.526628143953297
+  },
+  {
+    "mechanism": "Paradigm_E_Allostatic_GRN",
+    "phase1_loss": 2.8436813354492188,
+    "phase3_shift_loss": 3.3029966354370117,
+    "domain_adaptation_gain": 0.5067071914672852,
+    "retention_loss": 3.0707430243492126,
+    "forgetting_delta": 0.2270616888999939,
+    "avg_throughput_tok_s": 8644.28895411949,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "mean_lock": 0.05000000000000001,
+      "noradrenaline": 0.9991014948500426,
+      "dopamine": 0.18300464272506453,
+      "plasticity_index": 19.98163026439556
+    },
+    "composite_score": -0.901316995028534
+  },
+  {
+    "mechanism": "Paradigm_N_Fisher_Curvature",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.528745174407959,
+    "domain_adaptation_gain": 2.138935089111328,
+    "retention_loss": 5.500898122787476,
+    "forgetting_delta": 2.678987741470337,
+    "avg_throughput_tok_s": 16874.385060902103,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "fisher_trace": 1.8311260585162534,
+      "curvature_index": 1.3968557120178258,
+      "geodesic_efficiency": 0.7158935539272353
+    },
+    "composite_score": -1.8944795962103878
+  },
+  {
+    "mechanism": "Paradigm_M_Memristive_Flux",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.528745174407959,
+    "domain_adaptation_gain": 2.138935089111328,
+    "retention_loss": 5.500898122787476,
+    "forgetting_delta": 2.678987741470337,
+    "avg_throughput_tok_s": 16815.566954156213,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "flux_integral": 71.2072863051387,
+      "conductance": 1.0,
+      "sprouting_margin": 0.0
+    },
+    "composite_score": -1.9062432175595654
+  },
+  {
+    "mechanism": "Paradigm_G_Theta_Gamma_PAC",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.528745174407959,
+    "domain_adaptation_gain": 2.138935089111328,
+    "retention_loss": 5.500898122787476,
+    "forgetting_delta": 2.678987741470337,
+    "avg_throughput_tok_s": 16561.707690318814,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "theta_phase": 6.283185307179569,
+      "plv_coherence": 0.1639999999999993,
+      "gamma_burst_density": 2.7643814086914062
+    },
+    "composite_score": -1.9570150703270452
+  },
+  {
+    "mechanism": "Paradigm_L_Immune_Clonal_Selection",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.528745174407959,
+    "domain_adaptation_gain": 2.138935089111328,
+    "retention_loss": 5.500898122787476,
+    "forgetting_delta": 2.678987741470337,
+    "avg_throughput_tok_s": 16437.51367826312,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "antigen_load": 2.208868330168325,
+      "mean_antibody_titer": 2.0,
+      "clonal_repertoire": 3.0
+    },
+    "composite_score": -1.981853872738184
+  },
+  {
+    "mechanism": "Paradigm_F_Hopfield_Basin_Sprouting",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.528745174407959,
+    "domain_adaptation_gain": 2.138935089111328,
+    "retention_loss": 5.500898122787476,
+    "forgetting_delta": 2.678987741470337,
+    "avg_throughput_tok_s": 15563.705839893148,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "basin_orthogonality": 0.009901762008666992,
+      "energy_depth": 0.20018029697464607,
+      "unfamiliar_triggers": 30.0
+    },
+    "composite_score": -2.1566154404121787
+  },
+  {
+    "mechanism": "Paradigm_C_Fractal_Branching",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.525794506072998,
+    "domain_adaptation_gain": 1.9864225387573242,
+    "retention_loss": 5.500118613243103,
+    "forgetting_delta": 2.6782082319259644,
+    "avg_throughput_tok_s": 16348.10780998984,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "efficiency_score": 0.27399686794956213,
+    "final_local_metrics": {
+      "branch_specialization": 1.0,
+      "gate_entropy": 0.24344745985590635,
+      "fractal_sub_branches": 1.0
+    },
+    "composite_score": -2.300640214449328
+  },
+  {
+    "mechanism": "Paradigm_B_Thermo_Bifurcation",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.525794506072998,
+    "domain_adaptation_gain": 1.9864225387573242,
+    "retention_loss": 5.500118613243103,
+    "forgetting_delta": 2.6782082319259644,
+    "avg_throughput_tok_s": 16291.273947060172,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "efficiency_score": 0.27399686794956213,
+    "final_local_metrics": {
+      "stress_locus": 1.6859253852323437,
+      "thermo_temperature": 3.0063912720936488,
+      "bifurcation_readiness": 1.0
+    },
+    "composite_score": -2.3120069870352618
+  },
+  {
+    "mechanism": "Paradigm_D_Edelman_Darwinism",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.525794506072998,
+    "domain_adaptation_gain": 1.9864225387573242,
+    "retention_loss": 5.500118613243103,
+    "forgetting_delta": 2.6782082319259644,
+    "avg_throughput_tok_s": 16022.406991195594,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "efficiency_score": 0.27399686794956213,
+    "final_local_metrics": {
+      "mean_trophic_factor": 0.01,
+      "degeneracy_score": 0.18252278753249318,
+      "repertoire_size": 3.0
+    },
+    "composite_score": -2.365780378208177
+  },
+  {
+    "mechanism": "Paradigm_H_System2_Recurrent_Depth",
+    "phase1_loss": 2.817507266998291,
+    "phase3_shift_loss": 5.534073352813721,
+    "domain_adaptation_gain": 2.332601547241211,
+    "retention_loss": 5.516013145446777,
+    "forgetting_delta": 2.6985058784484863,
+    "avg_throughput_tok_s": 10833.905253246188,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "current_thinking_steps": 4.0,
+      "equilibrium_delta": 1.367674882803455,
+      "recirculation_efficiency": 0.731167920515001
+    },
+    "composite_score": -2.749848025354791
+  },
+  {
+    "mechanism": "Paradigm_K_Quantum_Collapse",
+    "phase1_loss": 2.827016830444336,
+    "phase3_shift_loss": 5.552645206451416,
+    "domain_adaptation_gain": 1.4811925888061523,
+    "retention_loss": 5.552052021026611,
+    "forgetting_delta": 2.7250351905822754,
+    "avg_throughput_tok_s": 8563.531618869216,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "final_local_metrics": {
+      "quantum_purity": 0.9999999985477015,
+      "mean_phase_angle": 0.04723977293625481,
+      "superposition_nodes": 3.0
+    },
+    "composite_score": -4.965106490938681
+  }
+]
