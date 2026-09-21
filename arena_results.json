@@ -1,0 +1,74 @@
+[
+  {
+    "mechanism": "Paradigm_A_Epigenetic_GRN",
+    "phase1_loss": 2.880427122116089,
+    "phase3_shift_loss": 3.2363924980163574,
+    "domain_adaptation_gain": 2.209832191467285,
+    "retention_loss": 3.1039284467697144,
+    "forgetting_delta": 0.2235013246536255,
+    "avg_throughput_tok_s": 8393.041230077612,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "efficiency_score": 0.46782038597756226,
+    "final_local_metrics": {
+      "gene_entropy": 1.0986122886651097,
+      "mean_methylation": 0.7666666666666667,
+      "mean_expression": 1.0
+    },
+    "composite_score": 2.526628143953297
+  },
+  {
+    "mechanism": "Paradigm_C_Fractal_Branching",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.525794506072998,
+    "domain_adaptation_gain": 1.9864225387573242,
+    "retention_loss": 5.500118613243103,
+    "forgetting_delta": 2.6782082319259644,
+    "avg_throughput_tok_s": 16348.10780998984,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "efficiency_score": 0.27399686794956213,
+    "final_local_metrics": {
+      "branch_specialization": 1.0,
+      "gate_entropy": 0.24344745985590635,
+      "fractal_sub_branches": 1.0
+    },
+    "composite_score": -2.300640214449328
+  },
+  {
+    "mechanism": "Paradigm_B_Thermo_Bifurcation",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.525794506072998,
+    "domain_adaptation_gain": 1.9864225387573242,
+    "retention_loss": 5.500118613243103,
+    "forgetting_delta": 2.6782082319259644,
+    "avg_throughput_tok_s": 16291.273947060172,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "efficiency_score": 0.27399686794956213,
+    "final_local_metrics": {
+      "stress_locus": 1.6859253852323437,
+      "thermo_temperature": 3.0063912720936488,
+      "bifurcation_readiness": 1.0
+    },
+    "composite_score": -2.3120069870352618
+  },
+  {
+    "mechanism": "Paradigm_D_Edelman_Darwinism",
+    "phase1_loss": 2.8219103813171387,
+    "phase3_shift_loss": 5.525794506072998,
+    "domain_adaptation_gain": 1.9864225387573242,
+    "retention_loss": 5.500118613243103,
+    "forgetting_delta": 2.6782082319259644,
+    "avg_throughput_tok_s": 16022.406991195594,
+    "active_param_count": 66048,
+    "final_nodes": 3,
+    "efficiency_score": 0.27399686794956213,
+    "final_local_metrics": {
+      "mean_trophic_factor": 0.01,
+      "degeneracy_score": 0.18252278753249318,
+      "repertoire_size": 3.0
+    },
+    "composite_score": -2.365780378208177
+  }
+]
