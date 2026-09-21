@@ -75,31 +75,25 @@ def rebind_optimizer_moments(
         weight_decay=weight_decay
     )
 
-    # Convert parameters to parameter identity/pointer map for positional state matching
-    old_param_map = {}
-    if hasattr(old_optimizer, "param_groups") and len(old_optimizer.param_groups) > 0:
-        for group in old_optimizer.param_groups:
-            for p in group["params"]:
-                if p in old_optimizer.state:
-                    old_param_map[p] = old_optimizer.state[p]
-
-    for p in new_parameters:
-        if p in old_param_map:
-            old_param_state = old_param_map[p]
-            new_state_entry = {}
-            for k, v in old_param_state.items():
-                if isinstance(v, torch.Tensor):
-                    if v.shape == p.shape:
-                        new_state_entry[k] = v.clone()
-                    elif v.dim() == 0:
-                        new_state_entry[k] = v.clone()
+    old_state = old_optimizer.state_dict()["state"]
+    if old_state:
+        for idx, p in enumerate(new_parameters):
+            if idx in old_state:
+                old_param_state = old_state[idx]
+                new_state_entry = {}
+                for k, v in old_param_state.items():
+                    if isinstance(v, torch.Tensor):
+                        if v.shape == p.shape:
+                            new_state_entry[k] = v.clone()
+                        elif v.dim() == 0:
+                            new_state_entry[k] = v.clone()
+                        else:
+                            new_tensor = torch.zeros_like(p)
+                            adapt_and_copy_tensor(new_tensor, v)
+                            new_state_entry[k] = new_tensor
                     else:
-                        new_tensor = torch.zeros_like(p)
-                        adapt_and_copy_tensor(new_tensor, v)
-                        new_state_entry[k] = new_tensor
-                else:
-                    new_state_entry[k] = copy.deepcopy(v)
-            new_optimizer.state[p] = new_state_entry
+                        new_state_entry[k] = copy.deepcopy(v)
+                new_optimizer.state[p] = new_state_entry
 
     return new_optimizer
 

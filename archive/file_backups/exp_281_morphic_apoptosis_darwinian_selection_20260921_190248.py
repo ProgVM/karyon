@@ -49,7 +49,7 @@ def run_benchmark():
 
     # Sprout several nodes first to simulate pre-existing active pathways
     agent.add_node("path_A", "LinearAccumulator", is_core=False, initial_alpha=0.8)
-    agent.add_node("path_B_weak", "SaturatedAttractor", is_core=False, initial_alpha=0.001) # weak, under pruning threshold
+    agent.add_node("path_B_weak", "SaturatedAttractor", is_core=False, initial_alpha=0.005) # under pruning threshold
     agent.add_node("path_C_hopfield", "ContinuousHopfield", is_core=False, initial_alpha=0.5)
 
     initial_nodes = agent.graph.k_nodes
@@ -89,7 +89,7 @@ def run_benchmark():
     sleep_metrics = agent.execute_deep_allostatic_sleep(
         downscaling_factor=0.01,
         sprout_probability=1.0, # sprout 1 new node
-        prune_threshold=0.04,   # prune any non-core node with |tanh(alpha)| < 0.04
+        prune_threshold=0.02,   # prune any non-core node with |tanh(alpha)| < 0.02
         available_ops=("StateSpaceMemory", "ContinuousHopfield")
     )
 

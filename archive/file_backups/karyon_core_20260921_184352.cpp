@@ -344,7 +344,6 @@ public:
     int64_t dim;
     std::string device_str;
     int64_t k_nodes = 0;
-    int64_t total_sprouted_so_far = 0;
 
     std::vector<std::shared_ptr<GraphOp>> node_ops;
     std::vector<torch::Tensor> alpha_epi;
@@ -383,14 +382,17 @@ public:
             throw std::invalid_argument("Unknown operator type: " + op_type);
         }
 
-        total_sprouted_so_far++;
+        std::string module_key = "op_" + std::to_string(k_nodes);
+        register_module(module_key, op);
         node_ops.push_back(op);
+        
         is_core_node.push_back(is_core);
         node_names.push_back(name);
         node_types.push_back(op_type);
 
         auto alpha_val = torch::tensor(initial_alpha, torch::TensorOptions().device(device).requires_grad(!is_core));
-        alpha_epi.push_back(alpha_val);
+        auto alpha_param = register_parameter(module_key + "_alpha", alpha_val);
+        alpha_epi.push_back(alpha_param);
 
         int64_t old_k = k_nodes;
         int64_t new_k = old_k + 1;
@@ -482,24 +484,6 @@ public:
         return readout;
     }
 
-    std::map<std::string, torch::Tensor> get_active_parameters_map() {
-        std::map<std::string, torch::Tensor> params;
-        params["w_route"] = w_route;
-        params["w_sensory_in"] = w_sensory_in;
-        params["w_motor_out"] = w_motor_out;
-
-        for (int64_t i = 0; i < k_nodes; ++i) {
-            std::string prefix = "node_" + std::to_string(i) + "_" + node_names[i];
-            if (alpha_epi[i].requires_grad()) {
-                params[prefix + ".alpha"] = alpha_epi[i];
-            }
-            for (const auto& pair : node_ops[i]->named_parameters()) {
-                params[prefix + "." + pair.key()] = pair.value();
-            }
-        }
-        return params;
-    }
-
     std::string get_topology_manifest() {
         std::string manifest = "{\"k_nodes\":" + std::to_string(k_nodes) + ",\"nodes\":[";
         for (int64_t i = 0; i < k_nodes; ++i) {
@@ -586,6 +570,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("__call__", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("get_topology_manifest", &DynamicMorphicGraphImpl::get_topology_manifest)
         .def("named_parameters_map", [](std::shared_ptr<DynamicMorphicGraphImpl> m) {
-            return m->get_active_parameters_map();
+            std::map<std::string, torch::Tensor> params;
+            for (const auto& pair : m->named_parameters()) {
+                params[pair.key()] = pair.value();
+            }
+            return params;
         });
 }

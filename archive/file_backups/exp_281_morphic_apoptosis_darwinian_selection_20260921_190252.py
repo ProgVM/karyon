@@ -89,7 +89,7 @@ def run_benchmark():
     sleep_metrics = agent.execute_deep_allostatic_sleep(
         downscaling_factor=0.01,
         sprout_probability=1.0, # sprout 1 new node
-        prune_threshold=0.04,   # prune any non-core node with |tanh(alpha)| < 0.04
+        prune_threshold=0.02,   # prune any non-core node with |tanh(alpha)| < 0.02
         available_ops=("StateSpaceMemory", "ContinuousHopfield")
     )
 
