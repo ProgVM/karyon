@@ -229,8 +229,6 @@ class CoREAgent(nn.Module):
             for k, v in self.graph.named_parameters_map().items():
                 state[f"graph.{k}"] = v
             state["graph_emb.weight"] = self.graph_emb.weight
-            state["graph_norm.weight"] = self.graph_norm.weight
-            state["graph_norm.bias"] = self.graph_norm.bias
             state["graph_head.weight"] = self.graph_head.weight
         else:
             for k, v in self.space.named_parameters_map().items():

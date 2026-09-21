@@ -62,7 +62,6 @@ class CoREAgent(nn.Module):
             self.graph.add_node("core_0", "LinearAccumulator", True, 1.0)
             self.graph.add_node("core_1", "SaturatedAttractor", True, 1.0)
             self.graph_emb = nn.Embedding(vocab_size, embed_dim).to(device)
-            self.graph_norm = nn.LayerNorm(embed_dim).to(device)
             self.graph_head = nn.Linear(embed_dim, vocab_size, bias=False).to(device)
             nn.init.normal_(self.graph_emb.weight, 0.0, 0.02)
             nn.init.normal_(self.graph_head.weight, 0.0, 0.02)
@@ -89,12 +88,11 @@ class CoREAgent(nn.Module):
                     # Pass through dynamic morphic recurrent thinking graph
                     x_flat = x.reshape(B * S, D)
                     h_graph = self.graph(x_flat, thinking_steps)
-                    h_norm = self.graph_norm(h_graph)
-                    logits = self.graph_head(h_norm).reshape(B, S, self.vocab_size)
+                    logits = self.graph_head(h_graph).reshape(B, S, self.vocab_size)
                     return logits
                 else:
                     h_graph = self.graph(x, thinking_steps)
-                    return self.graph_head(self.graph_norm(h_graph))
+                    return self.graph_head(h_graph)
             else:
                 return self.graph(input_ids, thinking_steps)
         else:
@@ -229,8 +227,6 @@ class CoREAgent(nn.Module):
             for k, v in self.graph.named_parameters_map().items():
                 state[f"graph.{k}"] = v
             state["graph_emb.weight"] = self.graph_emb.weight
-            state["graph_norm.weight"] = self.graph_norm.weight
-            state["graph_norm.bias"] = self.graph_norm.bias
             state["graph_head.weight"] = self.graph_head.weight
         else:
             for k, v in self.space.named_parameters_map().items():
