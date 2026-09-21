@@ -152,16 +152,15 @@ class CoREAgent(nn.Module):
         3. Epigenetic Sprouting of new dynamic graph nodes (AGN v6.0 / Net2Net zero-shock).
         """
         scaled_params_count = 0
-        # Phase 1: Epigenetic Methylation Lock Protection
         with torch.no_grad():
             if self.use_graph:
                 param_map = self.graph.named_parameters_map()
                 for name, param in param_map.items():
                     if "w_route" in name or "weight" in name or "w_" in name:
-                        param.mul_(1.0 - downscaling_factor * 0.1) # Protect core parameters via methylation lock
+                        param.mul_(1.0 - downscaling_factor)
                         scaled_params_count += 1
-                self.graph_emb.weight.mul_(1.0 - downscaling_factor * 0.1)
-                self.graph_head.weight.mul_(1.0 - downscaling_factor * 0.1)
+                self.graph_emb.weight.mul_(1.0 - downscaling_factor)
+                self.graph_head.weight.mul_(1.0 - downscaling_factor)
                 scaled_params_count += 2
             else:
                 param_map = self.space.named_parameters_map()
