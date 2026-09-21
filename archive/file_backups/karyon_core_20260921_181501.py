@@ -19,6 +19,8 @@ build_dir = os.path.join(workspace_dir, "build", "karyon_core_jit")
 os.makedirs(build_dir, exist_ok=True)
 
 extra_cflags = ["-O3", "-std=c++20"]
+if torch.cuda.is_available():
+    extra_cflags += ["-D__CUDA_ARCH__=750"]
 
 candidate_name = f"karyon_core_ext_{uuid.uuid4().hex[:8]}"
 

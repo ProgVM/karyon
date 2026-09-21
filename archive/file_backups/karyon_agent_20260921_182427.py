@@ -1,11 +1,11 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON CORE AGENT MASTER WRAPPER v34.4
+KARYON CORE AGENT MASTER WRAPPER v34.3
 ===============================================================================
 Python Orchestrator Wrapper for C++20 UniversalMorphicSpace & DynamicMorphicGraph
 with Integrated Continuous Hopfield Attractor Memory, Sleep-Consolidation,
-Allostatic Morphogenesis Engine (Sprouting + Apoptosis), and Safe Optimizer State Rebinding.
+Allostatic Morphogenesis Engine, and Safe Optimizer State Rebinding.
 ===============================================================================
 """
 import math
@@ -126,37 +126,23 @@ class CoREAgent(nn.Module):
             raise ValueError("add_node can only be called when use_graph=True")
         self.graph.add_node(name, op_type, is_core, initial_alpha)
 
-    def prune_inactive_nodes(self, threshold: float = 0.02) -> int:
-        """Prunes inactive dynamic nodes via Edelman Neural Darwinism."""
-        if not self.use_graph:
-            return 0
-        return self.graph.prune_inactive_nodes(threshold)
-
     def execute_deep_allostatic_sleep(
         self,
         downscaling_factor: float = 0.01,
         sprout_probability: float = 0.5,
-        prune_threshold: float = 0.02,
-        available_ops: Tuple[str, ...] = (
-            "LinearAccumulator",
-            "BilinearMultiplicative",
-            "SaturatedAttractor",
-            "ContinuousHopfield",
-            "StateSpaceMemory"
-        )
+        available_ops: Tuple[str, ...] = ("LinearAccumulator", "BilinearMultiplicative", "SaturatedAttractor")
     ) -> Dict[str, float]:
         """
         Executes Biophysical Sleep & Morphogenetic Neurogenesis Cycle:
         1. Tononi SHY Synaptic Scaling (soft downscaling).
-        2. Neural Darwinism Apoptosis (pruning inactive nodes with |tanh(alpha)| < prune_threshold).
-        3. Epigenetic Sprouting of new dynamic graph nodes (AGN v6.0 / Net2Net zero-shock).
+        2. Epigenetic Sprouting of new dynamic graph nodes (AGN v6.0 / Net2Net zero-shock).
         """
         scaled_params_count = 0
         with torch.no_grad():
             if self.use_graph:
                 param_map = self.graph.named_parameters_map()
                 for name, param in param_map.items():
-                    if "w_route" in name or "weight" in name or "w_" in name:
+                    if "w_route" in name or "weight" in name:
                         param.mul_(1.0 - downscaling_factor)
                         scaled_params_count += 1
                 self.graph_emb.weight.mul_(1.0 - downscaling_factor)
@@ -175,12 +161,7 @@ class CoREAgent(nn.Module):
                     self.hopfield_head.weight.mul_(1.0 - downscaling_factor)
                     scaled_params_count += 1
 
-        # Phase 2: Neural Darwinism Apoptosis (Pruning)
-        pruned_nodes = 0
-        if self.use_graph:
-            pruned_nodes = self.prune_inactive_nodes(prune_threshold)
-
-        # Phase 3: Epigenetic Sprouting
+        # Phase 2: Morphogenetic Graph Sprouting
         sprouted = False
         if self.use_graph and random.random() < sprout_probability:
             op_type = random.choice(available_ops)
@@ -191,7 +172,6 @@ class CoREAgent(nn.Module):
 
         return {
             "scaled_params": float(scaled_params_count),
-            "pruned_nodes": float(pruned_nodes),
             "sprouted": 1.0 if sprouted else 0.0,
             "total_nodes": float(self.graph.k_nodes if self.use_graph else 0)
         }
