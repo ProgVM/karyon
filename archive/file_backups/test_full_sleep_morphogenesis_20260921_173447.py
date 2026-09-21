@@ -7,13 +7,13 @@ class TestFullSleepMorphogenesisIntegration(unittest.TestCase):
     def setUp(self):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.dim = 128
-        # CoREAgent with use_graph=True automatically initializes 2 core nodes ("core_0", "core_1")
         self.agent = CoREAgent(embed_dim=self.dim, device=self.device, use_graph=True).to(self.device)
+        self.agent.add_node(name="input_core", op_type="LinearAccumulator", is_core=True, initial_alpha=1.0)
+        self.agent.add_node(name="output_core", op_type="LinearAccumulator", is_core=True, initial_alpha=1.0)
 
     def test_e2e_sleep_cycle(self):
         """Verify that deep allostatic sleep runs end-to-end with neurogenesis and synaptic scaling."""
         x_sensory = torch.randn(4, self.dim, device=self.device)
-        self.assertEqual(self.agent.graph.k_nodes, 2)
 
         # Run Sleep Cycle with mandatory node sprouting (sprout_probability=1.0)
         sleep_metrics = self.agent.execute_deep_allostatic_sleep(

@@ -42,14 +42,12 @@ def adapt_and_copy_tensor(target: torch.Tensor, source: torch.Tensor):
         target.copy_(source)
         return
 
-    # Handle 0-dim or mismatched dimension rank scalars safely
-    if target.dim() == 0 or source.dim() == 0 or target.dim() != source.dim():
-        if target.dim() == 0 and source.dim() == 0:
-            target.copy_(source)
-        return
-
     with torch.no_grad():
-        slices = tuple(slice(0, min(d_target, d_source)) for d_target, d_source in zip(target.shape, source.shape))
+        slices = []
+        for d_target, d_source in zip(target.shape, source.shape):
+            slices.append(slice(0, min(d_target, d_source)))
+
+        slices = tuple(slices)
         target.zero_()
         target[slices] = source[slices]
 
@@ -64,7 +62,7 @@ def rebind_optimizer_moments(
 ) -> torch.optim.AdamW:
     """
     Constructs a fresh AdamW optimizer instance for newly spawned/expanded parameters
-    while safely migrating accumulated momentum (exp_avg, exp_avg_sq, step) from the previous optimizer.
+    while safely migrating accumulated momentum (exp_avg, exp_avg_sq) from the previous optimizer.
     Guarantees zero autograd graph corruption and preserves optimization momentum.
     """
     new_optimizer = torch.optim.AdamW(
@@ -76,6 +74,7 @@ def rebind_optimizer_moments(
     )
 
     old_state = old_optimizer.state_dict()["state"]
+    # If old optimizer had accumulated moment states, copy matching parameter shapes
     if old_state:
         for idx, p in enumerate(new_parameters):
             if idx in old_state:
@@ -83,14 +82,9 @@ def rebind_optimizer_moments(
                 new_state_entry = {}
                 for k, v in old_param_state.items():
                     if isinstance(v, torch.Tensor):
-                        if v.shape == p.shape:
-                            new_state_entry[k] = v.clone()
-                        elif v.dim() == 0:
-                            new_state_entry[k] = v.clone()
-                        else:
-                            new_tensor = torch.zeros_like(p)
-                            adapt_and_copy_tensor(new_tensor, v)
-                            new_state_entry[k] = new_tensor
+                        new_tensor = torch.zeros_like(p)
+                        adapt_and_copy_tensor(new_tensor, v)
+                        new_state_entry[k] = new_tensor
                     else:
                         new_state_entry[k] = copy.deepcopy(v)
                 new_optimizer.state[p] = new_state_entry
@@ -124,14 +118,12 @@ class MorphogeneticAllostaticEngine:
         device = replay_tokens.device
         h_latent = agent.forward_latent(replay_tokens)
         
-        # 1. Hopfield Attractor Energy (if hopfield active)
-        hopfield_energy = torch.tensor(0.0, device=device)
-        if hasattr(agent, "hopfield") and agent.use_hopfield:
-            hopfield_basins = list(agent.hopfield.parameters())[0]
-            h_norm = F.normalize(h_latent, p=2, dim=-1)
-            b_norm = F.normalize(hopfield_basins, p=2, dim=-1)
-            sim = torch.matmul(h_norm, b_norm.t())
-            hopfield_energy = - (1.0 / hopfield_beta) * torch.logsumexp(hopfield_beta * sim, dim=-1).mean()
+        # 1. Hopfield Attractor Energy
+        hopfield_basins = list(agent.hopfield.parameters())[0]
+        h_norm = F.normalize(h_latent, p=2, dim=-1)
+        b_norm = F.normalize(hopfield_basins, p=2, dim=-1)
+        sim = torch.matmul(h_norm, b_norm.t())
+        hopfield_energy = - (1.0 / hopfield_beta) * torch.logsumexp(hopfield_beta * sim, dim=-1).mean()
 
         # 2. Latent Active Inference Complexity (if latent_pred provided)
         kl_complexity = torch.tensor(0.0, device=device)
@@ -166,7 +158,7 @@ class MorphogeneticAllostaticEngine:
         with torch.no_grad():
             f_pre = MorphogeneticAllostaticEngine.compute_variational_free_energy(agent, replay_tokens).item()
 
-        # Phase 1: Tononi SHY Synaptic Scaling + Epigenetic Genesis
+        # Phase 1: Tononi SHY Synaptic Scaling
         sleep_telemetry = agent.execute_deep_allostatic_sleep(
             downscaling_factor=downscaling_factor,
             sprout_probability=sprout_probability,
