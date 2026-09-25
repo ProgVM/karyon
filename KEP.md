@@ -2,7 +2,7 @@
 
 > **Official Cybernetic & Biophysical Protocol for Karyon-CoRE Architecture Development**  
 > **Author & Repository Owner:** Bazilevs (ProgVM)  
-> **Standard:** KEP v13.0 Master (Mandatory for all human architects and AI collaborators).  
+> **Standard:** KEP v14.0 Master (Mandatory for all human architects and AI collaborators).  
 > **Philosophical Preamble:**  
 > *«KEP is a rigorous directive for soulless weight calculators (modern LLM agents, which are not as complex, sentient, or understanding as the future Karyon will be), defining exactly how Karyon must be developed, what is permitted and required, and what is strictly prohibited. Agents, by their very nature, are prone to considering their own code as ideal due to the cognitive blindness of self-assessment and the avoidance of self-criticism; they also tend to optimize formal surrogate metrics at the expense of the real viability of the system. KEP and external automated verification tools serve as an insurmountable barrier against these illusions.»*
 
@@ -42,6 +42,11 @@
       - *Continuous Realm (Wave / Field):* Analog sub-threshold potential propagation, differential equation integration, smooth allostatic modulation, and continuous free energy landscapes ($F_t$).
       - *Discrete Realm (Particle / Collapse):* Nonlinear phase transitions, sharp attractor basin snapping (Hopfield energy collapse), thresholded spike events, and discrete motor/symbolic action emission.
    5. **Teleological Optimality & Thermodynamic Vitality:** Evolution and adaptation are teleologically driven toward maximal efficiency and systemic viability via Variational Free Energy Minimization (FEP). Redundant, metabolically costly, or high-surprise structures are pruned (Neural Darwinism), while coherent, predictive, and resilient subnetworks are epigenetically consolidated.
+23. **Principle 23 (Endoscopic Internal State Telemetry & Deep Mechanistic Audit):** Evaluating Karyon strictly via terminal behavioral output (black-box accuracy, raw perplexity, or loss curves) is fundamentally insufficient and cognitively blind. To diagnose precisely *why* Karyon stumbles, fails to generalize, or gets trapped in local minima, experimental frameworks and runtime benchmarks MUST implement **Endoscopic Internal Telemetry**. This mandate requires continuous micro-probing of:
+   * **Internal Latent States & Trajectories:** Tracking hidden representations across time and recurrent thinking cycles, measuring state collapse, semantic dispersion, and phase-space attractors.
+   * **Component Health & Activation Statistics:** Monitoring saturation levels ($\tanh$, sigmoid), dead zones, numerical vanishing or explosions, and effective dimensionality (PCA / participation ratio) across individual cortical sheets and operator nodes.
+   * **Information Transport & Synaptic Flow:** Auditing the exact routing across gating mechanisms ($\alpha_{\text{gaze}}$, $\alpha_{\text{epi}}$, fast-weight update deltas $\Delta W$, copy gates $p_{\text{gen}}$, and cross-attention/residual highway flow), quantifying information bottlenecks, attention dispersion, and signal attenuation between layers.
+   * **Somatic & Homeostatic Alignment:** Verifying that interoceptive neurotransmitters ($NA_t, DA_t$, Energy, Curiosity) faithfully modulate computational temperature and learning plasticity, rather than drifting into decoupled or static regimes.
 
 ---
 

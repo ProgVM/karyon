@@ -1,0 +1,8 @@
+{
+  "exp_id": "EXP-289",
+  "id_accuracy": 15.0,
+  "ood_accuracy": 0.0,
+  "ood_acc_k1": 0.0,
+  "ood_acc_k6": 0.0,
+  "verdict": "NEUTRAL"
+}
