@@ -1,0 +1,14 @@
+{
+  "exp_id": "EXP-293",
+  "initial_f_t": 6.1037774085998535,
+  "final_f_t": 1.1398527693748475,
+  "lowest_f_t": 0.5248520970344543,
+  "initial_pointer_f_t": 2.2008872032165527,
+  "retention_pointer_f_t": 1.7790654015541076,
+  "retention_delta": 0.4218218016624451,
+  "tok_per_sec": 1800.6262670568035,
+  "sleep_cycles": 133,
+  "replay_steps": 532,
+  "final_nodes": 3,
+  "verdict": "NEUTRAL"
+}
