@@ -107,11 +107,11 @@ class KaryonEntity:
         with torch.no_grad():
             for _ in range(max_new_tokens):
                 logits = self.brain(curr, thinking_steps=thinking_steps)
-                last_logits = logits[:, -1, :256] / 0.70 # Slice to valid 0..255 byte vocabulary
+                last_logits = logits[:, -1, :] / 0.70
                 probs = F.softmax(last_logits, dim=-1)
                 nxt = torch.multinomial(probs, num_samples=1)
                 val = nxt.item()
-                if val == 10: # newline
+                if val == 10 or val == 257: # newline or EOS
                     break
                 generated_bytes.append(val)
                 curr = torch.cat([curr, nxt], dim=1)
