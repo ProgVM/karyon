@@ -218,17 +218,15 @@ class CoREAgent(nn.Module):
         state["norm.bias"] = self.norm.bias
         return state
 
-    def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor], device: Optional[str] = None):
+    def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor]):
         """Restores module parameters shape-adaptively from binary state dictionary."""
         current_state = self.get_complete_state_dict()
-        target_device = torch.device(device) if device else self.device
         with torch.no_grad():
             for k, v in state_dict.items():
                 if k in current_state:
                     target = current_state[k]
-                    src = v.to(target_device)
-                    if target.shape == src.shape:
-                        target.copy_(src)
+                    if target.shape == v.shape:
+                        target.copy_(v)
                     else:
-                        slices = [slice(0, min(d_t, d_s)) for d_t, d_s in zip(target.shape, src.shape)]
-                        target[tuple(slices)].copy_(src[tuple(slices)])
+                        slices = [slice(0, min(d_t, d_s)) for d_t, d_s in zip(target.shape, v.shape)]
+                        target[tuple(slices)].copy_(v[tuple(slices)])

@@ -529,9 +529,8 @@ def load_karyon(agent, memory, hu, filepath="karyon_soul.kcore", device='cpu', v
     h_fast_saved = states_dict.get("thought_fast_state", torch.zeros(1, agent_hidden_dim, device=device))
     h_slow_saved = states_dict.get("thought_slow_state", torch.zeros(1, agent_hidden_dim, device=device))
 
-    mem_bs = getattr(memory, "batch_size", 1)
-    h_fast = torch.zeros(mem_bs, agent_hidden_dim, device=device)
-    h_slow = torch.zeros(mem_bs, agent_hidden_dim, device=device)
+    h_fast = torch.zeros(memory.batch_size, agent_hidden_dim, device=device)
+    h_slow = torch.zeros(memory.batch_size, agent_hidden_dim, device=device)
 
 
     adapt_and_copy_batch_buffer(h_fast, h_fast_saved)
