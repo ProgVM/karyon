@@ -45,7 +45,6 @@ if karyon_cpp is not None:
     globals()["CausalParallelSSD"] = getattr(karyon_cpp, "CausalParallelSSD", None)
     globals()["ParallelOperatorBank"] = getattr(karyon_cpp, "ParallelOperatorBank", None)
     globals()["ContinuousHopfieldMemory"] = getattr(karyon_cpp, "ContinuousHopfieldMemory", None)
-    globals()["ContinuousSaccadicDrift"] = getattr(karyon_cpp, "ContinuousSaccadicDrift", None)
     globals()["LatentPredictor"] = getattr(karyon_cpp, "LatentPredictor", None)
     globals()["HomeostaticNexus"] = getattr(karyon_cpp, "HomeostaticNexus", None)
     globals()["LinearAccumulatorOp"] = getattr(karyon_cpp, "LinearAccumulatorOp", None)

@@ -70,7 +70,7 @@ public:
         std::vector<int64_t> padding = {0};
         std::vector<int64_t> dilation = {1};
         auto h = at::conv1d(x_pad, kernel, std::nullopt, stride, padding, dilation, dim);
-
+        
         return h.permute({0, 2, 1});
     }
 };
@@ -153,63 +153,7 @@ TORCH_MODULE(ContinuousHopfieldMemory);
 
 
 // ============================================================================
-// 5. CONTINUOUS ATTRACTOR DRIFT (C-SSD Saccadic Wave Engine)
-// ============================================================================
-class ContinuousSaccadicDriftImpl : public torch::nn::Module {
-public:
-    int64_t dim;
-    int64_t num_filters;
-    torch::Tensor w_sym, w_asym;
-    torch::Tensor w_velocity;
-    torch::Tensor b_velocity;
-    torch::Tensor beta_scale;
-
-    ContinuousSaccadicDriftImpl(int64_t dim = 128, int64_t num_filters = 17, std::string device_str = "cpu")
-        : dim(dim), num_filters(num_filters) {
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        w_sym = register_parameter("w_sym", torch::randn({1, 1, num_filters}, torch::TensorOptions().device(device)) * 0.1f);
-        w_asym = register_parameter("w_asym", torch::randn({1, 1, num_filters}, torch::TensorOptions().device(device)) * 0.1f);
-        w_velocity = register_parameter("w_velocity", torch::randn({dim, 1}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
-        b_velocity = register_parameter("b_velocity", torch::zeros({1}, torch::TensorOptions().device(device)));
-        beta_scale = register_parameter("beta_scale", torch::tensor(20.0f, torch::TensorOptions().device(device)));
-        this->to(device);
-    }
-
-    std::tuple<torch::Tensor, torch::Tensor> forward(torch::Tensor bump_state, torch::Tensor h_core, float da_gain = 0.0f) {
-        // bump_state: [B, L]
-        // h_core: [B, D]
-        int64_t B = bump_state.size(0);
-        int64_t L = bump_state.size(1);
-        auto device = bump_state.device();
-
-        // 1. Continuous drift velocity v_t in [-1, +1]
-        auto v_t = torch::tanh(torch::matmul(h_core, w_velocity) + b_velocity).squeeze(-1); // [B]
-
-        // 2. Convolutional Continuous Drift
-        int64_t pad = num_filters / 2;
-        auto bump_pad = torch::nn::functional::pad(bump_state.unsqueeze(1), torch::nn::functional::PadFuncOptions({pad, pad}).mode(torch::kReplicate));
-
-        std::vector<int64_t> stride = {1};
-        std::vector<int64_t> padding = {0};
-        std::vector<int64_t> dilation = {1};
-
-        auto sym_force = at::conv1d(bump_pad, w_sym, std::nullopt, stride, padding, dilation, 1);
-        auto asym_force = at::conv1d(bump_pad, w_asym, std::nullopt, stride, padding, dilation, 1);
-
-        auto drift_force = sym_force + v_t.view({B, 1, 1}) * asym_force;
-        auto new_potential = bump_state + drift_force.squeeze(1);
-
-        auto beta = torch::clamp(beta_scale * (1.0f + 1.5f * da_gain), 6.0f, 50.0f);
-        auto next_bump = torch::softmax(new_potential * beta, -1);
-
-        return std::make_tuple(next_bump, v_t);
-    }
-};
-TORCH_MODULE(ContinuousSaccadicDrift);
-
-
-// ============================================================================
-// 6. LATENT ACTIVE INFERENCE PREDICTOR (Free Energy Engine F_t)
+// 5. LATENT ACTIVE INFERENCE PREDICTOR (Free Energy Engine F_t)
 // ============================================================================
 class LatentPredictorImpl : public torch::nn::Module {
 public:
@@ -244,7 +188,7 @@ TORCH_MODULE(LatentPredictor);
 
 
 // ============================================================================
-// 7. HOMEOSTATIC NEXUS (Ashby Ultrastability Engine)
+// 6. HOMEOSTATIC NEXUS (Ashby Ultrastability Engine)
 // ============================================================================
 class HomeostaticNexusImpl : public torch::nn::Module {
 public:
@@ -288,14 +232,14 @@ TORCH_MODULE(HomeostaticNexus);
 
 
 // ============================================================================
-// 8. EXPANDED PRIMITIVE GRAPH OPERATORS (Zero-Hardcode Mathematical Menu)
+// 7. EXPANDED PRIMITIVE GRAPH OPERATORS (Zero-Hardcode Mathematical Menu)
 // ============================================================================
 
 struct GraphOp : public torch::nn::Module {
     virtual torch::Tensor forward(torch::Tensor x) = 0;
 };
 
-// 8.1 Linear Accumulator Primitive
+// 7.1 Linear Accumulator Primitive
 struct LinearAccumulatorOpImpl : public GraphOp {
     torch::Tensor w, b;
     LinearAccumulatorOpImpl(int64_t dim, std::string device_str = "cpu") {
@@ -309,7 +253,7 @@ struct LinearAccumulatorOpImpl : public GraphOp {
 };
 TORCH_MODULE(LinearAccumulatorOp);
 
-// 8.2 Bilinear Multiplicative Primitive
+// 7.2 Bilinear Multiplicative Primitive
 struct BilinearMultiplicativeOpImpl : public GraphOp {
     torch::Tensor w_left, w_right, w_out;
     BilinearMultiplicativeOpImpl(int64_t dim, std::string device_str = "cpu") {
@@ -326,7 +270,7 @@ struct BilinearMultiplicativeOpImpl : public GraphOp {
 };
 TORCH_MODULE(BilinearMultiplicativeOp);
 
-// 8.3 Saturated Non-Linear Attractor Primitive
+// 7.3 Saturated Non-Linear Attractor Primitive
 struct SaturatedAttractorOpImpl : public GraphOp {
     torch::Tensor w_gate, w_val, w_out;
     SaturatedAttractorOpImpl(int64_t dim, std::string device_str = "cpu") {
@@ -343,7 +287,7 @@ struct SaturatedAttractorOpImpl : public GraphOp {
 };
 TORCH_MODULE(SaturatedAttractorOp);
 
-// 8.4 Continuous Hopfield Energy Snapping Primitive
+// 7.4 Continuous Hopfield Energy Snapping Primitive
 struct ContinuousHopfieldOpImpl : public GraphOp {
     int64_t dim;
     int64_t num_basins;
@@ -368,7 +312,7 @@ struct ContinuousHopfieldOpImpl : public GraphOp {
 };
 TORCH_MODULE(ContinuousHopfieldOp);
 
-// 8.5 State Space Continuous Memory Primitive
+// 7.5 State Space Continuous Memory Primitive
 struct StateSpaceMemoryOpImpl : public GraphOp {
     int64_t dim;
     torch::Tensor log_decay;
@@ -392,7 +336,7 @@ TORCH_MODULE(StateSpaceMemoryOp);
 
 
 // ============================================================================
-// 9. DYNAMIC MORPHIC GRAPH (AGN v6.0 / Sprouting + Apoptosis Engine)
+// 8. DYNAMIC MORPHIC GRAPH (AGN v6.0 / Sprouting + Apoptosis Engine)
 // ============================================================================
 
 class DynamicMorphicGraphImpl : public torch::nn::Module {
@@ -423,7 +367,7 @@ public:
 
     void add_node(std::string name, std::string op_type, bool is_core = false, float initial_alpha = 0.0f) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-
+        
         std::shared_ptr<GraphOp> op;
         if (op_type == "LinearAccumulator") {
             op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
@@ -446,54 +390,64 @@ public:
         node_types.push_back(op_type);
 
         auto alpha_val = torch::tensor(initial_alpha, torch::TensorOptions().device(device).requires_grad(!is_core));
-        alpha_epi.push_back(register_parameter("alpha_" + name, alpha_val));
-        k_nodes = node_ops.size();
-    }
+        alpha_epi.push_back(alpha_val);
 
-    std::map<std::string, torch::Tensor> get_active_parameters_map() {
-        std::map<std::string, torch::Tensor> params;
-        params["w_route"] = w_route;
-        params["w_sensory_in"] = w_sensory_in;
-        params["w_motor_out"] = w_motor_out;
+        int64_t old_k = k_nodes;
+        int64_t new_k = old_k + 1;
+        k_nodes = new_k;
 
-        for (size_t i = 0; i < node_ops.size(); ++i) {
-            auto prefix = "node_" + std::to_string(i) + "_" + node_names[i] + ".";
-            params["alpha_" + node_names[i]] = alpha_epi[i];
-
-            for (const auto& p : node_ops[i]->named_parameters()) {
-                params[prefix + p.key()] = p.value();
-            }
+        if (old_k > 0) {
+            torch::NoGradGuard no_grad;
+            auto rand_col = torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k));
+            auto rand_row = torch::randn({old_k}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt(old_k));
+            w_route.slice(0, 0, old_k).narrow(1, old_k, 1).copy_(rand_col.unsqueeze(1));
+            w_route.narrow(0, old_k, 1).slice(1, 0, old_k).copy_(rand_row.unsqueeze(0));
+            w_route.index_put_({old_k, old_k}, 0.05f);
         }
-        return params;
     }
 
     int64_t prune_inactive_nodes(float threshold = 0.02f) {
-        int64_t pruned_count = 0;
-        std::vector<std::shared_ptr<GraphOp>> new_ops;
-        std::vector<torch::Tensor> new_alpha;
-        std::vector<bool> new_is_core;
-        std::vector<std::string> new_names;
-        std::vector<std::string> new_types;
-
+        std::vector<int64_t> keep_idx;
         for (int64_t i = 0; i < k_nodes; ++i) {
-            float eff_weight = std::abs(std::tanh(alpha_epi[i].template item<float>()));
-            if (!is_core_node[i] && eff_weight < threshold) {
-                pruned_count++;
-            } else {
-                new_ops.push_back(node_ops[i]);
-                new_alpha.push_back(alpha_epi[i]);
-                new_is_core.push_back(is_core_node[i]);
-                new_names.push_back(node_names[i]);
-                new_types.push_back(node_types[i]);
+            float alpha_val = std::abs(torch::tanh(alpha_epi[i]).template item<float>());
+            if (is_core_node[i] || alpha_val >= threshold) {
+                keep_idx.push_back(i);
             }
         }
 
+        int64_t pruned_count = k_nodes - keep_idx.size();
+        if (pruned_count == 0) return 0;
+
+        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+        torch::NoGradGuard no_grad;
+
+        int64_t new_k = keep_idx.size();
+        auto keep_tensor = torch::tensor(keep_idx, torch::TensorOptions().device(device).dtype(torch::kLong));
+        auto new_w = w_route.index({keep_tensor, keep_tensor}).clone();
+
+        std::vector<std::shared_ptr<GraphOp>> new_ops;
+        std::vector<torch::Tensor> new_alphas;
+        std::vector<bool> new_core;
+        std::vector<std::string> new_names;
+        std::vector<std::string> new_types;
+
+        for (size_t idx = 0; idx < keep_idx.size(); ++idx) {
+            int64_t orig = keep_idx[idx];
+            new_ops.push_back(node_ops[orig]);
+            new_alphas.push_back(alpha_epi[orig]);
+            new_core.push_back(is_core_node[orig]);
+            new_names.push_back(node_names[orig]);
+            new_types.push_back(node_types[orig]);
+        }
+
+        w_route.slice(0, 0, new_k).slice(1, 0, new_k).copy_(new_w);
         node_ops = new_ops;
-        alpha_epi = new_alpha;
-        is_core_node = new_is_core;
+        alpha_epi = new_alphas;
+        is_core_node = new_core;
         node_names = new_names;
         node_types = new_types;
-        k_nodes = node_ops.size();
+        k_nodes = new_k;
+
         return pruned_count;
     }
 
@@ -523,15 +477,36 @@ public:
             node_states = torch::stack(new_states, 0);
         }
 
-        auto final_aggregated = node_states.sum(0);
-        return torch::matmul(final_aggregated, w_motor_out.t());
+        auto motor_latent = node_states[1];
+        auto readout = torch::matmul(motor_latent, w_motor_out.t());
+        return readout;
     }
 
-    std::vector<std::string> get_topology_manifest() {
-        std::vector<std::string> manifest;
+    std::map<std::string, torch::Tensor> get_active_parameters_map() {
+        std::map<std::string, torch::Tensor> params;
+        params["w_route"] = w_route;
+        params["w_sensory_in"] = w_sensory_in;
+        params["w_motor_out"] = w_motor_out;
+
         for (int64_t i = 0; i < k_nodes; ++i) {
-            manifest.push_back(node_names[i] + ":" + node_types[i] + ":" + (is_core_node[i] ? "CORE" : "MUTATED"));
+            std::string prefix = "node_" + std::to_string(i) + "_" + node_names[i];
+            if (alpha_epi[i].requires_grad()) {
+                params[prefix + ".alpha"] = alpha_epi[i];
+            }
+            for (const auto& pair : node_ops[i]->named_parameters()) {
+                params[prefix + "." + pair.key()] = pair.value();
+            }
         }
+        return params;
+    }
+
+    std::string get_topology_manifest() {
+        std::string manifest = "{\"k_nodes\":" + std::to_string(k_nodes) + ",\"nodes\":[";
+        for (int64_t i = 0; i < k_nodes; ++i) {
+            manifest += "{\"name\":\"" + node_names[i] + "\",\"type\":\"" + node_types[i] + "\",\"is_core\":" + (is_core_node[i] ? "true" : "false") + "}";
+            if (i < k_nodes - 1) manifest += ",";
+        }
+        manifest += "]}";
         return manifest;
     }
 };
@@ -539,7 +514,7 @@ TORCH_MODULE(DynamicMorphicGraph);
 
 
 // ============================================================================
-// 10. PYBIND11 MODULE BINDINGS
+// 9. PYBIND11 MODULE BINDINGS
 // ============================================================================
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::class_<UniversalManifoldImpl, torch::nn::Module, std::shared_ptr<UniversalManifoldImpl>>(m, "UniversalManifold")
@@ -564,11 +539,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("__call__", [](ContinuousHopfieldMemoryImpl& self, torch::Tensor x, std::optional<torch::Tensor> u_t) {
             return self.forward(x, u_t.has_value() ? u_t.value() : torch::Tensor());
         }, py::arg("x"), py::arg("u_t") = py::none());
-
-    py::class_<ContinuousSaccadicDriftImpl, torch::nn::Module, std::shared_ptr<ContinuousSaccadicDriftImpl>>(m, "ContinuousSaccadicDrift")
-        .def(py::init<int64_t, int64_t, std::string>(), py::arg("dim") = 128, py::arg("num_filters") = 17, py::arg("device_str") = "cpu")
-        .def("forward", &ContinuousSaccadicDriftImpl::forward, py::arg("bump_state"), py::arg("h_core"), py::arg("da_gain") = 0.0f)
-        .def("__call__", &ContinuousSaccadicDriftImpl::forward, py::arg("bump_state"), py::arg("h_core"), py::arg("da_gain") = 0.0f);
 
     py::class_<LatentPredictorImpl, torch::nn::Module, std::shared_ptr<LatentPredictorImpl>>(m, "LatentPredictor")
         .def(py::init<int64_t, int64_t, std::string>(), py::arg("dim") = 256, py::arg("latent_dim") = 64, py::arg("device") = "cpu")

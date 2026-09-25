@@ -187,7 +187,7 @@ public:
 
         // 2. Convolutional Continuous Drift
         int64_t pad = num_filters / 2;
-        auto bump_pad = torch::nn::functional::pad(bump_state.unsqueeze(1), torch::nn::functional::PadFuncOptions({pad, pad}).mode(torch::kReplicate));
+        auto bump_pad = torch::nn::functional::pad(bump_state.unsqueeze(1), torch::nn::functional::PadFuncOptions({pad, pad}).mode(torch::kReplication));
 
         std::vector<int64_t> stride = {1};
         std::vector<int64_t> padding = {0};
