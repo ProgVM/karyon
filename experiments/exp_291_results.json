@@ -1,20 +1,20 @@
 {
   "exp_id": "EXP-291",
-  "initial_free_energy": 6.050312519073486,
-  "final_free_energy": 1.9868213740892315e-09,
-  "free_energy_delta": 6.050312517086665,
-  "tok_per_sec": 663.8779835984352,
-  "sleep_cycles": 132,
-  "sprouted_nodes": 101,
+  "initial_free_energy": 6.032711029052734,
+  "final_free_energy": 0.4686375752091408,
+  "free_energy_delta": 5.564073453843593,
+  "tok_per_sec": 2438.969613193484,
+  "sleep_cycles": 133,
+  "sprouted_nodes": 102,
   "pruned_nodes": 101,
-  "final_nodes": 2,
-  "mean_accuracy": 0.0,
+  "final_nodes": 3,
+  "mean_accuracy": 11.299999999999999,
   "domain_accuracies": {
     "pointer": 0.0,
     "reversal": 0.0,
     "addition": 0.0,
     "parity": 0.0,
-    "dyck": 0.0
+    "dyck": 56.49999999999999
   },
   "verdict": "POSITIVE"
 }

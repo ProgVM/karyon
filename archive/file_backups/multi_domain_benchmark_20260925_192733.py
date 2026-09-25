@@ -21,8 +21,7 @@ def generate_multi_domain_suite(seed=42):
             target = random.choice(vars_all)
             expr = "; ".join(steps) + f"; {target}="
             ans = state[target]
-            full = f"{expr}{ans}\n"
-            samples.append((expr, ans, full))
+            samples.append((expr, ans, 'pointer'))
         return samples
 
     # Domain 2: Sequence Reversal (Algorithmic / Memory)
@@ -33,8 +32,7 @@ def generate_multi_domain_suite(seed=42):
             seq = [str(random.randint(1, 9)) for _ in range(length)]
             expr = "rev " + " ".join(seq) + " = "
             ans = " ".join(reversed(seq))
-            full = f"{expr}{ans}\n"
-            samples.append((expr, ans, full))
+            samples.append((expr, ans, 'reversal'))
         return samples
 
     # Domain 3: Arithmetic Carry (3-digit addition)
@@ -45,8 +43,7 @@ def generate_multi_domain_suite(seed=42):
             b = random.randint(10, 999)
             expr = f"{a} + {b} = "
             ans = str(a + b)
-            full = f"{expr}{ans}\n"
-            samples.append((expr, ans, full))
+            samples.append((expr, ans, 'addition'))
         return samples
 
     # Domain 4: State Machine / Parity Tracking (XOR over bitstream)
@@ -58,8 +55,7 @@ def generate_multi_domain_suite(seed=42):
             parity = str(sum(int(b) for b in bits) % 2)
             expr = "parity " + " ".join(bits) + " = "
             ans = parity
-            full = f"{expr}{ans}\n"
-            samples.append((expr, ans, full))
+            samples.append((expr, ans, 'parity'))
         return samples
 
     # Domain 5: Dyck-1 Balanced Parentheses / Stack Memory (depth check)
@@ -105,8 +101,7 @@ def generate_multi_domain_suite(seed=42):
                     acc_valid = False
                 ans = "valid" if acc_valid else "invalid"
                 expr = "dyck " + "".join(s) + " = "
-            full = f"{expr}{ans}\n"
-            samples.append((expr, ans, full))
+            samples.append((expr, ans, 'dyck'))
         return samples
 
     return {
@@ -120,4 +115,4 @@ def generate_multi_domain_suite(seed=42):
 if __name__ == '__main__':
     suite = generate_multi_domain_suite()
     for domain, samples in suite.items():
-        print(f"Domain [{domain:10s}]: {len(samples)} samples. Ex: {samples[0][0]} -> {samples[0][1]} | Full: {samples[0][2]!r}")
+        print(f"Domain [{domain:10s}]: {len(samples)} samples. Ex: {samples[0][0]} -> {samples[0][1]}")
