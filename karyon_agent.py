@@ -1,11 +1,14 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON CORE AGENT MASTER WRAPPER v34.4
+KARYON CORE AGENT MASTER WRAPPER v35.0
 ===============================================================================
-Python Orchestrator Wrapper for C++20 UniversalMorphicSpace & DynamicMorphicGraph
-with Integrated Continuous Hopfield Attractor Memory, Sleep-Consolidation,
-Allostatic Morphogenesis Engine (Sprouting + Apoptosis), and Safe Optimizer State Rebinding.
+Python Orchestrator Wrapper for C++20 Spatiotemporal Morphogenetic Engine:
+- Temporal Domain: C++20 CausalParallelSSD (Continuous linear state space time-mixing)
+- Spatial Domain: C++20 DynamicMorphicGraph (Recurrent thinking cycles across dynamic mathematical operators)
+- Continuous Hopfield Attractor Memory for discrete concept snapping
+- Sleep-Consolidation, Edelman Neural Darwinism Apoptosis, Epigenetic Sprouting (AGN v6.0)
+- Unified Parameter Registration & 100% .kcore v5.0 Container Serialization.
 ===============================================================================
 """
 import math
@@ -28,20 +31,19 @@ class ConfigMock:
 
 class CoREAgent(nn.Module):
     """
-    Master Python wrapper over C++20 UniversalMorphicSpace & DynamicMorphicGraph engines.
-    Equipped with Continuous Hopfield Attractor Memory for zero-shot pattern separation.
-    Ensures 100% compliance with karyon_checkpoint.py (.kcore v5.0 serialization).
+    Master Python wrapper over C++20 Spatiotemporal DynamicMorphicGraph engine.
+    Integrates CausalParallelSSD (temporal context flow) with DynamicMorphicGraph
+    (spatial/recurrent latent deliberation depth).
+    Ensures 100% compliance with KEP Principle 22 (Spatiotemporal Dualism)
+    and karyon_checkpoint.py (.kcore v5.0 serialization).
     """
     def __init__(
         self,
         vocab_size: int = 258,
         embed_dim: int = 256,
-        num_cells: int = 2,
-        num_operators: int = 4,
         device: str = 'cpu',
-        use_graph: bool = False,
-        use_hopfield: bool = True,
-        num_basins: int = 128
+        min_decay: float = 0.005,
+        max_decay: float = 0.2
     ):
         super().__init__()
         self.config = ConfigMock()
@@ -52,86 +54,84 @@ class CoREAgent(nn.Module):
         self.hidden_dim = embed_dim
         self.latent_dim = 64
         self.action_dim = vocab_size
-        self.use_graph = use_graph
-        self.use_hopfield = use_hopfield and (not use_graph)
 
-        if self.use_graph:
-            # Instantiate the C++20 DynamicMorphicGraph
-            self.graph = kcore.DynamicMorphicGraph(embed_dim, device)
-            # Guarantee at least 2 base core operators for immediate bidirectional connectivity
-            self.graph.add_node("core_0", "LinearAccumulator", True, 1.0)
-            self.graph.add_node("core_1", "SaturatedAttractor", True, 1.0)
-            self.graph_emb = nn.Embedding(vocab_size, embed_dim).to(device)
-            self.graph_norm = nn.LayerNorm(embed_dim).to(device)
-            self.graph_head = nn.Linear(embed_dim, vocab_size, bias=False).to(device)
-            nn.init.normal_(self.graph_emb.weight, 0.0, 0.02)
-            nn.init.normal_(self.graph_head.weight, 0.0, 0.02)
-        else:
-            # Instantiate the C++20 UniversalMorphicSpace engine
-            self.space = kcore.UniversalMorphicSpace(
-                vocab_size, embed_dim, num_cells, num_operators, device
-            )
-            if self.use_hopfield:
-                # Integrate Continuous Hopfield Attractor Memory directly
-                self.hopfield = kcore.ContinuousHopfieldMemory(embed_dim, num_basins, device)
-                self.hopfield_head = nn.Linear(embed_dim, vocab_size, bias=False).to(device)
-                nn.init.normal_(self.hopfield_head.weight, 0.0, 0.02)
-                self.gate = nn.Parameter(torch.tensor([0.35], device=device))
+        # 1. Universal Byte Manifold Embedding
+        self.emb = nn.Embedding(vocab_size, embed_dim).to(device)
+        nn.init.normal_(self.emb.weight, 0.0, 0.02)
+
+        # 2. C++20 CausalParallelSSD (Temporal Axis S: State-Space Causal Sequence Mixing)
+        self.ssd = kcore.CausalParallelSSD(embed_dim, str(device), min_decay, max_decay)
+
+        # 3. C++20 DynamicMorphicGraph (Spatial/Thinking Axis K: Recurrent Deliberation Depth)
+        self.graph = kcore.DynamicMorphicGraph(embed_dim, str(device))
+        # Initialize default foundational operators for immediate bidirectional graph connectivity
+        self.graph.add_node("core_acc", "LinearAccumulator", True, 1.0)
+        self.graph.add_node("core_sat", "SaturatedAttractor", True, 1.0)
+
+        # 4. LayerNorm & Head Readout (Resonance-Tied with Input Embedding)
+        self.norm = nn.LayerNorm(embed_dim).to(device)
+        self.head = nn.Linear(embed_dim, vocab_size, bias=False).to(device)
+        self.head.weight = self.emb.weight
 
     def forward(self, input_ids: torch.Tensor, thinking_steps: int = 4) -> torch.Tensor:
-        """Direct forward pass returning logits or graph readouts."""
-        if self.use_graph:
-            if input_ids.dtype in (torch.long, torch.int32, torch.int64):
-                x = self.graph_emb(input_ids)
-                # If sequence dimension present [B, S, D], process sequence or pool representation
-                if x.dim() == 3:
-                    B, S, D = x.shape
-                    # Pass through dynamic morphic recurrent thinking graph
-                    x_flat = x.reshape(B * S, D)
-                    h_graph = self.graph(x_flat, thinking_steps)
-                    h_norm = self.graph_norm(h_graph)
-                    logits = self.graph_head(h_norm).reshape(B, S, self.vocab_size)
-                    return logits
-                else:
-                    h_graph = self.graph(x, thinking_steps)
-                    return self.graph_head(self.graph_norm(h_graph))
+        """
+        Spatiotemporal Dual-Phase Forward Pass:
+        1. Temporal State-Space Causal Scan (Sequence mixing across S).
+        2. Spatial Morphogenetic Graph Recirculation (Deliberative latent thinking across K).
+        """
+        if input_ids.dtype in (torch.long, torch.int32, torch.int64):
+            x = self.emb(input_ids)
+            if x.dim() == 3:
+                B, S, D = x.shape
+                # Step 1: Temporal Causal State-Space Mixing
+                h_seq = self.ssd.forward(x) # [B, S, D]
+
+                # Step 2: Spatial/Deliberative Graph Recirculation
+                h_flat = h_seq.reshape(B * S, D)
+                h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
+
+                # Step 3: Residual Highway + Readout
+                h_out = h_seq + h_graph
+                logits = self.head(self.norm(h_out))
+                return logits
             else:
-                return self.graph(input_ids, thinking_steps)
+                # 2D input [B, D] continuous vectors
+                h_graph = self.graph.forward(x, thinking_steps)
+                return self.head(self.norm(x + h_graph))
         else:
-            # Continuous Morphic Space forward pass
-            logits = self.space.forward(input_ids)
-            if self.use_hopfield:
-                h_latent = self.space.forward_latent(input_ids)
-                h_hopfield = self.hopfield.forward(h_latent)
-                hopfield_logits = self.hopfield_head(h_hopfield)
-                g = torch.sigmoid(self.gate)
-                logits = (1.0 - g) * logits + g * hopfield_logits
-            return logits
+            # Continuous tensor forward pass
+            if input_ids.dim() == 3:
+                B, S, D = input_ids.shape
+                h_seq = self.ssd.forward(input_ids)
+                h_flat = h_seq.reshape(B * S, D)
+                h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
+                return self.head(self.norm(h_seq + h_graph))
+            else:
+                return self.graph.forward(input_ids, thinking_steps)
 
     def forward_latent(self, input_ids: torch.Tensor, thinking_steps: int = 4) -> torch.Tensor:
         """Returns internal continuous latent representations."""
-        if self.use_graph:
-            x = self.graph_emb(input_ids)
-            if x.dim() == 3:
-                B, S, D = x.shape
-                x_flat = x.reshape(B * S, D)
-                h_graph = self.graph(x_flat, thinking_steps)
-                return h_graph.reshape(B, S, D)
-            else:
-                return self.graph(x, thinking_steps).unsqueeze(1)
+        if input_ids.dtype in (torch.long, torch.int32, torch.int64):
+            x = self.emb(input_ids)
         else:
-            return self.space.forward_latent(input_ids)
+            x = input_ids
+
+        if x.dim() == 3:
+            B, S, D = x.shape
+            h_seq = self.ssd.forward(x)
+            h_flat = h_seq.reshape(B * S, D)
+            h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
+            return h_seq + h_graph
+        else:
+            h_graph = self.graph.forward(x, thinking_steps)
+            return x + h_graph
 
     def add_node(self, name: str, op_type: str, is_core: bool = False, initial_alpha: float = 0.0):
         """Sprouts a new node inside the C++20 DynamicMorphicGraph."""
-        if not self.use_graph:
-            raise ValueError("add_node can only be called when use_graph=True")
         self.graph.add_node(name, op_type, is_core, initial_alpha)
 
     def prune_inactive_nodes(self, threshold: float = 0.02) -> int:
         """Prunes inactive dynamic nodes via Edelman Neural Darwinism."""
-        if not self.use_graph:
-            return 0
         return self.graph.prune_inactive_nodes(threshold)
 
     def execute_deep_allostatic_sleep(
@@ -149,43 +149,30 @@ class CoREAgent(nn.Module):
     ) -> Dict[str, float]:
         """
         Executes Biophysical Sleep & Morphogenetic Neurogenesis Cycle:
-        1. Tononi SHY Synaptic Scaling (soft downscaling).
+        1. Tononi SHY Synaptic Scaling (soft downscaling with epigenetic methylation locks).
         2. Neural Darwinism Apoptosis (pruning inactive nodes with |tanh(alpha)| < prune_threshold).
         3. Epigenetic Sprouting of new dynamic graph nodes (AGN v6.0 / Net2Net zero-shock).
         """
         scaled_params_count = 0
         # Phase 1: Epigenetic Methylation Lock Protection
         with torch.no_grad():
-            if self.use_graph:
-                param_map = self.graph.named_parameters_map()
-                for name, param in param_map.items():
-                    if "w_route" in name or "weight" in name or "w_" in name:
-                        param.mul_(1.0 - downscaling_factor * 0.1) # Protect core parameters via methylation lock
-                        scaled_params_count += 1
-                self.graph_emb.weight.mul_(1.0 - downscaling_factor * 0.1)
-                self.graph_head.weight.mul_(1.0 - downscaling_factor * 0.1)
-                scaled_params_count += 2
-            else:
-                param_map = self.space.named_parameters_map()
-                for name, param in param_map.items():
-                    if "weight" in name or "matrix" in name:
-                        param.mul_(1.0 - downscaling_factor)
-                        scaled_params_count += 1
-                if self.use_hopfield:
-                    for param in self.hopfield.parameters():
-                        param.mul_(1.0 - downscaling_factor)
-                        scaled_params_count += 1
-                    self.hopfield_head.weight.mul_(1.0 - downscaling_factor)
+            param_map = self.graph.named_parameters_map()
+            for name, param in param_map.items():
+                if "w_route" in name or "weight" in name or "w_" in name:
+                    param.mul_(1.0 - downscaling_factor * 0.1)
                     scaled_params_count += 1
+            for p in self.ssd.parameters():
+                p.mul_(1.0 - downscaling_factor * 0.1)
+                scaled_params_count += 1
+            self.emb.weight.mul_(1.0 - downscaling_factor * 0.1)
+            scaled_params_count += 1
 
         # Phase 2: Neural Darwinism Apoptosis (Pruning)
-        pruned_nodes = 0
-        if self.use_graph:
-            pruned_nodes = self.prune_inactive_nodes(prune_threshold)
+        pruned_nodes = self.prune_inactive_nodes(prune_threshold)
 
         # Phase 3: Epigenetic Sprouting
         sprouted = False
-        if self.use_graph and random.random() < sprout_probability:
+        if random.random() < sprout_probability:
             op_type = random.choice(available_ops)
             node_idx = self.graph.k_nodes
             node_name = f"sleep_sprouted_op_{node_idx}_{op_type.lower()}"
@@ -196,14 +183,13 @@ class CoREAgent(nn.Module):
             "scaled_params": float(scaled_params_count),
             "pruned_nodes": float(pruned_nodes),
             "sprouted": 1.0 if sprouted else 0.0,
-            "total_nodes": float(self.graph.k_nodes if self.use_graph else 0)
+            "total_nodes": float(self.graph.k_nodes)
         }
 
     def parameters(self, recurse: bool = True):
         """
         Overrides nn.Module.parameters() to return all active parameters,
-        including dynamic C++20 graph parameters, ensuring standard optimizers
-        optimize the entire morphogenetic graph without manual state_dict extraction.
+        including dynamic C++20 graph parameters and CausalParallelSSD parameters.
         """
         for p in self.get_complete_state_dict().values():
             if isinstance(p, torch.Tensor) and p.requires_grad:
@@ -218,28 +204,18 @@ class CoREAgent(nn.Module):
 
     def get_topology_manifest(self) -> str:
         """Returns the JSON manifest representing the evolved graph topology."""
-        if self.use_graph:
-            return self.graph.get_topology_manifest()
-        return "{}"
+        return self.graph.get_topology_manifest()
 
     def get_complete_state_dict(self) -> Dict[str, torch.Tensor]:
         """Exposes C++20 module parameters for .kcore v5.0 container serialization."""
         state = {}
-        if self.use_graph:
-            for k, v in self.graph.named_parameters_map().items():
-                state[f"graph.{k}"] = v
-            state["graph_emb.weight"] = self.graph_emb.weight
-            state["graph_norm.weight"] = self.graph_norm.weight
-            state["graph_norm.bias"] = self.graph_norm.bias
-            state["graph_head.weight"] = self.graph_head.weight
-        else:
-            for k, v in self.space.named_parameters_map().items():
-                state[f"space.{k}"] = v
-            if self.use_hopfield:
-                for idx, p in enumerate(self.hopfield.parameters()):
-                    state[f"hopfield.param_{idx}"] = p
-                state["hopfield_head.weight"] = self.hopfield_head.weight
-                state["gate"] = self.gate
+        for k, v in self.graph.named_parameters_map().items():
+            state[f"graph.{k}"] = v
+        for k, v in self.ssd.named_parameters().items():
+            state[f"ssd.{k}"] = v
+        state["emb.weight"] = self.emb.weight
+        state["norm.weight"] = self.norm.weight
+        state["norm.bias"] = self.norm.bias
         return state
 
     def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor]):
