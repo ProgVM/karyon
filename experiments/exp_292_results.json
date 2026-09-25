@@ -1,0 +1,20 @@
+{
+  "exp_id": "EXP-292",
+  "initial_free_energy": 6.111842632293701,
+  "final_free_energy": 1.3387515187263488,
+  "free_energy_delta": 4.773091113567352,
+  "tok_per_sec": 2219.285682290892,
+  "sleep_cycles": 100,
+  "replay_steps": 400,
+  "buffer_size": 300,
+  "final_nodes": 2,
+  "mean_accuracy": 3.4,
+  "domain_accuracies": {
+    "pointer": 0.0,
+    "reversal": 0.0,
+    "addition": 0.0,
+    "parity": 17.0,
+    "dyck": 0.0
+  },
+  "verdict": "POSITIVE"
+}
