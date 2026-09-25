@@ -1,4 +1,4 @@
-# Karyon-CoRE (Continuous Recurrent Engine) v39.0 Master
+# Karyon-CoRE (Continuous Recurrent Engine) v48.0 Master
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
@@ -6,37 +6,29 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.5%2B-orange.svg)](https://pytorch.org/)
 [![CUDA](https://img.shields.io/badge/CUDA-12.0%2B-green.svg)](https://developer.nvidia.com/cuda-toolkit)
 [![Container](https://img.shields.io/badge/Container-.kcore%20v5.0-brightgreen.svg)](https://github.com/ProgVM/karyon)
-[![KEP Standard](https://img.shields.io/badge/KEP-v9.0%20Master-purple.svg)](KEP.md)
+[![KEP Standard](https://img.shields.io/badge/KEP-v14.0%20Master-purple.svg)](KEP.md)
 
-> **Autonomous, Non-Deterministic Cognitive Architecture operating at the raw UTF-8 byte level ($V=258$, hot-expandable to $V=1024$ multimodal), powered by Active Inference, Zero-Loop Parallel State-Space Duality (@ 200k+ tok/s), 2-Stage Cascaded Cortical Stacks, Dynamic Allostatic Habituation (Principle 14), Energy-Dependent Tsodyks-Markram Synaptic Dynamics, 3-Phase Sleep 2.0 & Tononi SHY Pruning, GABAergic Shunting Lateral Inhibition, 4-Level Morphogenesis, and Single-File Relocatable Executable Binary Containers (`.kcore` v5.0).**
+> **Autonomous Sovereign Cognitive Architecture operating at the raw UTF-8 byte level ($V=258$, expandable to $V=1024$ multimodal), grounded in Spatiotemporal Dualism (Principle 22), Active Inference, Zero-Loop Parallel State-Space Duality (@ 200k+ tok/s), Dynamic Morphic Graphs, Endogenous Allostasis, 3-Phase Sleep 2.0 with Edelman Neurodarwinian Apoptosis, and Single-File Relocatable Executable Binary Containers (`.kcore` v5.0).**
 
 Created and architected by **Bazilevs (ProgVM member)** in 2026.
 
 ---
 
-## 🚀 Key Architectural Innovations (v39.0 Master)
+## 🚀 Key Architectural Foundations (v48.0 Master)
 
-Karyon-CoRE transcends static matrix-multiplication deep learning models ("weight calculators") toward a living, continuous-time cognitive entity:
+Karyon-CoRE transcends static matrix-multiplication deep learning models ("weight calculators / statistical parroting") toward a sovereign, continuous-time cognitive substrate with causal reasoning:
 
-1. **Universal Raw UTF-8 Byte Substrate ($V=258 \to 1024$):** Eliminates subword tokenizers and BPE dictionaries (`pad=256`, `eos=257`). Maps text, audio, vision, motor efference, and homeostatic body signals into a unified continuous embedding space ($D_{\text{text}}=256, D_{\text{hidden}}=768$), with dynamic on-the-fly alphabet hot-expansion (EXP-146).
-2. **Zero-Loop Parallel State-Space Duality (Time-Mixing @ 200k+ tok/s):** Closed-form parallel matrix scanning ($\mathbf{Y} = \mathbf{Y}_{\text{intra}} + \mathbf{Y}_{\text{inter}}$), processing continuous packed streams ($S=1024/2048, B=32/64$) at native GPU Tensor Core speed without sequential recurrence loops (EXP-22/23).
-3. **2-Stage Compositional Cascaded Cortical Stack (KEP Principle 8):**
-   * **Stage 1 (Morpho-Syntactic Cortical Sheet):** Fast SSD ($\beta_1 \in [0.005, 0.15]$) + Causal ConvSwiGLU $K=3$ ($3072\text{D}$ expand) + Pre-LayerNorm Residual Highway.
-   * **Precision-Weighted Laminar Error Routing (PW-LPER):** Computes top-down prediction errors and precision weights ($\pi_t$) to route ascending surprise signals to higher sheets.
-   * **Stage 2 (Semantic-Discourse Cortical Sheet):** Slow SSD ($\beta_2 \in [0.0001, 0.05]$) + Causal ConvSwiGLU $K=7$ ($3072\text{D}$ expand) + Pre-LayerNorm Residual Highway.
-4. **Dynamic Allostatic Habituation & Multi-Scale Efference Filter (EXP-162 / Principle 14):** Eradicates static biophysical constants. Habituation strength $\gamma_{\text{fatigue}}(u_t)$, visitation trace decay $\alpha_{\text{decay}}(u_t)$, and motor efference refractory scaling $\lambda_{\text{refractory}}(u_t)$ are dynamic allostatic functions coupled to Curiosity and Noradrenaline, eliminating perseverative semantic loops and boosting lexical diversity ($TTR \to 1.0$).
-5. **Energy-Coupled Tsodyks-Markram (TM) Vesicle Plasticity (EXP-153 / EXP-161):** Integrates short-term synaptic depression governed by metabolic energy reserves:
-   $$\frac{dR}{dt} = \frac{1 - R}{\tau_{\text{rec}}(u_{\text{energy}})} - u_{\text{SE}} \cdot R \cdot x_t$$
-   Recovering vesicle pools faster when metabolic energy is abundant and conserving neurotransmitters during energy scarcity.
-6. **Biophysical 3-Phase Sleep 2.0 & Tononi SHY Synaptic Consolidation (EXP-159):** Autonomous wake-sleep cycle comprising **NREM Slow-Wave Replay** (high-surprise episodic memory consolidation), **REM Synaptic Morphogenesis** (Net2Net axon sprouting and dead-pathway pruning), and **Tononi Synaptic Homeostasis Hypothesis (SHY)** downscaling to restore baseline metabolic energy.
-7. **GABAergic Shunting Lateral Inhibition (EXP-151):** Replaces artificial discrete sorting top-p routines with biophysical continuous neural dynamics. Phasic Locus Coeruleus (LC) precision gain $\beta_{\text{eff}}$ and GABAergic shunting thresholds ($z_{\max} - \Delta_{\text{GABA}}$) hyperpolarize subthreshold neurons to absolute silence.
+1. **Universal Raw UTF-8 Byte Substrate ($V=258 \to 1024$):** Eliminates subword tokenizers and BPE dictionaries (`pad=256`, `eos=257`). Maps text, audio, vision, motor efference, and homeostatic body signals into a unified continuous embedding space ($D_{\text{text}}=256, D_{\text{hidden}}=512$), with dynamic on-the-fly alphabet expansion.
+2. **Spatiotemporal Dualism (KEP Principle 22):** Decouples Problem Space from Generation Time.
+   * **Temporal Axis ($S$):** Causal State-Space Duality (`CausalParallelSSD`) tracks sequential temporal causal flow ($h_t = \alpha h_{t-1} + (1-\alpha) x_t$) at native GPU Tensor Core speed (@ 200k+ tok/s).
+   * **Spatial / Reasoning Axis ($K$):** Dynamic Morphic Graph deliberation and cellular wave diffusion (`DynamicMorphicGraph`) iteratively refine representations across recurrent thinking cycles before committing to motor actions.
+3. **C++20 Compiled LibTorch Engine (`karyon_core.cpp`):** Heavy mathematical operations, state-space scans, cellular graph ops, and episodic memory slicing run directly on hardware via compiled C++20 LibTorch extensions (`-O3 -std=c++20`), completely bypassing Python interpreter overhead.
+4. **Active Inference & Variational Free Energy Engine ($F_t$):** Latent World Model generating prior and posterior latent distributions ($z_t$) with bounded Gaussian variance ($\epsilon=0.01$), teleologically minimizing Variational Free Energy $F_t = D_{\text{KL}}(q(z)\|p(z)) + \mathcal{L}_{\text{rec}}$.
+5. **Dynamic Morphic Graph Neurogenesis (Principle 16 / AGN v6.0):** Autonomous structural assembly of primitive mathematical operator nodes (`LinearAccumulator`, `BilinearMultiplicative`, `StateSpaceMemoryOp`) governed by smooth epigenetic gating ($\tanh(\alpha_{\text{epi}}) \cdot y$) to guarantee zero-shock function identity.
+6. **Somatic Homeostasis & Dynamic Allostasis (Ashby Ultrastability):** Real-time tracking of 6 interoceptive variables (`Curiosity`, `Energy`, `Stability`, `Health`, `Noradrenaline`, `Dopamine`). $F_t$ directly modulates arousal ($NA_t$) and reward plasticity ($DA_t$), coupling thermodynamic vitality to computational depth.
+7. **Biophysical 3-Phase Sleep & Edelman Neurodarwinian Apoptosis:** Autonomous wake-sleep cycle comprising NREM episodic memory replay, REM topological morphogenesis, and Tononi Synaptic Homeostasis (SHY) downscaling to prune redundant synaptic structures with zero metabolic contribution.
 8. **Modern Continuous Hopfield Attractor Network ($N=256$ Basins, $\beta=12.0$):** Unit-sphere normalized basins ($\|b_i\|_2 = 1.0$) with dopaminergic precision sharpening ($\beta \cdot (1 + 1.5 DA)$) and bounded commitment loss ($\mathcal{L}_{\text{commit}}$), snapping continuous neural trajectories into discrete conceptual attractors.
-9. **Active Inference & Variational Free Energy Engine ($F_t$):** Latent World Model generating prior and posterior latent distributions ($z_t$) with bounded Gaussian variance ($\epsilon=0.01$), minimizing Variational Free Energy $F_t = D_{\text{KL}}(q(z)\|p(z)) + \mathcal{L}_{\text{rec}}$.
-10. **Somatic Homeostasis & Ashby Ultrastability:** Real-time tracking of 6 interoceptive variables (`Curiosity`, `Energy`, `Stability`, `Health`, `Noradrenaline`, `Dopamine`). Perceptive listening actively recovers metabolic energy (Magistretti 2015 Astrocyte-Neuron Lactate Shuttle), while motor speech production expends energy.
-11. **System 2 Active Inference Parallel Mental Sandbox (EXP-100 / EXP-119 / EXP-133):** Evaluates counterfactual future branches on high-entropy boundaries ($H > 0.70$) across $K=8$ candidate rollouts over $T=3$ steps, selecting paths that minimize Expected Free Energy ($G$).
-12. **4-Level Autonomous Self-Reflective Morphogenesis (EXP-149 / EXP-150):** Autonomous multi-tier neuroevolution: Level 1 (Synaptic Pruning & Axon Sprouting), Level 2 (Net2Net Layer Growth), Level 3 (Homeostatic Hyperparameter Adaptation), Level 4 (Meta-Loss Free Energy Calibration).
-13. **Vector 3 GWT Hippocampal Channel & Scaled Episodic Memory (EXP-101 / EXP-122):** 5,000-slot vectorized episodic memory store with fast 1-shot factual recall and Global Workspace competition across sensory perception and recalled associations.
-14. **Single-File Autonomous Executable Container Standard (`.kcore` v5.0):** Zero-dependency relocatable binary format encapsulating Section 1 (Manifest DNA), Section 2 (Full Python & C++20 Source Bundle), Section 3 (Zero-Copy 64-byte Aligned Tensor Weights), and Section 4 (Persistent State Spaces). Directly executable via native C-ABI runtime (`libkaryon_runtime.so`).
+9. **Single-File Autonomous Executable Container Standard (`.kcore` v5.0):** Zero-dependency relocatable binary format encapsulating Section 1 (Manifest DNA Genome), Section 2 (C++20 & Python Source Logic), Section 3 (Zero-Copy 64-byte Aligned Tensor Weights), and Section 4 (Persistent Recurrent State Spaces). Directly loadable and executable via native C-ABI runtime (`libkaryon_runtime.so`).
 
 ---
 
@@ -44,9 +36,9 @@ Karyon-CoRE transcends static matrix-multiplication deep learning models ("weigh
 
 ```text
 karyon/
-├── karyon_agent.py           # Master CoREAgent v39.0 (Laminar Stacks, True Will, PAC Decoding & GWT)
-├── karyon_core.cpp           # Native C++20 LibTorch Master Core (16 integrated cognitive systems)
-├── karyon_core.py            # C++20 JIT compilation & hot-reload wrapper (karyon_cpp_ext_v39)
+├── karyon_agent.py           # Master CoREAgent (Spatiotemporal Dualism, SSD + Dynamic Deliberation)
+├── karyon_core.cpp           # Native C++20 LibTorch Master Core (Parallel SSD, Morphic Graph, Homeostasis)
+├── karyon_core.py            # C++20 JIT compilation & hot-reload wrapper (karyon_cpp_ext)
 ├── karyon_entity.py          # Unified KaryonEntity high-level cognitive agent interface
 ├── karyon_config.py          # Master CoREConfig dataclass registry (Homeostasis, Net, Memory, Train)
 ├── karyon_checkpoint.py      # .kcore v5.0 container serializer, loader & tensor mmap adapter
@@ -54,38 +46,34 @@ karyon/
 ├── karyon_logger.py          # Line-buffered real-time streaming logger
 ├── karyon_runtime.h / .cpp   # Pure C-ABI Standalone Host Driver (libkaryon_runtime.so)
 ├── karyon_llvm_engine.h/.cpp # LLVM IR Bitcode compilation engine
-├── kcore_builder.py          # Container packing utility (Python/C++ logic + weights + states -> .kcore)
+├── kcore_builder.py          # Container packing utility (Logic + weights + states -> .kcore)
 ├── kcore_evolution.py        # Net2Net morphogenesis evolution engine with shape-adaptive alignment
 ├── kcore_format.h            # Binary container C-struct definitions
 ├── init_priors.py            # Fault-tolerant existential identity prior projector
 ├── train_single_pass.py      # High-speed Single-Pass stream runtime with dual-cloud HF sync
 ├── train_multi_pass.py       # Multi-epoch dataset training engine
-├── train_continuous_web.py   # Continuous autonomous web-crawling active learning loop
 ├── dialogue.py               # Real-time closed-loop interactive social active inference dialogue
-├── diag_profile_pipeline.py  # Deep CUDA event pipeline profiler
-├── KEP.md                    # Official Karyon Engineering Protocol Master Specification (v9.0)
-└── experiments/              # Immutable KEP benchmark suite (EXP-1 to EXP-162)
+├── KEP.md                    # Official Karyon Engineering Protocol Master Specification (v14.0)
+└── experiments/              # Immutable KEP benchmark suite (EXP-1 to EXP-290+)
     └── archive/              # Archived validated and peer-reviewed benchmark scripts
 ```
 
 ---
 
-## 📊 Empirical Scientific Ledger Highlights (EXP-1 to EXP-162)
+## 📊 Empirical Scientific Ledger Highlights (EXP-1 to EXP-290)
 
 | EXP ID | Breakthrough Mechanism | Baseline | Proposed | Impact / Verdict |
 |---|---|:---:|:---:|:---:|
-| **EXP-162** | **Dynamic Allostatic Habituation & Efference Filter** | $TTR = 0.655, \text{Rep} = 8.8\%$ | **$TTR = 1.000, \text{Rep} = 0.0\%$** | 🟢 **POSITIVE** (+$52.7\%$ diversity, 0% loops) |
-| **EXP-161** | **Energy-Coupled Tsodyks-Markram Synapse** | Static vesicle rate | $R_{\text{rec}} = 0.9944$ | 🟢 **POSITIVE** (Dynamic metabolic recovery) |
-| **EXP-159** | **3-Phase Sleep 2.0 & Tononi SHY Pruning** | $F_t = 2.450$ | **$F_t = 1.764, \text{Pruned} = 273\text{k}$** | 🟢 **POSITIVE** ($-28\%$ surprise, restored energy) |
-| **EXP-158** | **Noradrenergic Synaptic Protection Gate** | Ret = $98.44\%$ | **Ret = $98.58\%$** | 🟢 **POSITIVE** (Protected factual consolidation) |
-| **EXP-155** | **Cross-Modal Co-Activation Alignment** | $H_{\text{align}} = 1.45$ | **$H_{\text{align}} = 0.50$** | 🟢 **POSITIVE** ($-65\%$ multimodal entropy) |
-| **EXP-151** | **GABAergic Shunting Lateral Inhibition** | Discrete Top-p | **GABA Ensembles ($8.2\text{ active}$)** | 🟢 **POSITIVE** (Biophysical Action Selection) |
-| **EXP-149** | **4-Level Morphogenesis Topology Growth** | Fixed shape | **$258\text{k pruned} / 20\text{k sprouted}$** | 🟢 **POSITIVE** (Autonomous self-evolution) |
-| **EXP-147** | **Dual-Karyon Social Active Inference** | Single Agent | **6 Reciprocal Turns ($F_{\text{mean}}=1.51$)** | 🟢 **POSITIVE** (Closed-loop empathy & dialogue) |
-| **EXP-146** | **Multimodal Expanded Alphabet ($V=1024$)** | Text-only | **Interleaved Text+Audio+Vision** | 🟢 **POSITIVE** (Loss $7.78 \to 1.25$, $\text{PPL}=3.52$) |
-| **EXP-122** | **1-Shot Episodic Factual Memory Recall** | Acc = $0\%$ | **Acc = $100\%$ ($\text{Sim}=0.9808$)** | 🟢 **POSITIVE** (Instant non-parametric recall) |
-| **EXP-100** | **System 2 Sandbox Counterfactual Search** | Greedy byte | **$K=8, T=3$ EFE Guidance** | 🟢 **POSITIVE** (Eradicated pseudo-morphemic drift) |
-| **EXP-22** | **Zero-Loop Parallel State-Space Duality** | $7\text{k tok/s}$ | **$176\text{k tok/s}$** | 🟢 **POSITIVE** (**40x GPU acceleration**) |
+| **EXP-289** | **Dual-Phase Recurrent Working Engine** | Loss $5.568$ | **Loss $0.4671$, Reversal $87.5\%$, Dyck $83.0\%$** | 🟢 **POSITIVE** (Decoupled prompt settling from generation) |
+| **EXP-288** | **Decoupling Temporal SSD from Morphic Graph** | Loss $0.052$ | **Loss $0.0397$, Recon $100\%$, Delta-Shock $0.0$** | 🟢 **POSITIVE** (True spatiotemporal dualism verified) |
+| **EXP-286** | **Exposing C++20 Dynamic Graph Parameters** | Frozen ops | **Loss $2.4677$, Tok/s $4296.2$, $\Delta = -0.3542$** | 🟢 **POSITIVE** (Dynamic graph end-to-end backprop) |
+| **EXP-280** | **Autonomous Morphogenesis with Apoptosis** | Loss $5.553$ | **Loss $2.9302$, Free Energy $\Delta = -2.6228$** | 🟢 **POSITIVE** (Adaptive structural neurogenesis) |
+| **EXP-279** | **Variational Free Energy Loss Replacement** | CE Loss | **Final Free Energy $-0.0990$, Acc $100\%$** | 🟢 **POSITIVE** (Surprise minimization over CE proxy) |
+| **EXP-162** | **Dynamic Allostatic Habituation & Efference Filter** | $TTR = 0.655$ | **$TTR = 1.000, \text{Rep} = 0.0\%$** | 🟢 **POSITIVE** (Eradicated perseverative repetition) |
+| **EXP-159** | **3-Phase Sleep 2.0 & Tononi SHY Pruning** | $F_t = 2.450$ | **$F_t = 1.764, \text{Pruned} = 273\text{k}$** | 🟢 **POSITIVE** ($-28\%$ surprise, metabolic restoration) |
+| **EXP-151** | **GABAergic Shunting Lateral Inhibition** | Discrete Top-p | **GABA Ensembles ($8.2\text{ active}$)** | 🟢 **POSITIVE** (Continuous biophysical action selection) |
+| **EXP-122** | **1-Shot Episodic Factual Memory Recall** | Acc = $0\%$ | **Acc = $100\%$ ($\text{Sim}=0.9808$)** | 🟢 **POSITIVE** (Instant non-parametric factual recall) |
+| **EXP-22** | **Zero-Loop Parallel State-Space Duality** | $7\text{k tok/s}$ | **$176\text{k tok/s}$** | 🟢 **POSITIVE** (**40x GPU Tensor Core acceleration**) |
 
 ---
 
@@ -104,7 +92,7 @@ python init_priors.py
 ```
 
 ### 3. Continuous Single-Pass Stream Learning
-Launch high-throughput continuous stream training with automatic Hugging Face Hub cloud synchronization:
+Launch high-throughput continuous stream training with automatic cloud synchronization:
 ```bash
 python train_single_pass.py
 ```
@@ -137,12 +125,13 @@ print("\nSomatic State:", entity.hu.state)
 
 ## 📜 KEP Protocol Compliance
 
-All architectural changes, experiments, and features in Karyon-CoRE strictly comply with the **Karyon Engineering Protocol (KEP v9.0 Master)**:
+All architectural changes, experiments, and features in Karyon-CoRE strictly comply with the **Karyon Engineering Protocol (KEP v14.0 Master)**:
 * **Principle 1:** Python as client, C++20 as computational engine (`-O3 -std=c++20`).
-* **Principle 2:** Living AGI & Biological Realism (No discrete hacks or MoE routing).
-* **Principle 5:** Autonomous tool actions over conversational clutter.
-* **Principle 12:** Universal modality-agnostic substrate ($V=258 \to 1024$).
-* **Principle 14:** Axiom of Allostatic Dynamic Forces (Zero static constants in biophysics).
+* **Principle 17:** Goodhart's Law Immunization & Metric De-Fetishization (No proxy loss hacking).
+* **Principle 18:** Mandatory External Verification & Eradication of Blind Self-Approval.
+* **Principle 21:** Universal Sovereign Morphogenesis over Task-Narrow Autoregressive Pipelines.
+* **Principle 22:** The Five Pillars of Sovereign Self-Evolution (Unbounded Topological Genesis, Total Endogenous Sovereignty, Spatiotemporal Dualism, Wave-Particle Dualism, Teleological Optimality).
+* **Principle 23:** Endoscopic Internal State Telemetry & Deep Mechanistic Audit.
 
 ---
 
