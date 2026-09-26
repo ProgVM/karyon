@@ -630,7 +630,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def_readonly("k_nodes", &DynamicMorphicGraphImpl::k_nodes)
         .def("add_node", &DynamicMorphicGraphImpl::add_node, py::arg("name"), py::arg("op_type"), py::arg("is_core") = false, py::arg("initial_alpha") = 0.0f)
         .def("prune_inactive_nodes", &DynamicMorphicGraphImpl::prune_inactive_nodes, py::arg("threshold") = 0.02f)
-        .def("reset_state", &DynamicMorphicGraphImpl::reset_state)
         .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("__call__", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("get_topology_manifest", &DynamicMorphicGraphImpl::get_topology_manifest)

@@ -497,29 +497,14 @@ public:
         return pruned_count;
     }
 
-    torch::Tensor persistent_node_states;
-    bool has_persistent_states = false;
-
-    void reset_state() {
-        has_persistent_states = false;
-        persistent_node_states = torch::Tensor();
-    }
-
     torch::Tensor forward(torch::Tensor x_sensory, int64_t thinking_steps = 4) {
         int64_t B = x_sensory.size(0);
         int64_t K = k_nodes;
         auto device = x_sensory.device();
 
-        torch::Tensor node_states;
-        if (!has_persistent_states || !persistent_node_states.defined() || 
-            persistent_node_states.size(0) != K || persistent_node_states.size(1) != B || persistent_node_states.device() != device) {
-            node_states = torch::zeros({K, B, dim}, torch::TensorOptions().device(device));
-        } else {
-            node_states = persistent_node_states;
-        }
-
+        auto node_states = torch::zeros({K, B, dim}, torch::TensorOptions().device(device));
         auto sensory_in = torch::matmul(x_sensory, w_sensory_in.t());
-        node_states[0] = node_states[0] + sensory_in;
+        node_states[0] = sensory_in;
 
         auto active_w_route = w_route.slice(0, 0, K).slice(1, 0, K);
 
@@ -537,9 +522,6 @@ public:
             }
             node_states = torch::stack(new_states, 0);
         }
-
-        persistent_node_states = node_states.detach();
-        has_persistent_states = true;
 
         auto final_aggregated = node_states.sum(0);
         return torch::matmul(final_aggregated, w_motor_out.t());
@@ -630,7 +612,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def_readonly("k_nodes", &DynamicMorphicGraphImpl::k_nodes)
         .def("add_node", &DynamicMorphicGraphImpl::add_node, py::arg("name"), py::arg("op_type"), py::arg("is_core") = false, py::arg("initial_alpha") = 0.0f)
         .def("prune_inactive_nodes", &DynamicMorphicGraphImpl::prune_inactive_nodes, py::arg("threshold") = 0.02f)
-        .def("reset_state", &DynamicMorphicGraphImpl::reset_state)
         .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("__call__", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("get_topology_manifest", &DynamicMorphicGraphImpl::get_topology_manifest)
