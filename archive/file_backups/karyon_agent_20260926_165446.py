@@ -125,8 +125,7 @@ class CoREAgent(nn.Module):
         p_field: torch.Tensor,
         p_tokens: torch.Tensor,
         bump: torch.Tensor,
-        thinking_steps: int = 4,
-        salience_bias: Optional[torch.Tensor] = None
+        thinking_steps: int = 4
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Closed-loop causal step utilizing native C++20 CausalParallelSSD & ContinuousSaccadicDrift.
@@ -135,20 +134,14 @@ class CoREAgent(nn.Module):
         # Temporal step via continuous state mixing
         h_core = self.ssd.forward(torch.cat([h_core.unsqueeze(1), x_t.unsqueeze(1)], dim=1))[:, -1, :]
         
-        # Salience Attraction Map (Biophysical Salience Landscape)
-        if salience_bias is None:
-            # Build salience map directly from p_tokens: spaces (0x20) = -3.0, non-spaces = +2.0
-            is_space = (p_tokens == 32).float()
-            salience_bias = is_space * (-3.0) + (1.0 - is_space) * 2.0
-            
-        # Continuous Saccadic Attractor Drift in C++20 with Salience Landscape
-        drifted_bump, _ = self.saccadic_drift(bump, h_core, 0.1, salience_bias)
+        # Continuous Saccadic Attractor Drift in C++20
+        drifted_bump, _ = self.saccadic_drift(bump, h_core, 0.1)
         
         # Content resonance over prompt field
         q = self.content_q(h_core).unsqueeze(1)
         k = self.content_k(p_field)
         content_scores = torch.bmm(q, k.transpose(1, 2)).squeeze(1) / (D ** 0.5)
-        content_bump = torch.softmax((content_scores + salience_bias) * 10.0, dim=-1)
+        content_bump = torch.softmax(content_scores * 10.0, dim=-1)
         
         # Continuous Gaze Blending
         alpha_gaze = torch.sigmoid(self.gaze_gate(h_core))

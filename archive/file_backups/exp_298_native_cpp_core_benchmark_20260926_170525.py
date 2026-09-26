@@ -52,7 +52,7 @@ def run_production_cpp_benchmark():
     print("\n--- Phase 1: Micro-Training on Reversal Domain using C++20 C-SSD Engine ---")
     rev_samples = suite['reversal'][:200]
     
-    for epoch in range(100):
+    for epoch in range(40):
         agent.train()
         total_loss = 0.0
         random.shuffle(rev_samples)
@@ -123,7 +123,7 @@ def run_production_cpp_benchmark():
     test_samples = suite['reversal'][200:300]
     correct = 0
     with torch.no_grad():
-        for _s_idx, (expr, expected_ans, full) in enumerate(test_samples):
+        for expr, expected_ans, full in test_samples:
             p_bytes = list(expr.encode('utf-8'))
             p_t = torch.tensor([p_bytes], dtype=torch.long, device=device)
             p_emb = agent.emb(p_t)
@@ -143,7 +143,7 @@ def run_production_cpp_benchmark():
             curr_token = p_t[:, -1]
             
             gen_bytes = []
-            for _ in range(len(expected_ans) + 8):
+            for _ in range(len(expected_ans) + 4):
                 x_t = agent.emb(curr_token)
                 h_fused, h_core, bump, p_copy, copy_logits = agent.forward_autoregressive_step(
                     x_t, h_core, p_field, p_t, bump, thinking_steps=3

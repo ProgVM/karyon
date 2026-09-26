@@ -191,15 +191,9 @@ public:
         this->to(device);
     }
 
-    std::tuple<torch::Tensor, torch::Tensor> forward(
-        torch::Tensor bump_state, 
-        torch::Tensor h_core, 
-        float da_gain = 0.0f,
-        torch::Tensor salience_bias = torch::Tensor()
-    ) {
+    std::tuple<torch::Tensor, torch::Tensor> forward(torch::Tensor bump_state, torch::Tensor h_core, float da_gain = 0.0f) {
         // bump_state: [B, L]
         // h_core: [B, D]
-        // salience_bias: optional [B, L] or empty
         int64_t B = bump_state.size(0);
         int64_t L = bump_state.size(1);
         auto device = bump_state.device();
@@ -223,11 +217,6 @@ public:
 
         auto drift_force = sym_force + v_t.view({B, 1, 1}) * asym_force; // [B, 1, L]
         auto raw_potential = bump_state + drift_force.squeeze(1); // [B, L]
-
-        // Add salience attraction landscape if provided
-        if (salience_bias.defined() && salience_bias.numel() > 0) {
-            raw_potential = raw_potential + salience_bias;
-        }
 
         // 3. Stabilization of Contrast & Dispersion (Soliton Sharpness Lock)
         auto mean_p = raw_potential.mean({-1}, true); // [B, 1]
@@ -620,8 +609,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     py::class_<ContinuousSaccadicDriftImpl, torch::nn::Module, std::shared_ptr<ContinuousSaccadicDriftImpl>>(m, "ContinuousSaccadicDrift")
         .def(py::init<int64_t, int64_t, std::string>(), py::arg("dim") = 128, py::arg("num_filters") = 17, py::arg("device_str") = "cpu")
-        .def("forward", &ContinuousSaccadicDriftImpl::forward, py::arg("bump_state"), py::arg("h_core"), py::arg("da_gain") = 0.0f, py::arg("salience_bias") = torch::Tensor())
-        .def("__call__", &ContinuousSaccadicDriftImpl::forward, py::arg("bump_state"), py::arg("h_core"), py::arg("da_gain") = 0.0f, py::arg("salience_bias") = torch::Tensor());
+        .def("forward", &ContinuousSaccadicDriftImpl::forward, py::arg("bump_state"), py::arg("h_core"), py::arg("da_gain") = 0.0f)
+        .def("__call__", &ContinuousSaccadicDriftImpl::forward, py::arg("bump_state"), py::arg("h_core"), py::arg("da_gain") = 0.0f);
 
     py::class_<LatentPredictorImpl, torch::nn::Module, std::shared_ptr<LatentPredictorImpl>>(m, "LatentPredictor")
         .def(py::init<int64_t, int64_t, std::string>(), py::arg("dim") = 256, py::arg("latent_dim") = 64, py::arg("device") = "cpu")

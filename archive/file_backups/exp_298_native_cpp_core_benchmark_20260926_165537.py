@@ -52,7 +52,7 @@ def run_production_cpp_benchmark():
     print("\n--- Phase 1: Micro-Training on Reversal Domain using C++20 C-SSD Engine ---")
     rev_samples = suite['reversal'][:200]
     
-    for epoch in range(100):
+    for epoch in range(40):
         agent.train()
         total_loss = 0.0
         random.shuffle(rev_samples)
@@ -76,7 +76,6 @@ def run_production_cpp_benchmark():
             p_emb = agent.emb(p_pad)
             p_field = agent.ssd.forward(p_emb)
             
-            B, P_len, _ = p_field.shape
             # Initialize bump on the last SIGNIFICANT non-delimiter token before '='
             bump = torch.zeros(B, P_len, device=device)
             for b_i in range(B):
@@ -123,7 +122,7 @@ def run_production_cpp_benchmark():
     test_samples = suite['reversal'][200:300]
     correct = 0
     with torch.no_grad():
-        for _s_idx, (expr, expected_ans, full) in enumerate(test_samples):
+        for expr, expected_ans, full in test_samples:
             p_bytes = list(expr.encode('utf-8'))
             p_t = torch.tensor([p_bytes], dtype=torch.long, device=device)
             p_emb = agent.emb(p_t)
@@ -143,7 +142,7 @@ def run_production_cpp_benchmark():
             curr_token = p_t[:, -1]
             
             gen_bytes = []
-            for _ in range(len(expected_ans) + 8):
+            for _ in range(len(expected_ans) + 4):
                 x_t = agent.emb(curr_token)
                 h_fused, h_core, bump, p_copy, copy_logits = agent.forward_autoregressive_step(
                     x_t, h_core, p_field, p_t, bump, thinking_steps=3
@@ -158,8 +157,6 @@ def run_production_cpp_benchmark():
             gen_str = bytes(gen_bytes).decode('utf-8', errors='ignore').strip()
             if expected_ans.strip() in gen_str:
                 correct += 1
-            if _s_idx < 5:
-                print(f"Sample {_s_idx+1} | Expr: {expr.strip()} | Expected: {expected_ans.strip()} | Generated: {repr(gen_str)}")
                 
     print(f"\n🎯 Native C++20 C-SSD Reversal Accuracy: {correct / len(test_samples) * 100:.2f}% ({correct}/{len(test_samples)})\n")
     print("=" * 80)

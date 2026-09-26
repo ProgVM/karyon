@@ -52,7 +52,7 @@ def run_production_cpp_benchmark():
     print("\n--- Phase 1: Micro-Training on Reversal Domain using C++20 C-SSD Engine ---")
     rev_samples = suite['reversal'][:200]
     
-    for epoch in range(100):
+    for epoch in range(40):
         agent.train()
         total_loss = 0.0
         random.shuffle(rev_samples)
