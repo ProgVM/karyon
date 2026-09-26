@@ -1,14 +1,13 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON CORE AGENT MASTER WRAPPER v36.0
+KARYON CORE AGENT MASTER WRAPPER v35.0
 ===============================================================================
 Python Orchestrator Wrapper for C++20 Spatiotemporal Morphogenetic Engine:
 - Temporal Domain: C++20 CausalParallelSSD (Continuous linear state space time-mixing)
 - Spatial Domain: C++20 DynamicMorphicGraph (Recurrent thinking cycles across dynamic mathematical operators)
 - Continuous Hopfield Attractor Memory for discrete concept snapping
-- Sleep-Consolidation, Edelman Neural Darwinism Apoptosis, Epigenetic Sprouting (AGN v7.0)
-- Susumu Ohno Gene Lock & Organelle Duplication Law integration
+- Sleep-Consolidation, Edelman Neural Darwinism Apoptosis, Epigenetic Sprouting (AGN v6.0)
 - Unified Parameter Registration & 100% .kcore v5.0 Container Serialization.
 ===============================================================================
 """
@@ -98,6 +97,7 @@ class CoREAgent(nn.Module):
                 B, S, D = x.shape
                 # Step 1: Temporal Causal State-Space Mixing
                 h_seq = self.ssd.forward(x) # [B, S, D]
+
                 # Step 2: Spatial/Deliberative Graph Recirculation
                 h_flat = h_seq.reshape(B * S, D)
                 h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
@@ -120,7 +120,6 @@ class CoREAgent(nn.Module):
                 return self.head(self.norm(h_seq + h_graph))
             else:
                 return self.graph.forward(input_ids, thinking_steps)
-
     def forward_autoregressive_step(
         self,
         x_t: torch.Tensor,
@@ -214,18 +213,9 @@ class CoREAgent(nn.Module):
             h_graph = self.graph.forward(x, thinking_steps)
             return x + h_graph
 
-    def add_node(self, name: str, op_type: str, is_core: bool = False, initial_alpha: float = 0.0) -> int:
+    def add_node(self, name: str, op_type: str, is_core: bool = False, initial_alpha: float = 0.0):
         """Sprouts a new node inside the C++20 DynamicMorphicGraph."""
         self.graph.add_node(name, op_type, is_core, initial_alpha)
-        return self.graph.k_nodes - 1
-
-    def lock_node(self, idx: int, lock_value: float = 1.0):
-        """Locks node parameters via Epigenetic Methylation (Susumu Ohno's Protection Law)."""
-        self.graph.lock_node(idx, lock_value)
-
-    def duplicate_node(self, src_idx: int, new_name: str, initial_alpha: float = 0.0) -> int:
-        """Clones a node inside the C++20 DynamicMorphicGraph with zero-shock identity."""
-        return self.graph.duplicate_node(src_idx, new_name, initial_alpha)
 
     def prune_inactive_nodes(self, threshold: float = 0.02) -> int:
         """Prunes inactive dynamic nodes via Edelman Neural Darwinism."""
@@ -248,7 +238,7 @@ class CoREAgent(nn.Module):
         Executes Biophysical Sleep & Morphogenetic Neurogenesis Cycle:
         1. Tononi SHY Synaptic Scaling (soft downscaling with epigenetic methylation locks).
         2. Neural Darwinism Apoptosis (pruning inactive nodes with |tanh(alpha)| < prune_threshold).
-        3. Epigenetic Sprouting of new dynamic graph nodes (AGN v7.0 / Net2Net zero-shock).
+        3. Epigenetic Sprouting of new dynamic graph nodes (AGN v6.0 / Net2Net zero-shock).
         """
         scaled_params_count = 0
         # Phase 1: Epigenetic Methylation Lock Protection

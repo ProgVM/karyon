@@ -426,7 +426,7 @@ struct StateSpaceMemoryOpImpl : public GraphOp {
 TORCH_MODULE(StateSpaceMemoryOp);
 
 
-// ============================================================================
+# ============================================================================
 // 9. DYNAMIC MORPHIC GRAPH & SUSUMU OHNO ORGANELLE POOL (AGN v7.0)
 // ============================================================================
 
@@ -720,8 +720,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, std::string>(), py::arg("dim") = 128, py::arg("device_str") = "cpu")
         .def_readonly("k_nodes", &DynamicMorphicGraphImpl::k_nodes)
         .def("add_node", &DynamicMorphicGraphImpl::add_node, py::arg("name"), py::arg("op_type"), py::arg("is_core") = false, py::arg("initial_alpha") = 0.0f)
-        .def("lock_node", &DynamicMorphicGraphImpl::lock_node, py::arg("idx"), py::arg("lock_value") = 1.0f)
-        .def("duplicate_node", &DynamicMorphicGraphImpl::duplicate_node, py::arg("src_idx"), py::arg("new_name"), py::arg("initial_alpha") = 0.0f)
         .def("prune_inactive_nodes", &DynamicMorphicGraphImpl::prune_inactive_nodes, py::arg("threshold") = 0.02f)
         .def("reset_state", &DynamicMorphicGraphImpl::reset_state)
         .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)

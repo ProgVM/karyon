@@ -8,7 +8,7 @@ class TestAGNNativeNeurogenesis(unittest.TestCase):
         self.dim = 128
         self.batch_size = 4
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.agent = CoREAgent(embed_dim=self.dim, device=self.device).to(self.device)
+        self.agent = CoREAgent(embed_dim=self.dim, device=self.device, use_graph=True).to(self.device)
 
     def test_native_zero_identity_at_birth(self):
         """Verify Net2Net zero-delta identity on native C++20 DynamicMorphicGraph at birth."""

@@ -427,7 +427,7 @@ TORCH_MODULE(StateSpaceMemoryOp);
 
 
 // ============================================================================
-// 9. DYNAMIC MORPHIC GRAPH & SUSUMU OHNO ORGANELLE POOL (AGN v7.0)
+// 9. DYNAMIC MORPHIC GRAPH (AGN v6.0 / Sprouting + Apoptosis Engine)
 // ============================================================================
 
 class DynamicMorphicGraphImpl : public torch::nn::Module {
@@ -442,7 +442,6 @@ public:
     std::vector<bool> is_core_node;
     std::vector<std::string> node_names;
     std::vector<std::string> node_types;
-    std::vector<float> methylation_locks; // Susumu Ohno Gene Lock: 1.0 = Frozen, 0.0 = Plastic
 
     torch::Tensor w_route;
     torch::Tensor w_sensory_in, w_motor_out;
@@ -480,61 +479,10 @@ public:
         is_core_node.push_back(is_core);
         node_names.push_back(name);
         node_types.push_back(op_type);
-        methylation_locks.push_back(is_core ? 1.0f : 0.0f);
 
         auto alpha_val = torch::tensor(initial_alpha, torch::TensorOptions().device(device).requires_grad(!is_core));
         alpha_epi.push_back(register_parameter("alpha_" + name, alpha_val));
         k_nodes = node_ops.size();
-    }
-
-    void lock_node(int64_t idx, float lock_value = 1.0f) {
-        if (idx >= 0 && idx < k_nodes) {
-            methylation_locks[idx] = lock_value;
-            bool freeze = (lock_value >= 1.0f);
-            alpha_epi[idx].set_requires_grad(!freeze);
-            for (auto& p : node_ops[idx]->named_parameters()) {
-                p.value().set_requires_grad(!freeze);
-            }
-        }
-    }
-
-    int64_t duplicate_node(int64_t src_idx, std::string new_name, float initial_alpha = 0.0f) {
-        if (src_idx < 0 || src_idx >= k_nodes) {
-            throw std::out_of_range("Source node index out of bounds for duplication");
-        }
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        std::string op_type = node_types[src_idx];
-
-        // 1. Sprout new node of the exact same operator type
-        add_node(new_name, op_type, /*is_core=*/false, /*initial_alpha=*/initial_alpha);
-        int64_t dst_idx = k_nodes - 1;
-
-        // 2. Exact Net2Net Weight Clone (Zero Shock)
-        auto src_params = node_ops[src_idx]->named_parameters();
-        auto dst_params = node_ops[dst_idx]->named_parameters();
-        torch::NoGradGuard no_grad;
-        for (const auto& sp : src_params) {
-            if (dst_params.contains(sp.key())) {
-                dst_params[sp.key()].copy_(sp.value());
-            }
-        }
-
-        // 3. Child node is unlocked (methylation = 0.0, plastic)
-        methylation_locks[dst_idx] = 0.0f;
-        alpha_epi[dst_idx].set_requires_grad(true);
-        for (auto& p : node_ops[dst_idx]->named_parameters()) {
-            p.value().set_requires_grad(true);
-        }
-
-        // 4. Duplicate routing connection profile in w_route
-        if (dst_idx < 64 && src_idx < 64) {
-            w_route.data().index_put_({dst_idx, torch::indexing::Slice(0, dst_idx)},
-                                      w_route.data().index({src_idx, torch::indexing::Slice(0, dst_idx)}));
-            w_route.data().index_put_({torch::indexing::Slice(0, dst_idx), dst_idx},
-                                      w_route.data().index({torch::indexing::Slice(0, dst_idx), src_idx}));
-        }
-
-        return dst_idx;
     }
 
     std::map<std::string, torch::Tensor> get_active_parameters_map() {
@@ -561,11 +509,10 @@ public:
         std::vector<bool> new_is_core;
         std::vector<std::string> new_names;
         std::vector<std::string> new_types;
-        std::vector<float> new_locks;
 
         for (int64_t i = 0; i < k_nodes; ++i) {
             float eff_weight = std::abs(std::tanh(alpha_epi[i].template item<float>()));
-            if (!is_core_node[i] && methylation_locks[i] < 0.5f && eff_weight < threshold) {
+            if (!is_core_node[i] && eff_weight < threshold) {
                 pruned_count++;
             } else {
                 new_ops.push_back(node_ops[i]);
@@ -573,7 +520,6 @@ public:
                 new_is_core.push_back(is_core_node[i]);
                 new_names.push_back(node_names[i]);
                 new_types.push_back(node_types[i]);
-                new_locks.push_back(methylation_locks[i]);
             }
         }
 
@@ -582,7 +528,6 @@ public:
         is_core_node = new_is_core;
         node_names = new_names;
         node_types = new_types;
-        methylation_locks = new_locks;
         k_nodes = node_ops.size();
         return pruned_count;
     }
@@ -638,8 +583,7 @@ public:
     std::vector<std::string> get_topology_manifest() {
         std::vector<std::string> manifest;
         for (int64_t i = 0; i < k_nodes; ++i) {
-            std::string status = is_core_node[i] ? "CORE" : (methylation_locks[i] >= 1.0f ? "LOCKED" : "PLASTIC");
-            manifest.push_back(node_names[i] + ":" + node_types[i] + ":" + status);
+            manifest.push_back(node_names[i] + ":" + node_types[i] + ":" + (is_core_node[i] ? "CORE" : "MUTATED"));
         }
         return manifest;
     }
@@ -720,8 +664,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, std::string>(), py::arg("dim") = 128, py::arg("device_str") = "cpu")
         .def_readonly("k_nodes", &DynamicMorphicGraphImpl::k_nodes)
         .def("add_node", &DynamicMorphicGraphImpl::add_node, py::arg("name"), py::arg("op_type"), py::arg("is_core") = false, py::arg("initial_alpha") = 0.0f)
-        .def("lock_node", &DynamicMorphicGraphImpl::lock_node, py::arg("idx"), py::arg("lock_value") = 1.0f)
-        .def("duplicate_node", &DynamicMorphicGraphImpl::duplicate_node, py::arg("src_idx"), py::arg("new_name"), py::arg("initial_alpha") = 0.0f)
         .def("prune_inactive_nodes", &DynamicMorphicGraphImpl::prune_inactive_nodes, py::arg("threshold") = 0.02f)
         .def("reset_state", &DynamicMorphicGraphImpl::reset_state)
         .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
