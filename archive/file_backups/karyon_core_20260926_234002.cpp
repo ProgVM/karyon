@@ -386,7 +386,7 @@ public:
 
         std::string prefix = "node_" + std::to_string(node_ops.size()) + "_" + name;
         for (auto& p : op->named_parameters()) {
-            register_parameter(prefix + "_" + p.key(), p.value());
+            register_parameter(prefix + "." + p.key(), p.value());
         }
 
         node_ops.push_back(op);
@@ -456,7 +456,7 @@ public:
             params["alpha_" + node_names[i]] = alpha_epi[i];
             std::string prefix = "node_" + std::to_string(i) + "_" + node_names[i];
             for (auto& p : node_ops[i]->named_parameters()) {
-                params[prefix + "_" + p.key()] = p.value();
+                params[prefix + "." + p.key()] = p.value();
             }
         }
         return params;
@@ -509,19 +509,7 @@ public:
         auto active_w_route = w_route.slice(0, 0, K).slice(1, 0, K);
         auto active_delta = delta_route.slice(1, 0, K).slice(2, 0, K);
 
-        // Context-Dependent Dynamic Commutation Routing with Epigenetic Gating
-        // Ensure that inactive nodes (alpha_epi = 0.0) do not steal softmax routing probability from active nodes
-        // by applying a large negative penalty to un-expressed nodes in the destination column
-        auto dynamic_routing_logits = active_w_route.unsqueeze(0) + active_delta; // [B, K, K]
-        
-        std::vector<torch::Tensor> gate_factors;
-        for (int64_t j = 0; j < K; ++j) {
-            gate_factors.push_back(torch::tanh(alpha_epi[j]).abs());
-        }
-        auto gates_tensor = torch::stack(gate_factors, 0); // [K]
-        auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0); // [1, 1, K]
-        dynamic_routing_logits = dynamic_routing_logits.masked_fill(inactive_mask, -1e4f);
-
+        auto dynamic_routing_logits = active_w_route.unsqueeze(0) + active_delta;
         auto routing_matrix = torch::softmax(dynamic_routing_logits, 2);
 
         for (int64_t step = 0; step < thinking_steps; ++step) {
@@ -543,12 +531,7 @@ public:
         persistent_node_states = node_states.detach();
         has_persistent_states = true;
 
-        // Final output is weighted by epigenetic gates to ensure exact Net2Net zero-shock when alpha=0.0
-        torch::Tensor final_aggregated = torch::zeros({B, dim}, torch::TensorOptions().device(device));
-        for (int64_t j = 0; j < K; ++j) {
-            auto gate = torch::tanh(alpha_epi[j]);
-            final_aggregated = final_aggregated + gate * node_states[j];
-        }
+        auto final_aggregated = node_states.sum(0);
         return torch::matmul(final_aggregated, w_motor_out.t());
     }
 

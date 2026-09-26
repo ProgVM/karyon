@@ -34,309 +34,402 @@ public:
 };
 TORCH_MODULE(UniversalManifold);
 
+
 // ============================================================================
-// 2. CAUSAL PARALLEL SSD (State-Space Duality Parallel Scan Engine)
+// 2. CAUSAL PARALLEL SSD SCAN OPERATOR (Vectorized Zero-Loop 1D Causal SSM Engine)
 // ============================================================================
 class CausalParallelSSDImpl : public torch::nn::Module {
 public:
     int64_t dim;
-    std::string device_str;
     torch::Tensor log_decay;
-    torch::Tensor w_in, w_out;
 
-    CausalParallelSSDImpl(int64_t dim = 256, std::string device_str = "cpu", float min_decay = 0.005f, float max_decay = 0.2f)
-        : dim(dim), device_str(device_str) {
+    CausalParallelSSDImpl(int64_t dim, std::string device_str = "cpu", float min_decay = 0.005f, float max_decay = 0.2f) : dim(dim) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        
-        auto log_min = std::log(min_decay);
-        auto log_max = std::log(max_decay);
-        log_decay = register_parameter("log_decay", torch::linspace(log_min, log_max, dim, torch::TensorOptions().device(device)));
-        
-        w_in = register_parameter("w_in", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt(dim)));
-        w_out = register_parameter("w_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt(dim)));
+        auto init_decay = torch::linspace(std::log(min_decay), std::log(max_decay), dim, torch::TensorOptions().device(device));
+        log_decay = register_parameter("log_decay", init_decay);
         this->to(device);
     }
 
     torch::Tensor forward(torch::Tensor x) {
-        auto B = x.size(0);
-        auto S = x.size(1);
-        auto D = x.size(2);
+        int64_t batch = x.size(0);
+        int64_t seq_len = x.size(1);
         auto device = x.device();
 
-        auto decay = torch::exp(log_decay).clamp(0.001f, 0.999f);
-        auto u = torch::matmul(x, w_in.t());
+        if (seq_len == 1) {
+            auto alpha = torch::sigmoid(log_decay).view({1, 1, dim});
+            return (1.0f - alpha) * x;
+        }
 
-        auto indices = torch::arange(S, torch::TensorOptions().device(device)).to(torch::kFloat32);
-        auto dist = indices.unsqueeze(1) - indices.unsqueeze(0);
-        auto causal_mask = dist >= 0;
+        auto alpha = torch::sigmoid(log_decay).view({dim, 1, 1});
+        auto k = torch::arange(seq_len, torch::TensorOptions().device(device).dtype(x.dtype()));
+        auto kernel = torch::flip(torch::pow(alpha, k.view({1, 1, seq_len})), {-1});
 
-        auto log_d = -decay.unsqueeze(0).unsqueeze(0) * dist.unsqueeze(-1);
-        auto decay_weights = torch::exp(log_d) * causal_mask.unsqueeze(-1).to(torch::kFloat32);
+        auto x_scaled = (x * (1.0f - alpha.view({1, 1, dim}))).permute({0, 2, 1});
+        auto x_pad = torch::nn::functional::pad(x_scaled, torch::nn::functional::PadFuncOptions({seq_len - 1, 0}));
+        std::vector<int64_t> stride = {1};
+        std::vector<int64_t> padding = {0};
+        std::vector<int64_t> dilation = {1};
+        auto h = at::conv1d(x_pad, kernel, std::nullopt, stride, padding, dilation, dim);
 
-        auto y = torch::einsum("skd,bkd->bsd", {decay_weights, u});
-        return torch::matmul(y, w_out.t());
+        return h.permute({0, 2, 1});
     }
 };
 TORCH_MODULE(CausalParallelSSD);
 
+
 // ============================================================================
-// 3. PARALLEL OPERATOR BANK (Multi-Timescale Memory Operators)
+// 3. PARALLEL OPERATOR BANK (SwiGLU & Non-Linear Functional Field)
 // ============================================================================
 class ParallelOperatorBankImpl : public torch::nn::Module {
 public:
     int64_t dim;
     int64_t state_dim;
     int64_t num_operators;
-    torch::Tensor op_weights;
+
+    torch::Tensor w_gate;
+    torch::Tensor w_up;
+    torch::Tensor w_down;
 
     ParallelOperatorBankImpl(int64_t dim = 256, int64_t state_dim = 128, int64_t num_operators = 8)
         : dim(dim), state_dim(state_dim), num_operators(num_operators) {
-        op_weights = register_parameter("op_weights", torch::randn({num_operators, dim, state_dim}) * (1.0f / std::sqrt(dim)));
+        w_gate = register_parameter("w_gate", torch::randn({num_operators, dim, state_dim}) * (1.0f / std::sqrt(dim)));
+        w_up = register_parameter("w_up", torch::randn({num_operators, dim, state_dim}) * (1.0f / std::sqrt(dim)));
+        w_down = register_parameter("w_down", torch::randn({num_operators, state_dim, dim}) * (1.0f / std::sqrt(state_dim)));
     }
 
-    torch::Tensor compute_operators(torch::Tensor h) {
-        return torch::einsum("bd,ndk->bnk", {h, op_weights});
+    torch::Tensor compute_operators(torch::Tensor x) {
+        auto gate = torch::einsum("bsd,nde->bsne", {x, w_gate});
+        auto up = torch::einsum("bsd,nde->bsne", {x, w_up});
+        auto act = torch::silu(gate) * up;
+        auto out = torch::einsum("bsne,ned->bsnd", {act, w_down});
+        return out;
     }
 };
 TORCH_MODULE(ParallelOperatorBank);
 
+
 // ============================================================================
-// 4. CONTINUOUS HOPFIELD MEMORY
+// 4. CONTINUOUS HOPFIELD ATTRACTOR NETWORK
 // ============================================================================
 class ContinuousHopfieldMemoryImpl : public torch::nn::Module {
 public:
     int64_t dim;
     int64_t num_basins;
+    std::string device_str;
+
     torch::Tensor basins;
+    torch::Tensor scaling;
 
     ContinuousHopfieldMemoryImpl(int64_t dim = 256, int64_t num_basins = 32, std::string device_str = "cpu")
-        : dim(dim), num_basins(num_basins) {
+        : dim(dim), num_basins(num_basins), device_str(device_str) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        basins = register_parameter("basins", torch::randn({num_basins, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt(dim)));
+
+        auto init_basins = torch::randn({num_basins, dim}, torch::TensorOptions().device(device));
+        init_basins = init_basins / (init_basins.norm(2, -1, true) + 1e-6f);
+        basins = register_parameter("basins", init_basins);
+
+        scaling = register_parameter("scaling", torch::ones({num_basins}, torch::TensorOptions().device(device)) * 12.0f);
         this->to(device);
     }
 
-    torch::Tensor forward(torch::Tensor x, torch::Tensor u_t = torch::Tensor()) {
-        auto norm_b = torch::nn::functional::normalize(basins, torch::nn::functional::NormalizeFuncOptions().dim(-1));
-        float beta = 8.0f;
-        if (u_t.defined() && u_t.numel() >= 6) {
-            float da = u_t[5].item<float>();
-            beta *= (1.0f + 1.5f * da);
+    torch::Tensor forward(torch::Tensor x, torch::Tensor u_t) {
+        auto device = x.device();
+        auto norm_x = x / (x.norm(2, -1, true) + 1e-6f);
+
+        auto sim = torch::matmul(norm_x, basins.t());
+
+        float da_val = 0.0f;
+        if (u_t.defined() && u_t.numel() > 0) {
+            da_val = u_t.slice(-1, 5, 6).mean().template item<float>();
         }
-        auto sim = torch::matmul(x, norm_b.t()) * beta;
-        auto attn = torch::softmax(sim, -1);
-        return torch::matmul(attn, norm_b);
+        auto beta = scaling * (1.0f + 1.5f * da_val);
+
+        auto energy_weights = torch::softmax(sim * beta.view({1, 1, -1}), -1);
+        auto recalled = torch::matmul(energy_weights, basins);
+        return recalled;
     }
 };
 TORCH_MODULE(ContinuousHopfieldMemory);
 
+
 // ============================================================================
-// 5. CONTINUOUS SACCADIC DRIFT (C-SSD)
+// 5. CONTINUOUS ATTRACTOR DRIFT (C-SSD Saccadic Wave Engine)
 // ============================================================================
 class ContinuousSaccadicDriftImpl : public torch::nn::Module {
 public:
     int64_t dim;
     int64_t num_filters;
-    std::string device_str;
-    torch::Tensor drift_weight;
-    torch::Tensor spread_weight;
+    torch::Tensor w_sym, w_asym;
+    torch::Tensor w_velocity;
+    torch::Tensor b_velocity;
+    torch::Tensor beta_scale;
 
     ContinuousSaccadicDriftImpl(int64_t dim = 128, int64_t num_filters = 17, std::string device_str = "cpu")
-        : dim(dim), num_filters(num_filters), device_str(device_str) {
+        : dim(dim), num_filters(num_filters) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        drift_weight = register_parameter("drift_weight", torch::randn({dim, 1}, torch::TensorOptions().device(device)) * 0.05f);
-        spread_weight = register_parameter("spread_weight", torch::randn({dim, 1}, torch::TensorOptions().device(device)) * 0.05f);
+        // Initialize Soliton Sharp Wave Filters:
+        // w_sym: Mexican Hat Filter (Center excitation + Side inhibition) -> Cuts diffusion tails
+        auto sym_init = torch::zeros({1, 1, num_filters}, torch::TensorOptions().device(device));
+        int64_t center = num_filters / 2;
+        sym_init[0][0][center] = 1.0f;
+        sym_init[0][0][center - 1] = -0.3f;
+        sym_init[0][0][center + 1] = -0.3f;
+        sym_init[0][0][center - 2] = -0.2f;
+        sym_init[0][0][center + 2] = -0.2f;
+        w_sym = register_parameter("w_sym", sym_init);
+
+        // w_asym: Pure Anti-symmetric Derivative Operator [-0.5, 0, +0.5] -> Pure Advection Shift
+        auto asym_init = torch::zeros({1, 1, num_filters}, torch::TensorOptions().device(device));
+        asym_init[0][0][center - 1] = -0.5f;
+        asym_init[0][0][center + 1] = 0.5f;
+        asym_init[0][0][center - 2] = -0.25f;
+        asym_init[0][0][center + 2] = 0.25f;
+        w_asym = register_parameter("w_asym", asym_init);
+        w_velocity = register_parameter("w_velocity", torch::randn({dim, 1}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
+        b_velocity = register_parameter("b_velocity", torch::zeros({1}, torch::TensorOptions().device(device)));
+        beta_scale = register_parameter("beta_scale", torch::tensor(20.0f, torch::TensorOptions().device(device)));
         this->to(device);
     }
 
-    std::tuple<torch::Tensor, torch::Tensor> forward(torch::Tensor bump_state, torch::Tensor h_core, float da_gain = 0.0f, torch::Tensor salience_bias = torch::Tensor()) {
-        auto B = bump_state.size(0);
+    std::tuple<torch::Tensor, torch::Tensor> forward(
+        torch::Tensor bump_state, 
+        torch::Tensor h_core, 
+        float da_gain = 0.0f,
+        torch::Tensor salience_bias = torch::Tensor()
+    ) {
+        // bump_state: [B, L]
+        // h_core: [B, D]
+        // salience_bias: optional [B, L] or empty
+        int64_t B = bump_state.size(0);
+        int64_t L = bump_state.size(1);
         auto device = bump_state.device();
 
-        auto drift_delta = torch::matmul(h_core, drift_weight).squeeze(-1);
-        auto dynamic_step = (0.1f + 0.5f * torch::tanh(drift_delta)).clamp(0.01f, 2.0f);
+        // 1. Continuous drift velocity v_t in [-1, +1]
+        auto v_t = torch::tanh(torch::matmul(h_core, w_velocity) + b_velocity).squeeze(-1); // [B]
 
-        auto spread_delta = torch::matmul(h_core, spread_weight).squeeze(-1);
-        auto sigma = (1.5f + 1.0f * torch::sigmoid(spread_delta)).clamp(0.5f, 5.0f);
+        // 2. Convolutional Continuous Drift with Pure Advection & Mexican Hat Soliton
+        int64_t pad = num_filters / 2;
+        auto bump_3d = bump_state.unsqueeze(1); // [B, 1, L]
+        auto left_pad = bump_3d.slice(2, 0, 1).expand({B, 1, pad});
+        auto right_pad = bump_3d.slice(2, L - 1, L).expand({B, 1, pad});
+        auto bump_pad = torch::cat({left_pad, bump_3d, right_pad}, 2); // [B, 1, L + 2 * pad]
 
-        auto grid = torch::arange(num_filters, torch::TensorOptions().device(device)).to(torch::kFloat32);
-        auto center = (num_filters - 1) / 2.0f;
-        auto relative_offsets = grid - center;
+        std::vector<int64_t> stride = {1};
+        std::vector<int64_t> padding = {0};
+        std::vector<int64_t> dilation = {1};
 
-        auto diff = relative_offsets.unsqueeze(0) - dynamic_step.unsqueeze(1);
-        auto kernel = torch::exp(-0.5f * torch::pow(diff / sigma.unsqueeze(1), 2.0f));
-        kernel = kernel / (kernel.sum(-1, true) + 1e-6f);
+        auto sym_force = at::conv1d(bump_pad, w_sym, std::nullopt, stride, padding, dilation, 1); // [B, 1, L]
+        auto asym_force = at::conv1d(bump_pad, w_asym, std::nullopt, stride, padding, dilation, 1); // [B, 1, L]
 
-        auto bump_padded = torch::nn::functional::pad(
-            bump_state.unsqueeze(1),
-            torch::nn::functional::PadFuncOptions({(num_filters - 1) / 2, (num_filters - 1) / 2}).mode(torch::kReplicate)
-        );
+        auto drift_force = sym_force + v_t.view({B, 1, 1}) * asym_force; // [B, 1, L]
+        auto raw_potential = bump_state + drift_force.squeeze(1); // [B, L]
 
-        auto drifted_bump = torch::zeros_like(bump_state);
-        for (int64_t b = 0; b < B; ++b) {
-            auto b_padded = bump_padded.slice(0, b, b + 1);
-            auto k = kernel.slice(0, b, b + 1).unsqueeze(0);
-            drifted_bump.slice(0, b, b + 1) = torch::conv1d(b_padded, k).squeeze(1);
-        }
-
+        // Add salience attraction landscape if provided
         if (salience_bias.defined() && salience_bias.numel() > 0) {
-            drifted_bump = drifted_bump * torch::sigmoid(salience_bias);
-            drifted_bump = drifted_bump / (drifted_bump.sum(-1, true) + 1e-6f);
+            raw_potential = raw_potential + salience_bias;
         }
 
-        return std::make_tuple(drifted_bump, dynamic_step);
+        // 3. Stabilization of Contrast & Dispersion (Soliton Sharpness Lock)
+        auto mean_p = raw_potential.mean({-1}, true); // [B, 1]
+        auto std_p = raw_potential.std(1, false, true) + 1e-6f; // [B, 1]
+        auto stabilized_potential = (raw_potential - mean_p) / std_p; // [B, L]
+
+        auto beta = torch::clamp(beta_scale * (1.0f + 1.5f * da_gain), 6.0f, 50.0f);
+        auto next_bump = torch::softmax(stabilized_potential * beta, -1);
+
+        return std::make_tuple(next_bump, v_t);
     }
 };
 TORCH_MODULE(ContinuousSaccadicDrift);
 
+
 // ============================================================================
-// 6. LATENT PREDICTOR (Active Inference World Model)
+// 6. LATENT ACTIVE INFERENCE PREDICTOR (Free Energy Engine F_t)
 // ============================================================================
 class LatentPredictorImpl : public torch::nn::Module {
 public:
     int64_t dim;
     int64_t latent_dim;
-    torch::Tensor w_mu, w_logvar;
+
+    torch::Tensor w_prior_mu, w_prior_logvar;
+    torch::Tensor w_post_mu, w_post_logvar;
 
     LatentPredictorImpl(int64_t dim = 256, int64_t latent_dim = 64, std::string device_str = "cpu")
         : dim(dim), latent_dim(latent_dim) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        w_mu = register_parameter("w_mu", torch::randn({dim, latent_dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt(dim)));
-        w_logvar = register_parameter("w_logvar", torch::randn({dim, latent_dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt(dim)));
+        w_prior_mu = register_parameter("w_prior_mu", torch::randn({dim, latent_dim}, torch::TensorOptions().device(device)) * 0.02f);
+        w_prior_logvar = register_parameter("w_prior_logvar", torch::zeros({dim, latent_dim}, torch::TensorOptions().device(device)));
+        w_post_mu = register_parameter("w_post_mu", torch::randn({dim * 2, latent_dim}, torch::TensorOptions().device(device)) * 0.02f);
+        w_post_logvar = register_parameter("w_post_logvar", torch::zeros({dim * 2, latent_dim}, torch::TensorOptions().device(device)));
         this->to(device);
     }
 
-    std::tuple<torch::Tensor, torch::Tensor> forward(torch::Tensor h) {
-        auto mu = torch::matmul(h, w_mu);
-        auto logvar = torch::matmul(h, w_logvar).clamp(-6.0f, 2.0f);
-        return std::make_tuple(mu, logvar);
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward(torch::Tensor h_prev, torch::Tensor h_curr) {
+        auto p_mu = torch::matmul(h_prev, w_prior_mu);
+        auto p_logvar = torch::matmul(h_prev, w_prior_logvar);
+
+        auto h_cat = torch::cat({h_prev, h_curr}, -1);
+        auto q_mu = torch::matmul(h_cat, w_post_mu);
+        auto q_logvar = torch::matmul(h_cat, w_post_logvar);
+
+        return std::make_tuple(p_mu, p_logvar, q_mu, q_logvar);
     }
 };
 TORCH_MODULE(LatentPredictor);
 
+
 // ============================================================================
-// 7. HOMEOSTATIC NEXUS
+// 7. HOMEOSTATIC NEXUS (Ashby Ultrastability Engine)
 // ============================================================================
 class HomeostaticNexusImpl : public torch::nn::Module {
 public:
-    std::vector<std::string> state_names;
-    torch::Tensor states;
+    std::string device_str;
+    std::vector<std::string> dim_names;
+    torch::Tensor u_t;
+    torch::Tensor decay_rates;
 
-    HomeostaticNexusImpl(std::string device_str = "cpu") {
-        state_names = {"Curiosity", "Energy", "Stability", "Health", "Noradrenaline", "Dopamine"};
+    HomeostaticNexusImpl(std::string device_str = "cpu") : device_str(device_str) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        states = register_buffer("states", torch::tensor({0.5f, 1.0f, 0.8f, 1.0f, 0.1f, 0.1f}, torch::TensorOptions().device(device)));
+        dim_names = {"Curiosity", "Energy", "Stability", "Health", "Noradrenaline", "Dopamine"};
+        u_t = register_buffer("u_t", torch::tensor({0.8f, 1.0f, 0.9f, 1.0f, 0.2f, 0.1f}, torch::TensorOptions().device(device)));
+        decay_rates = register_buffer("decay_rates", torch::tensor({0.001f, 0.0005f, 0.0008f, 0.0002f, 0.01f, 0.01f}, torch::TensorOptions().device(device)));
+        this->to(device);
     }
 
-    void sprout_homeostatic_dimension(std::string name, float initial_val = 0.5f) {
-        state_names.push_back(name);
-        auto new_val = torch::tensor({initial_val}, states.options());
-        states = torch::cat({states, new_val}, 0);
+    void sprout_homeostatic_dimension(std::string name, float initial_val = 0.5f, float decay = 0.001f) {
+        auto device = u_t.device();
+        dim_names.push_back(name);
+        u_t = register_buffer("u_t", torch::cat({u_t, torch::tensor({initial_val}, torch::TensorOptions().device(device))}));
+        decay_rates = register_buffer("decay_rates", torch::cat({decay_rates, torch::tensor({decay}, torch::TensorOptions().device(device))}));
     }
 
-    void update(torch::Tensor deltas) {
-        states = (states + deltas).clamp(0.0f, 1.0f);
+    torch::Tensor update(float free_energy, float recon_loss) {
+        torch::NoGradGuard no_grad;
+        auto u = u_t.clone();
+        u[0] = torch::clamp(u[0] + 0.1f * free_energy - 0.01f, 0.0f, 1.0f);
+        u[1] = torch::clamp(u[1] - 0.005f * (1.0f + free_energy) + 0.002f, 0.05f, 1.0f);
+        u[2] = torch::clamp(u[2] - 0.05f * recon_loss + 0.01f, 0.0f, 1.0f);
+        u[3] = torch::clamp(u[3] - 0.01f * (1.0f - u[2]) + 0.005f, 0.1f, 1.0f);
+        u[4] = torch::clamp(u[4] + 0.2f * free_energy - 0.05f, 0.0f, 1.0f);
+        u[5] = torch::clamp(u[5] + 0.1f * (1.0f - recon_loss) - 0.02f, 0.0f, 1.0f);
+        u_t.copy_(u);
+        return u_t;
     }
 
-    torch::Tensor get_states() { return states; }
-    std::vector<std::string> get_names() { return state_names; }
+    torch::Tensor get_states() { return u_t; }
+    std::vector<std::string> get_names() { return dim_names; }
 };
 TORCH_MODULE(HomeostaticNexus);
 
+
 // ============================================================================
-// 8. GRAPH OPERATOR PRIMITIVES
+// 8. EXPANDED PRIMITIVE GRAPH OPERATORS (Zero-Hardcode Mathematical Menu)
 // ============================================================================
-class GraphOp : public torch::nn::Module {
-public:
+
+struct GraphOp : public torch::nn::Module {
     virtual torch::Tensor forward(torch::Tensor x) = 0;
-    virtual ~GraphOp() = default;
 };
 
-class LinearAccumulatorOpImpl : public GraphOp {
-public:
-    int64_t dim;
-    torch::Tensor w;
-    LinearAccumulatorOpImpl(int64_t dim, std::string device_str) : dim(dim) {
+// 8.1 Linear Accumulator Primitive
+struct LinearAccumulatorOpImpl : public GraphOp {
+    torch::Tensor w, b;
+    LinearAccumulatorOpImpl(int64_t dim, std::string device_str = "cpu") {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        w = register_parameter("w", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
-        this->to(device);
+        w = register_parameter("w", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
+        b = register_parameter("b", torch::zeros({dim}, torch::TensorOptions().device(device)));
     }
     torch::Tensor forward(torch::Tensor x) override {
-        return torch::matmul(x, w.t());
+        return torch::matmul(x, w.t()) + b;
     }
 };
+TORCH_MODULE(LinearAccumulatorOp);
 
-class BilinearMultiplicativeOpImpl : public GraphOp {
-public:
-    int64_t dim;
-    torch::Tensor w_a, w_b;
-    BilinearMultiplicativeOpImpl(int64_t dim, std::string device_str) : dim(dim) {
+// 8.2 Bilinear Multiplicative Primitive
+struct BilinearMultiplicativeOpImpl : public GraphOp {
+    torch::Tensor w_left, w_right, w_out;
+    BilinearMultiplicativeOpImpl(int64_t dim, std::string device_str = "cpu") {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        w_a = register_parameter("w_a", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
-        w_b = register_parameter("w_b", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
-        this->to(device);
+        w_left = register_parameter("w_left", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
+        w_right = register_parameter("w_right", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
+        w_out = register_parameter("w_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.15f / std::sqrt(dim)));
     }
     torch::Tensor forward(torch::Tensor x) override {
-        auto a = torch::matmul(x, w_a.t());
-        auto b = torch::matmul(x, w_b.t());
-        return a * torch::sigmoid(b);
+        auto left = torch::matmul(x, w_left.t());
+        auto right = torch::matmul(x, w_right.t());
+        return torch::matmul(torch::silu(left * right), w_out.t());
     }
 };
+TORCH_MODULE(BilinearMultiplicativeOp);
 
-class SaturatedAttractorOpImpl : public GraphOp {
-public:
-    int64_t dim;
-    torch::Tensor w;
-    SaturatedAttractorOpImpl(int64_t dim, std::string device_str) : dim(dim) {
+// 8.3 Saturated Non-Linear Attractor Primitive
+struct SaturatedAttractorOpImpl : public GraphOp {
+    torch::Tensor w_gate, w_val, w_out;
+    SaturatedAttractorOpImpl(int64_t dim, std::string device_str = "cpu") {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        w = register_parameter("w", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
-        this->to(device);
+        w_gate = register_parameter("w_gate", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
+        w_val = register_parameter("w_val", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
+        w_out = register_parameter("w_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.15f / std::sqrt(dim)));
     }
     torch::Tensor forward(torch::Tensor x) override {
-        return torch::tanh(torch::matmul(x, w.t()));
+        auto gate = torch::sigmoid(torch::matmul(x, w_gate.t()));
+        auto val = torch::tanh(torch::matmul(x, w_val.t()));
+        return torch::matmul(gate * val, w_out.t());
     }
 };
+TORCH_MODULE(SaturatedAttractorOp);
 
-class ContinuousHopfieldOpImpl : public GraphOp {
-public:
+// 8.4 Continuous Hopfield Energy Snapping Primitive
+struct ContinuousHopfieldOpImpl : public GraphOp {
     int64_t dim;
     int64_t num_basins;
-    torch::Tensor patterns;
-    ContinuousHopfieldOpImpl(int64_t dim, std::string device_str, int64_t num_basins = 16)
+    torch::Tensor basins;
+    torch::Tensor beta;
+
+    ContinuousHopfieldOpImpl(int64_t dim, int64_t num_basins = 16, std::string device_str = "cpu")
         : dim(dim), num_basins(num_basins) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        patterns = register_parameter("patterns", torch::randn({num_basins, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
-        this->to(device);
+        auto init_basins = torch::randn({num_basins, dim}, torch::TensorOptions().device(device));
+        init_basins = init_basins / (init_basins.norm(2, -1, true) + 1e-6f);
+        basins = register_parameter("basins", init_basins);
+        beta = register_parameter("beta", torch::tensor(12.0f, torch::TensorOptions().device(device)));
     }
+
     torch::Tensor forward(torch::Tensor x) override {
-        auto norm_pat = torch::nn::functional::normalize(patterns, torch::nn::functional::NormalizeFuncOptions().dim(-1));
-        auto scores = torch::matmul(x, norm_pat.t()) * 8.0f;
-        auto attn = torch::softmax(scores, -1);
-        return torch::matmul(attn, norm_pat);
+        auto norm_x = x / (x.norm(2, -1, true) + 1e-6f);
+        auto sim = torch::matmul(norm_x, basins.t());
+        auto weights = torch::softmax(sim * beta, -1);
+        return torch::matmul(weights, basins);
     }
 };
+TORCH_MODULE(ContinuousHopfieldOp);
 
-class StateSpaceMemoryOpImpl : public GraphOp {
-public:
+// 8.5 State Space Continuous Memory Primitive
+struct StateSpaceMemoryOpImpl : public GraphOp {
     int64_t dim;
-    torch::Tensor decay;
-    torch::Tensor w_proj;
-    StateSpaceMemoryOpImpl(int64_t dim, std::string device_str) : dim(dim) {
+    torch::Tensor log_decay;
+    torch::Tensor w_in, w_out;
+
+    StateSpaceMemoryOpImpl(int64_t dim, std::string device_str = "cpu") : dim(dim) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        decay = register_parameter("decay", torch::full({dim}, -1.0f, torch::TensorOptions().device(device)));
-        w_proj = register_parameter("w_proj", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
-        this->to(device);
+        log_decay = register_parameter("log_decay", torch::randn({dim}, torch::TensorOptions().device(device)) * 0.1f - 1.0f);
+        w_in = register_parameter("w_in", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
+        w_out = register_parameter("w_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.2f / std::sqrt(dim)));
     }
+
     torch::Tensor forward(torch::Tensor x) override {
-        auto d = torch::sigmoid(decay);
-        auto proj = torch::matmul(x, w_proj.t());
-        return d * proj;
+        auto decay = torch::sigmoid(log_decay);
+        auto u = torch::matmul(x, w_in.t());
+        auto h = (1.0f - decay) * u;
+        return torch::matmul(torch::silu(h), w_out.t());
     }
 };
+TORCH_MODULE(StateSpaceMemoryOp);
+
 
 // ============================================================================
-// 9. DYNAMIC MORPHIC GRAPH & COMMUTATION ORCHESTRATOR R(h_t)
+// 9. DYNAMIC MORPHIC GRAPH & SUSUMU OHNO ORGANELLE POOL (AGN v7.0)
 // ============================================================================
+
 class DynamicMorphicGraphImpl : public torch::nn::Module {
 public:
     int64_t dim;
@@ -352,7 +445,6 @@ public:
     std::vector<float> methylation_locks; // Susumu Ohno Gene Lock: 1.0 = Frozen, 0.0 = Plastic
 
     torch::Tensor w_route;
-    torch::Tensor w_route_ctx; // Dynamic Commutation Orchestrator Matrix [64 * 64, dim]
     torch::Tensor w_sensory_in, w_motor_out;
 
     DynamicMorphicGraphImpl(int64_t dim = 128, std::string device_str = "cpu")
@@ -360,7 +452,6 @@ public:
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
 
         w_route = register_parameter("w_route", torch::zeros({64, 64}, torch::TensorOptions().device(device)));
-        w_route_ctx = register_parameter("w_route_ctx", torch::randn({64 * 64, dim}, torch::TensorOptions().device(device)) * 0.01f);
         w_sensory_in = register_parameter("w_sensory_in", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
         w_motor_out = register_parameter("w_motor_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
         this->to(device);
@@ -377,23 +468,19 @@ public:
         } else if (op_type == "SaturatedAttractor") {
             op = std::make_shared<SaturatedAttractorOpImpl>(dim, device_str);
         } else if (op_type == "ContinuousHopfield") {
-            op = std::make_shared<ContinuousHopfieldOpImpl>(dim, device_str);
+            op = std::make_shared<ContinuousHopfieldOpImpl>(dim, 16, device_str);
         } else if (op_type == "StateSpaceMemory") {
             op = std::make_shared<StateSpaceMemoryOpImpl>(dim, device_str);
         } else {
-            op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
+            throw std::invalid_argument("Unknown operator type: " + op_type);
         }
 
-        std::string prefix = "node_" + std::to_string(node_ops.size()) + "_" + name;
-        for (auto& p : op->named_parameters()) {
-            register_parameter(prefix + "_" + p.key(), p.value());
-        }
-
+        total_sprouted_so_far++;
         node_ops.push_back(op);
+        is_core_node.push_back(is_core);
         node_names.push_back(name);
         node_types.push_back(op_type);
-        is_core_node.push_back(is_core);
-        methylation_locks.push_back(0.0f);
+        methylation_locks.push_back(is_core ? 1.0f : 0.0f);
 
         auto alpha_val = torch::tensor(initial_alpha, torch::TensorOptions().device(device).requires_grad(!is_core));
         alpha_epi.push_back(register_parameter("alpha_" + name, alpha_val));
@@ -401,7 +488,7 @@ public:
     }
 
     void lock_node(int64_t idx, float lock_value = 1.0f) {
-        if (idx >= 0 && idx < (int64_t)node_ops.size()) {
+        if (idx >= 0 && idx < k_nodes) {
             methylation_locks[idx] = lock_value;
             bool freeze = (lock_value >= 1.0f);
             alpha_epi[idx].set_requires_grad(!freeze);
@@ -412,35 +499,39 @@ public:
     }
 
     int64_t duplicate_node(int64_t src_idx, std::string new_name, float initial_alpha = 0.0f) {
-        if (src_idx < 0 || src_idx >= (int64_t)node_ops.size()) {
-            throw std::runtime_error("Invalid source node index for duplication.");
+        if (src_idx < 0 || src_idx >= k_nodes) {
+            throw std::out_of_range("Source node index out of bounds for duplication");
         }
+        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
         std::string op_type = node_types[src_idx];
-        add_node(new_name, op_type, false, initial_alpha);
-        int64_t dst_idx = node_ops.size() - 1;
 
-        // 1. Exact parameter weight duplication
+        // 1. Sprout new node of the exact same operator type
+        add_node(new_name, op_type, /*is_core=*/false, /*initial_alpha=*/initial_alpha);
+        int64_t dst_idx = k_nodes - 1;
+
+        // 2. Exact Net2Net Weight Clone (Zero Shock)
         auto src_params = node_ops[src_idx]->named_parameters();
         auto dst_params = node_ops[dst_idx]->named_parameters();
         torch::NoGradGuard no_grad;
-        for (auto& sp : src_params) {
-            for (auto& dp : dst_params) {
-                if (sp.key() == dp.key()) {
-                    dp.value().copy_(sp.value());
-                }
+        for (const auto& sp : src_params) {
+            if (dst_params.contains(sp.key())) {
+                dst_params[sp.key()].copy_(sp.value());
             }
         }
 
-        // 2. Lock parent source node
-        lock_node(src_idx, 1.0f);
-
-        // 3. Child node is unlocked (methylation_lock = 0.0f)
-        lock_node(dst_idx, 0.0f);
+        // 3. Child node is unlocked (methylation = 0.0, plastic)
+        methylation_locks[dst_idx] = 0.0f;
+        alpha_epi[dst_idx].set_requires_grad(true);
+        for (auto& p : node_ops[dst_idx]->named_parameters()) {
+            p.value().set_requires_grad(true);
+        }
 
         // 4. Duplicate routing connection profile in w_route
         if (dst_idx < 64 && src_idx < 64) {
-            w_route[dst_idx].copy_(w_route[src_idx]);
-            w_route.select(1, dst_idx).copy_(w_route.select(1, src_idx));
+            w_route.data().index_put_({dst_idx, torch::indexing::Slice(0, dst_idx)},
+                                      w_route.data().index({src_idx, torch::indexing::Slice(0, dst_idx)}));
+            w_route.data().index_put_({torch::indexing::Slice(0, dst_idx), dst_idx},
+                                      w_route.data().index({torch::indexing::Slice(0, dst_idx), src_idx}));
         }
 
         return dst_idx;
@@ -449,14 +540,15 @@ public:
     std::map<std::string, torch::Tensor> get_active_parameters_map() {
         std::map<std::string, torch::Tensor> params;
         params["w_route"] = w_route;
-        params["w_route_ctx"] = w_route_ctx;
         params["w_sensory_in"] = w_sensory_in;
         params["w_motor_out"] = w_motor_out;
+
         for (size_t i = 0; i < node_ops.size(); ++i) {
+            auto prefix = "node_" + std::to_string(i) + "_" + node_names[i] + ".";
             params["alpha_" + node_names[i]] = alpha_epi[i];
-            std::string prefix = "node_" + std::to_string(i) + "_" + node_names[i];
-            for (auto& p : node_ops[i]->named_parameters()) {
-                params[prefix + "_" + p.key()] = p.value();
+
+            for (const auto& p : node_ops[i]->named_parameters()) {
+                params[prefix + p.key()] = p.value();
             }
         }
         return params;
@@ -464,19 +556,34 @@ public:
 
     int64_t prune_inactive_nodes(float threshold = 0.02f) {
         int64_t pruned_count = 0;
-        torch::NoGradGuard no_grad;
-        for (size_t i = 0; i < node_ops.size(); ++i) {
-            if (!is_core_node[i] && methylation_locks[i] < 0.5f) {
-                float gate = std::abs(std::tanh(alpha_epi[i].item<float>()));
-                if (gate < threshold) {
-                    alpha_epi[i].zero_();
-                    for (auto& p : node_ops[i]->named_parameters()) {
-                        p.value().zero_();
-                    }
-                    pruned_count++;
-                }
+        std::vector<std::shared_ptr<GraphOp>> new_ops;
+        std::vector<torch::Tensor> new_alpha;
+        std::vector<bool> new_is_core;
+        std::vector<std::string> new_names;
+        std::vector<std::string> new_types;
+        std::vector<float> new_locks;
+
+        for (int64_t i = 0; i < k_nodes; ++i) {
+            float eff_weight = std::abs(std::tanh(alpha_epi[i].template item<float>()));
+            if (!is_core_node[i] && methylation_locks[i] < 0.5f && eff_weight < threshold) {
+                pruned_count++;
+            } else {
+                new_ops.push_back(node_ops[i]);
+                new_alpha.push_back(alpha_epi[i]);
+                new_is_core.push_back(is_core_node[i]);
+                new_names.push_back(node_names[i]);
+                new_types.push_back(node_types[i]);
+                new_locks.push_back(methylation_locks[i]);
             }
         }
+
+        node_ops = new_ops;
+        alpha_epi = new_alpha;
+        is_core_node = new_is_core;
+        node_names = new_names;
+        node_types = new_types;
+        methylation_locks = new_locks;
+        k_nodes = node_ops.size();
         return pruned_count;
     }
 
@@ -489,7 +596,7 @@ public:
     }
 
     torch::Tensor forward(torch::Tensor x_sensory, int64_t thinking_steps = 4) {
-        auto B = x_sensory.size(0);
+        int64_t B = x_sensory.size(0);
         int64_t K = k_nodes;
         auto device = x_sensory.device();
 
@@ -504,29 +611,10 @@ public:
         auto sensory_in = torch::matmul(x_sensory, w_sensory_in.t());
         node_states[0] = node_states[0] + sensory_in;
 
-        // Context-Dependent Commutation Routing: R(h_t) = Softmax(W_route + W_route_ctx * x_sensory)
-        auto delta_route = torch::matmul(x_sensory, w_route_ctx.t()).view({B, 64, 64});
         auto active_w_route = w_route.slice(0, 0, K).slice(1, 0, K);
-        auto active_delta = delta_route.slice(1, 0, K).slice(2, 0, K);
-
-        // Context-Dependent Dynamic Commutation Routing with Epigenetic Gating
-        // Ensure that inactive nodes (alpha_epi = 0.0) do not steal softmax routing probability from active nodes
-        // by applying a large negative penalty to un-expressed nodes in the destination column
-        auto dynamic_routing_logits = active_w_route.unsqueeze(0) + active_delta; // [B, K, K]
-        
-        std::vector<torch::Tensor> gate_factors;
-        for (int64_t j = 0; j < K; ++j) {
-            gate_factors.push_back(torch::tanh(alpha_epi[j]).abs());
-        }
-        auto gates_tensor = torch::stack(gate_factors, 0); // [K]
-        auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0); // [1, 1, K]
-        dynamic_routing_logits = dynamic_routing_logits.masked_fill(inactive_mask, -1e4f);
-
-        auto routing_matrix = torch::softmax(dynamic_routing_logits, 2);
 
         for (int64_t step = 0; step < thinking_steps; ++step) {
-            auto aggregated_inputs_b = torch::einsum("bik,ibd->bkd", {routing_matrix, node_states});
-            auto aggregated_inputs = aggregated_inputs_b.permute({1, 0, 2});
+            auto aggregated_inputs = torch::einsum("ij,ibd->jbd", {torch::tanh(active_w_route), node_states});
             aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
 
             std::vector<torch::Tensor> new_states;
@@ -543,12 +631,7 @@ public:
         persistent_node_states = node_states.detach();
         has_persistent_states = true;
 
-        // Final output is weighted by epigenetic gates to ensure exact Net2Net zero-shock when alpha=0.0
-        torch::Tensor final_aggregated = torch::zeros({B, dim}, torch::TensorOptions().device(device));
-        for (int64_t j = 0; j < K; ++j) {
-            auto gate = torch::tanh(alpha_epi[j]);
-            final_aggregated = final_aggregated + gate * node_states[j];
-        }
+        auto final_aggregated = node_states.sum(0);
         return torch::matmul(final_aggregated, w_motor_out.t());
     }
 
@@ -562,6 +645,7 @@ public:
     }
 };
 TORCH_MODULE(DynamicMorphicGraph);
+
 
 // ============================================================================
 // 10. PYBIND11 MODULE BINDINGS
@@ -623,7 +707,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("__call__", &SaturatedAttractorOpImpl::forward);
 
     py::class_<ContinuousHopfieldOpImpl, torch::nn::Module, std::shared_ptr<ContinuousHopfieldOpImpl>>(m, "ContinuousHopfieldOp")
-        .def(py::init<int64_t, std::string, int64_t>(), py::arg("dim"), py::arg("device_str") = "cpu", py::arg("num_basins") = 16)
+        .def(py::init<int64_t, int64_t, std::string>(), py::arg("dim"), py::arg("num_basins") = 16, py::arg("device_str") = "cpu")
         .def("forward", &ContinuousHopfieldOpImpl::forward)
         .def("__call__", &ContinuousHopfieldOpImpl::forward);
 
