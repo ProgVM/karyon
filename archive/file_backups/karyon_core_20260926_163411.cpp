@@ -227,6 +227,11 @@ public:
         auto next_bump = torch::softmax(stabilized_potential * beta, -1);
 
         return std::make_tuple(next_bump, v_t);
+
+        auto beta = torch::clamp(beta_scale * (1.0f + 1.5f * da_gain), 6.0f, 50.0f);
+        auto next_bump = torch::softmax(stabilized_potential * beta, -1);
+
+        return std::make_tuple(next_bump, v_t);
     }
 };
 TORCH_MODULE(ContinuousSaccadicDrift);

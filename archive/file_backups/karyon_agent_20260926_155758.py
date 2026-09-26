@@ -68,17 +68,7 @@ class CoREAgent(nn.Module):
         self.graph.add_node("core_acc", "LinearAccumulator", True, 1.0)
         self.graph.add_node("core_sat", "SaturatedAttractor", True, 1.0)
 
-        # 4. C++20 Continuous Saccadic Attractor Drift (C-SSD Engine)
-        self.saccadic_drift = kcore.ContinuousSaccadicDrift(embed_dim, 17, str(device))
-        
-        # 5. Continuous Gaze & Copy Projection
-        self.content_q = nn.Linear(embed_dim, embed_dim, bias=False).to(device)
-        self.content_k = nn.Linear(embed_dim, embed_dim, bias=False).to(device)
-        self.gaze_gate = nn.Linear(embed_dim, 1, bias=True).to(device)
-        self.copy_gate = nn.Linear(embed_dim, 1, bias=True).to(device)
-        self.gaze_proj = nn.Linear(embed_dim * 2, embed_dim).to(device)
-
-        # 6. LayerNorm & Head Readout (Resonance-Tied with Input Embedding)
+        # 4. LayerNorm & Head Readout (Resonance-Tied with Input Embedding)
         self.norm = nn.LayerNorm(embed_dim).to(device)
         self.head = nn.Linear(embed_dim, vocab_size, bias=False).to(device)
         self.head.weight = self.emb.weight

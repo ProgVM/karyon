@@ -201,30 +201,22 @@ public:
         // 1. Continuous drift velocity v_t in [-1, +1]
         auto v_t = torch::tanh(torch::matmul(h_core, w_velocity) + b_velocity).squeeze(-1); // [B]
 
-        // 2. Convolutional Continuous Drift with Pure Advection & Mexican Hat Soliton
+        // 2. Convolutional Continuous Drift
         int64_t pad = num_filters / 2;
-        auto bump_3d = bump_state.unsqueeze(1); // [B, 1, L]
-        auto left_pad = bump_3d.slice(2, 0, 1).expand({B, 1, pad});
-        auto right_pad = bump_3d.slice(2, L - 1, L).expand({B, 1, pad});
-        auto bump_pad = torch::cat({left_pad, bump_3d, right_pad}, 2); // [B, 1, L + 2 * pad]
+        auto bump_pad = torch::nn::functional::pad(bump_state.unsqueeze(1), torch::nn::functional::PadFuncOptions({pad, pad}).mode(torch::kReplicate));
 
         std::vector<int64_t> stride = {1};
         std::vector<int64_t> padding = {0};
         std::vector<int64_t> dilation = {1};
 
-        auto sym_force = at::conv1d(bump_pad, w_sym, std::nullopt, stride, padding, dilation, 1); // [B, 1, L]
-        auto asym_force = at::conv1d(bump_pad, w_asym, std::nullopt, stride, padding, dilation, 1); // [B, 1, L]
+        auto sym_force = at::conv1d(bump_pad, w_sym, std::nullopt, stride, padding, dilation, 1);
+        auto asym_force = at::conv1d(bump_pad, w_asym, std::nullopt, stride, padding, dilation, 1);
 
-        auto drift_force = sym_force + v_t.view({B, 1, 1}) * asym_force; // [B, 1, L]
-        auto raw_potential = bump_state + drift_force.squeeze(1); // [B, L]
-
-        // 3. Stabilization of Contrast & Dispersion (Soliton Sharpness Lock)
-        auto mean_p = raw_potential.mean({-1}, true); // [B, 1]
-        auto std_p = raw_potential.std(1, false, true) + 1e-6f; // [B, 1]
-        auto stabilized_potential = (raw_potential - mean_p) / std_p; // [B, L]
+        auto drift_force = sym_force + v_t.view({B, 1, 1}) * asym_force;
+        auto new_potential = bump_state + drift_force.squeeze(1);
 
         auto beta = torch::clamp(beta_scale * (1.0f + 1.5f * da_gain), 6.0f, 50.0f);
-        auto next_bump = torch::softmax(stabilized_potential * beta, -1);
+        auto next_bump = torch::softmax(new_potential * beta, -1);
 
         return std::make_tuple(next_bump, v_t);
     }

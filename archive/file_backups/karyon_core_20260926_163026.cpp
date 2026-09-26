@@ -203,11 +203,13 @@ public:
 
         // 2. Convolutional Continuous Drift with Pure Advection & Mexican Hat Soliton
         int64_t pad = num_filters / 2;
+        // In LibTorch, to avoid padding ambiguity, manually replicate-pad the last dimension of [B, 1, L]
         auto bump_3d = bump_state.unsqueeze(1); // [B, 1, L]
         auto left_pad = bump_3d.slice(2, 0, 1).expand({B, 1, pad});
         auto right_pad = bump_3d.slice(2, L - 1, L).expand({B, 1, pad});
         auto bump_pad = torch::cat({left_pad, bump_3d, right_pad}, 2); // [B, 1, L + 2 * pad]
 
+        std::cout << "DEBUG: B=" << B << ", L=" << L << ", bump_pad=" << bump_pad.sizes() << ", w_sym=" << w_sym.sizes() << std::endl;
         std::vector<int64_t> stride = {1};
         std::vector<int64_t> padding = {0};
         std::vector<int64_t> dilation = {1};
@@ -219,9 +221,9 @@ public:
         auto raw_potential = bump_state + drift_force.squeeze(1); // [B, L]
 
         // 3. Stabilization of Contrast & Dispersion (Soliton Sharpness Lock)
-        auto mean_p = raw_potential.mean({-1}, true); // [B, 1]
-        auto std_p = raw_potential.std(1, false, true) + 1e-6f; // [B, 1]
-        auto stabilized_potential = (raw_potential - mean_p) / std_p; // [B, L]
+        auto mean_p = raw_potential.mean(-1, true);
+        auto std_p = raw_potential.std(-1, true) + 1e-6f;
+        auto stabilized_potential = (raw_potential - mean_p) / std_p;
 
         auto beta = torch::clamp(beta_scale * (1.0f + 1.5f * da_gain), 6.0f, 50.0f);
         auto next_bump = torch::softmax(stabilized_potential * beta, -1);
