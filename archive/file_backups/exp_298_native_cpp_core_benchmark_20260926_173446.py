@@ -117,8 +117,14 @@ def run_production_cpp_benchmark():
             p_emb = agent.emb(p_t)
             p_field = agent.ssd.forward(p_emb)
             
-            # Pure Endogenous Initial Focus Localization (Zero Delimiter / ASCII Hardcode)
-            bump = agent.compute_initial_focus(p_field, p_field[:, -1, :])
+            bump = torch.zeros(1, len(p_bytes), device=device)
+            init_idx = len(p_bytes) - 1
+            for idx in range(len(p_bytes) - 1, -1, -1):
+                if p_bytes[idx] not in (61, 32, 0):
+                    init_idx = idx
+                    break
+            bump[:, init_idx] = 1.0
+            bump = F.softmax(bump * 10.0, dim=-1)
             
             agent.graph.reset_state()
             h_core = p_field[:, -1, :]

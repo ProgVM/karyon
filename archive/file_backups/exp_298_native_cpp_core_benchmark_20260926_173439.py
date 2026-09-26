@@ -76,8 +76,20 @@ def run_production_cpp_benchmark():
             p_emb = agent.emb(p_pad)
             p_field = agent.ssd.forward(p_emb)
             
-            # Pure Endogenous Initial Focus Localization (Zero Delimiter / ASCII Hardcode)
-            bump = agent.compute_initial_focus(p_field, p_field[:, -1, :])
+            B, P_len, _ = p_field.shape
+            # Initialize bump on the last SIGNIFICANT non-delimiter token before '='
+            bump = torch.zeros(B, P_len, device=device)
+            for b_i in range(B):
+                # Find last index where token is not '=' (61) and not space (32)
+                row_tokens = p_pad[b_i].tolist()
+                init_idx = P_len - 1
+                for idx in range(P_len - 1, -1, -1):
+                    tok = row_tokens[idx]
+                    if tok not in (61, 32, 0): # '=' is 61, ' ' is 32, pad is 0
+                        init_idx = idx
+                        break
+                bump[b_i, init_idx] = 1.0
+            bump = F.softmax(bump * 10.0, dim=-1)
             
             agent.graph.reset_state()
             h_core = p_field[:, -1, :]
@@ -117,8 +129,14 @@ def run_production_cpp_benchmark():
             p_emb = agent.emb(p_t)
             p_field = agent.ssd.forward(p_emb)
             
-            # Pure Endogenous Initial Focus Localization (Zero Delimiter / ASCII Hardcode)
-            bump = agent.compute_initial_focus(p_field, p_field[:, -1, :])
+            bump = torch.zeros(1, len(p_bytes), device=device)
+            init_idx = len(p_bytes) - 1
+            for idx in range(len(p_bytes) - 1, -1, -1):
+                if p_bytes[idx] not in (61, 32, 0):
+                    init_idx = idx
+                    break
+            bump[:, init_idx] = 1.0
+            bump = F.softmax(bump * 10.0, dim=-1)
             
             agent.graph.reset_state()
             h_core = p_field[:, -1, :]

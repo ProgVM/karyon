@@ -74,13 +74,11 @@ class CoREAgent(nn.Module):
         # 5. Continuous Gaze & Copy Projection
         self.content_q = nn.Linear(embed_dim, embed_dim, bias=False).to(device)
         self.content_k = nn.Linear(embed_dim, embed_dim, bias=False).to(device)
-        self.salience_proj = nn.Linear(embed_dim, 1, bias=True).to(device)
         self.gaze_gate = nn.Linear(embed_dim, 1, bias=True).to(device)
         self.copy_gate = nn.Linear(embed_dim, 1, bias=True).to(device)
         self.gaze_proj = nn.Linear(embed_dim * 2, embed_dim).to(device)
 
-        # Focus Initialization / Target Saccade Trigger Query
-        self.init_focus_q = nn.Linear(embed_dim, embed_dim, bias=False).to(device)
+        # 6. LayerNorm & Head Readout (Resonance-Tied with Input Embedding)
         self.norm = nn.LayerNorm(embed_dim).to(device)
         self.head = nn.Linear(embed_dim, vocab_size, bias=False).to(device)
         self.head.weight = self.emb.weight
@@ -131,21 +129,15 @@ class CoREAgent(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Closed-loop causal step utilizing native C++20 CausalParallelSSD & ContinuousSaccadicDrift.
-        100% Modality-Agnostic Endogenous Contrast & Attractor Resonance (KEP Principles 10, 12, 19).
-        Zero hardcoded ASCII values or delimiter checks.
+        Endogenous, modality-agnostic salience and content resonance (KEP Principles 10, 12, 19).
         """
         B, L, D = p_field.shape
         # Temporal step via continuous state mixing
         h_core = self.ssd.forward(torch.cat([h_core.unsqueeze(1), x_t.unsqueeze(1)], dim=1))[:, -1, :]
         
-        # 1. Pure Modality-Agnostic Information Contrast Salience:
-        # Measure feature variance/deviation of each token vector from the local field centroid
-        mean_field = p_field.mean(dim=1, keepdim=True) # [B, 1, D]
-        field_contrast = torch.norm(p_field - mean_field, dim=-1) # [B, L]
-        
-        # Normalized contrast landscape + learned feature importance
-        learned_salience = self.salience_proj(p_field).squeeze(-1) # [B, L]
-        salience_bias = field_contrast + learned_salience # [B, L]
+        # 1. Pure Endogenous Information-Theoretic Salience Landscape from Latent Representations
+        # Modality-agnostic: measures the semantic/feature contrast of each token relative to the prompt field
+        salience_bias = self.salience_proj(p_field).squeeze(-1) # [B, L]
         
         # 2. Continuous Saccadic Attractor Drift in C++20 with Endogenous Salience Landscape
         drifted_bump, _ = self.saccadic_drift(bump, h_core, 0.1, salience_bias)
@@ -175,26 +167,6 @@ class CoREAgent(nn.Module):
         copy_logits.scatter_add_(1, p_tokens, next_bump)
         
         return h_fused, h_core, next_bump, p_copy, copy_logits
-
-    def compute_initial_focus(self, p_field: torch.Tensor, h_core: torch.Tensor) -> torch.Tensor:
-        """
-        Pure modality-agnostic initial focus attractor localization (KEP Principles 12 & 19).
-        Computes endogenous attractor query over settled prompt field without ASCII or delimiter checks.
-        """
-        B, L, D = p_field.shape
-        q_focus = self.init_focus_q(h_core).unsqueeze(1) # [B, 1, D]
-        k_field = self.content_k(p_field)               # [B, L, D]
-        
-        # Endogenous Information Contrast
-        mean_field = p_field.mean(dim=1, keepdim=True)
-        field_contrast = torch.norm(p_field - mean_field, dim=-1)
-        learned_salience = self.salience_proj(p_field).squeeze(-1)
-        salience_bias = field_contrast + learned_salience
-        
-        # Associative resonance + endogenous salience
-        scores = torch.bmm(q_focus, k_field.transpose(1, 2)).squeeze(1) / (D ** 0.5)
-        init_bump = torch.softmax((scores + salience_bias) * 10.0, dim=-1)
-        return init_bump
 
     def forward_latent(self, input_ids: torch.Tensor, thinking_steps: int = 4) -> torch.Tensor:
         """Returns internal continuous latent representations."""
