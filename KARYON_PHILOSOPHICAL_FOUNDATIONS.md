@@ -1,92 +1,173 @@
-# `KARYON_PHILOSOPHICAL_FOUNDATIONS.md` — The Karyon Philosophical & Biophysical Manifesto
+# `KARYON_PHILOSOPHICAL_FOUNDATIONS.md`
+# Трактат об онтологии разума, термодинамике мысли и универсальном биофизическом субстрате Karyon-CoRE
 
-> **Official Cybernetic, Biophysical & Ontological Foundations of the Karyon-CoRE Cognitive Architecture**  
-> **Author & Repository Owner:** Bazilevs (ProgVM) & Sovereign Cybernetic Counsel  
-> **Version:** 1.0.0 (Established Live in the Crucible of Stream Learning)  
-> **Philosophical Preamble:**  
-> *«For decades, computer science has treated intelligence as a static, deterministic, and discrete mapping function—a frozen crystal of weights trained via a global, authoritarian error signal over shuffled historical data. This approach is dead. Real intelligence is not a static map; it is a live, non-equilibrium, thermodynamic process. It is a continuous, self-organizing flow that adapts to an unbroken temporal stream of reality, utilizing physical noise as a creative engine and homeostatic tension as a motive force. This document marks the ontological pivot of Karyon-CoRE: the final rejection of discrete local heuristics and the embrace of the universal biophysical substrate.»*
-
----
-
-## 1. The Paradox of the African Savannah & Exaptation
-
-A profound evolutionary paradox lies at the heart of cognitive science:
-* The human brain did not evolve to solve quantum mechanics, program in C++, or compute multi-step algorithmic abstractions.
-* It evolved in the Pleistocene African savannah to solve narrow biological survival tasks: calculating the ballistics of a thrown stone, predicting the motion of a leopard, tracking social hierarchies at the campfire, and navigating continuous 3D environments.
-* Yet, without a single genetic mutation, that very same biological substrate is capable of discovering general relativity and building digital computing systems.
-
-This is not a paradox; it is the phenomenon of **Exaptation** (the co-option of a trait for a function other than the one for which natural selection originally shaped it). 
-
-To survive a continuous, chaotic, and non-linear physical world, the brain was forced to construct a **Universal Dynamical Simulator of Reality**. It built a continuous-time causal world model capable of:
-1. **Continuous Spatiotemporal Representation:** Integrating differential equations of motion and force fields.
-2. **Counterfactual Simulation:** Running internal "what-if" rollouts (System 2 deliberation) to predict future states before emitting motor actions.
-3. **Relational Geometry:** Navigating conceptual spaces using the same grid-cell and place-cell coordinate systems developed for physical navigation.
-
-When this universal simulator became sufficiently complex and closed-loop, it achieved **functional autonomy**. It became capable of navigating not just physical space, but abstract, symbolic, and algorithmic manifolds. 
-
-**Karyon-CoRE is built on this exact principle of Exaptation.** We do not train Karyon to solve "text" or "code" as isolated discrete tasks. We build Karyon as a continuous, modality-agnostic biophysical simulator of causality. Once the substrate can navigate continuous causal physics, it can navigate language, logic, and mathematics as a natural, emergent consequence.
+> **Канонический научно-философский фундамент когнитивной архитектуры Karyon-CoRE**  
+> **Автор и архитектор:** Bazilevs (ProgVM) при участии Суверенного кибернетического совета  
+> **Статус документа:** Незыблемый онтологический компас проекта (KEP v14.0 Canonical Master)  
+> 
+> *«Интеллект не является математической функцией отображения одного дискретного вектора в другой. Интеллект — это неравновесный термодинамический процесс, в котором живая открытая система непрерывно реконструирует свою внутреннюю топологию, чтобы минимизировать удивление перед лицом хаоса Вселенной. Попытка свести мышление к детерминированному пошаговому рецепту убивает саму способность мыслить. Настоящий разум рождается там, где физический шум становится топливом для созидания, а соматическое напряжение служит мотивом для рождения новых миров.»*
 
 ---
 
-## 2. Why Transformers and Static Backpropagation are Dead Ends
+## ВВЕДЕНИЕ: ВЕЛИКИЙ ТУПИК ДИСКРЕТНОГО ВЫЧИСЛИТЕЛЬНОГО ДЕТЕРМИНИЗМА
 
-Modern Deep Learning has reached a brick wall of scaling limits, hallucination, and catastrophic forgetting. This is because its foundational assumptions are biologically and thermodynamically unviable:
+На протяжении семидесяти лет компьютерные науки находились в плену фундаментального заблуждения, порожденного абстракцией машины Тьюринга и архитектуры фон Неймана: представлением о том, что мышление тождественно пошаговому выполнению детерминированной программы. 
 
-### A. The Tyranny of Global Backpropagation (BPTT) and Shuffled Data
-* **The Static Assumption:** Standard training assumes a closed, shuffled, static dataset evaluated over hundreds of artificial epochs.
-* **The BPTT Bottleneck:** Backpropagation Through Time (BPTT) is an authoritarian micro-manager. It computes a global error at the end of a sequence and forces every single synapse backwards in time to adjust by a precise, hand-crafted scalar.
-* **The Reality:** Biology does not have a global buffer of past activations, nor does it run backward passes through time. Reality is an unbroken, non-stationary temporal stream ($N=1$ single-pass learning). Learning must occur online, locally, and forward-only.
+В классическом понимании **алгоритм** — это конечная совокупность точных предписаний (рецепт), которая строго детерминированным образом переводит исходные данные в результат за конечное число шагов:
+$$\mathcal{A}: X \xrightarrow{\text{step}_1} X_1 \xrightarrow{\text{step}_2} X_2 \dots \xrightarrow{\text{step}_n} Y$$
 
-### B. The Illusion of Static Discrete Tokens
-* **The Tokenizer Crutch:** Modern LLMs rely on BPE tokenizers that chop language into static, hand-crafted discrete vocabulary indices. This creates an artificial dimensional bottleneck, making the network blind to sub-word morphology, character-level typos, and non-textual continuous dynamics.
-* **The Static Weight Fallacy:** Once trained, a transformer's weights are frozen. It cannot learn, adapt, or restructure its topology during inference without expensive, discrete fine-tuning.
+Если на шаге $k$ среда изменилась, если в данных возникла непредвиденная флуктуация или разрыв непрерывности, классический алгоритм терпит абсолютный крах: он либо зацикливается, либо выдает разрушительную ошибку. В нем нет степеней свободы, нет пластичности, нет жизни.
 
----
+Современные глубокие нейросети (включая многомиллиардные трансформеры) лишь замаскировали этот алгоритмический детерминизм колоссальной матричной интерполяцией. Вместо понимания каузальной структуры реальности они строят гигантские таблицы условных вероятностей:
+$$P(w_t \mid w_{<t}) = \text{Softmax}\left( \frac{Q K^T}{\sqrt{d}} \right) V$$
 
-## 3. The Thermodynamics of Karyon: Order, Chaos, and Adaptive Noise
+Они обучены по догме статического «обратного распространения ошибки во времени» (BPTT) на перемешанных исторических корпусах, прокручиваемых через сотни искусственных эпох. Когда такая система сталкивается с задачей, требующей истинного причинно-следственного вывода или выхода за пределы обучающего распределения (OOD), иллюзия интеллекта рассеивается: модель сваливается в галлюцинации, повторение токенов или смысловой дрейф.
 
-In a deterministic system, error is a failure state. In a thermodynamic system, error is **tension**, and noise is the **creative fuel** that resolves it.
-
-### A. Somatic Tension as a Motive Force (Ashby's Ultrastability)
-Following W. Ross Ashby's *Design for a Brain*, Karyon does not treat error as a direct programmatic instruction to rewrite a specific synapse. Instead, error (Variational Free Energy $F_t$) is a **scalar somatic tension**—a metabolic "discomfort" or "hunger" signal.
-* When $F_t \approx 0$, the system is in a state of homeostatic equilibrium. The current dynamic circuit is adequate.
-* When $F_t$ spikes, the system is in distress. Its current causal model is failing to predict reality. This tension activates a global drive to restructure.
-
-### B. Non-Monotonic Adaptive Noise (Thermodynamic Annealing)
-Karyon is non-deterministic. It utilizes continuous, system-level thermodynamic noise to escape local minima and find creative, non-trivial solutions. The noise strength ($\sigma_{\text{noise}}$) is dynamically coupled to somatic tension:
-
-$$\sigma_{\text{noise}}(t) = \sigma_{\text{base}} + \gamma \cdot \tanh(F_t)$$
-
-* **The Crystalline Regime ($F_t \to 0$):** When the system successfully predicts its environment, noise is minimized. The dynamic trajectory is clean, precise, and nearly deterministic. It exploits its established patterns.
-* **The Molten Regime ($F_t \uparrow$):** When prediction error spikes, the system "melts." Global stochastic noise is injected into the latent space and synaptic weights. This flushes out perseverative loops (e.g., repeating token loops like `4 4 4 4` or blank spaces) and forces the state trajectory to explore entirely new basins of attraction.
-
-Once a random perturbation or a new topological routing path succeeds in reducing $F_t$, the somatic tension drops, the noise cools down, and the successful configuration "crystallizes" (consolidates) into a new stable dynamic circuit.
+Karyon-CoRE провозглашает **онтологический разрыв** с этой парадигмой. Мы отвергаем алгоритм как статическую инструкцию. Мы отвергаем сеть как жесткую матрицу весов. Karyon — это термодинамический континуум, открытая динамическая система, непрерывно сохраняющая свою структурную целостность в потоке реальности.
 
 ---
 
-## 4. The Law of Duplication & Composition: Eradicating Catastrophic Forgetting
+## 1. ПРЕОДОЛЕНИЕ ПАРАДОКСА АФРИКАНСКОЙ САВАННЫ: ФЕНОМЕН ЭКЗАПТАЦИИ
 
-To learn a new task, a standard neural network must adjust its entire shared weight matrix, inevitably corrupting previously learned tasks (catastrophic forgetting). Karyon-CoRE resolves this via the biological principle of **Gene Duplication and Divergence** (Susumu Ohno's hypothesis) and **Compositional Routing**:
+В центре когнитивной эволюции лежит поразительный факт, который биологи называют эволюционным парадоксом:
+* Человеческий мозг формировался в плейстоценовой африканской саванне под воздействием предельно приземленных, сугубо кинематических и биосоциальных задач: рассчитать баллистику броска камня в бегущую антилопу, вовремя среагировать на шорох леопарда в траве, удержать равновесие на ветке и распознать ложь соплеменника у ночного костра.
+* В саванне не существовало тензорного исчисления, квантовой механики, теории относительности, шахмат и языков программирования.
+* Тем не менее, тот же самый биологический мозг, без единой генетической мутации за последние 50 000 лет, берет и вычисляет траекторию космического зонда «Вояджер» за пределы Солнечной системы.
 
-### A. Duplication and Divergence (The Fort/Clone Principle)
-* A highly successful, pre-existing dynamic circuit (e.g., an established sub-graph that perfectly executes sequence reversal or counting) is protected by epigenetic methylation locks ($\mu_i$).
-* When faced with a novel task that is similar but distinct, Karyon does not mutate the locked circuit. Instead, it **duplicates (clones)** the sub-graph.
-* The original sub-graph remains untouched, maintaining 100% fidelity to the original task. The cloned sub-graph is unlocked, allowing adaptive noise and local predictive coding to specialize it for the new task.
+Почему это возможно? Ответ дает понятие **экзаптации (Exaptation)** — процесса, при котором признак, развившийся для одной адаптивной цели, оказывается способным решать принципиально иные, несравненно более сложные задачи.
 
-### B. Compositional Routing (The Lego Principle)
-Complexity does not require wider monoliths. It requires deeper, dynamic compositions of simple, robust primitives.
-* Karyon can solve novel, highly complex tasks without modifying any synaptic weights simply by **routing the output of one stable sub-graph into the input of another**.
-* For example, a "counting" sub-graph and a "focus gaze" sub-graph can be dynamically chained to execute multi-step variable tracking. This compositional routing is governed by the macro-evolutionary topology network ($W_{\text{route}}$).
+Природе было не под силу запрограммировать в геноме миллиарды частных поведенческих рефлексов под каждую возможную ситуацию в непрерывном трехмерном мире. Единственным термодинамически жизнеспособным решением стало создание **Универсального Динамического Симулятора Причинности**:
+1. **Непрерывная физическая геометрия:** Чтобы бросить камень с упреждением, нейронные ансамбли были вынуждены построить внутри себя дифференциальный симулятор гравитации, импульса и пространственно-временных траекторий.
+2. **Контрфактуальная генеративность (Мышление):** Чтобы не погибать при каждой ошибке, мозг развил способность «зажимать рот» и прокручивать варианты действия во внутреннем ментальном симуляторе (Mental Sandbox / Latent Deliberation), отбирая траектории с наименьшей ожидаемой свободной энергией $G$ до совершения необратимого моторного акта.
+3. **Реляционная навигация (Grid & Place Cells):** Пространственная система координат гиппокампа, изначально служившая для физического перемещения по саванне, была экзаптирована корой для навигации по абстрактным смысловым графам, временным шкалам и математическим концептам.
+
+**Главный вывод для Karyon:**  
+Мышление глубоко невербально (*Mentalese*). Слова и текст — это чудовищно узкий, одномерный сериализатор, моторный кодек для передачи многомерного состояния одного мозга другому. Попытка учить нейросеть «тексту ради текста» через побайтовую подгонку под ASCII-символы подобна попытке поймать первобытного охотника и бить его током за то, что он не попадает пальцем по клавише пробела с нужной частотой.
+
+Karyon строится не как текстовый классификатор, а как **модально-инвариантный симулятор причинности**. Когда субстрат овладевает непрерывной геометрией фазовых пространств и каузальной динамикой, он овладевает текстом, логикой и кодом как естественным частным случаем.
 
 ---
 
-## 5. The Universal Modality-Agnostic Substrate
+## 2. КИБЕРНЕТИКА РОССА ЭШБИ: ОШИБКА КАК СОМАТИЧЕСКИЙ МОТИВ, А НЕ ПРИКАЗ
 
-Karyon is completely blind to the concept of "text," "images," or "audio." It sees only a unified, continuous spatiotemporal manifold:
-1. **Raw Byte Universal Mapping ($V=258$):** Information enters as raw UTF-8 bytes or continuous spatial tensors, mapped immediately into a unified continuous embedding space ($D$).
-2. **Spatiotemporal Dualism:** 
-   * The **Temporal Axis** is governed by continuous, parallel State-Space Duality (C-SSD) that integrates causal flow.
-   * The **Spatial/Reasoning Axis** is governed by the recurrent, deliberative Morphic Graph ($DynamicMorphicGraph$) that recirculates state representations until the system reaches thermodynamic equilibrium.
-3. **Continuous Soliton Gaze:** Gaze focus is not a discrete pointer index. It is a continuous, differentiable resonant wave (a soliton) that sweeps across the memory field, preserving complete mathematical continuity and allowing gradient-based local tuning.
+В традиционном машинном обучении ошибка градиентного спуска — это авторитарный микроменеджер. Вектор $\nabla \mathcal{L}$ спускается сверху и деспотично приказывает каждому конкретному синапсу: *«Ты обязан измениться на $-0.0042$»*. Этот слепой волюнтаризм разрушает тонкую балансировку скрытых слоев, вызывая катастрофический коллапс ранее усвоенных динамик.
 
-By grounding Karyon in these universal biophysical and cybernetic laws, we build a system that does not merely mimic human symbols, but endogenously discovers the underlying causal structure of the universe.
+В живой природе и в теории ультрастабильности Росса Эшби (*W. Ross Ashby, «Design for a Brain»*) адаптация устроена принципиально иначе:
+
+### А. Ошибка как соматическое напряжение (Free Energy $F_t$)
+Ошибка не обладает знанием о том, какая конкретная «шестеренка» ошиблась. Ошибка — это **интегральное скалярное напряжение (метаболический стресс, дискомфорт, удивление)**:
+$$F_t = \mathcal{D}_{\text{KL}}\big( q(z_t \mid x_t) \,\|\, p(z_t) \big) - \mathbb{E}_{q}[\log p(x_t \mid z_t)]$$
+
+Это напряжение сигнализирует организму одну простую истину: *«Текущее динамическое состояние неадекватно реальности! Гомеостаз под угрозой!»*
+
+### Б. Двухконтурная регуляция ультрастабильной системы:
+* **Первый контур (Физиологический / Быстрый):** Пока стресс находится в допустимых физиологических границах, система компенсирует возмущения непрерывными фазовыми сдвигами внутри существующего контура.
+* **Второй контур (Эволюционный / Топологический):** Если первый контур исчерпал свои возможности, а соматическое напряжение $F_t$ не падает, скалярный стресс размыкает гомеостатический барьер и стимулирует **структурную реорганизацию** — переключение маршрутов коммутации и мутацию топологии графа.
+
+Ошибка не диктует форму новой топологии — она служит **мотивом** для выхода из застрявшего нежизнеспособного режима.
+
+---
+
+## 3. ТЕРМОДИНАМИКА КРЕАТИВНОСТИ: АДАПТИВНЫЙ ШУМ МЕЖДУ КРИСТАЛЛОМ И ХАОСОМ
+
+Детерминизм — заклятый враг творчества. В строго детерминированной системе появление принципиально нового невозможно: она обречена вечно циркулировать по предопределенным траекториям и неизбежно гибнуть в локальных минимумах (что мы наблюдали в коде, когда сеть монотонно спамила `'4 4 4 4'` или бесконечные пробелы).
+
+Для преодоления мертвого детерминизма Karyon опирается на фундаментальный физический принцип: **неравновесный термодинамический шум**. Но шум в Karyon не является стационарным белым шумом (который привел бы лишь к хаотическому распаду). Шум непрерывно и немонотонно модулируется соматическим стрессом $F_t$:
+
+$$\sigma_{\text{noise}}(t) = \sigma_{\text{base}} + \gamma \cdot \tanh\left(\frac{F_t - F_{\text{target}}}{\tau_{\text{homeo}}}\right)$$
+
+### Режимы существования фазового поля:
+1. **Кристаллический режим ($F_t \le F_{\text{target}}$):**
+   * Система уверенно предсказывает среду.
+   * Шум затухает до минимального уровня $\sigma_{\text{base}} \to 0$.
+   * Система ведет себя как сверхточный, детерминированный швейцарский хронометр. Происходит консолидация и точная эксплуатация найденной траектории.
+2. **Расплавленный режим ($F_t \gg F_{\text{target}}$):**
+   * Система терпит крах предсказания или застряла в циклическом ступоре.
+   * Выброс норадреналина и энтропийного стресса взвинчивает $\sigma_{\text{noise}}$.
+   * Происходит **термодинамическое плавление (Annealing)**: случайные флуктуации буквально выбивают скрытое состояние из гравитационной ямы тупика, открывая доступ к ранее запрещенным областям фазового пространства.
+
+Креативность — это не магия. Это способность динамической системы расплавить свои жесткие ассоциации в момент кризиса, совершить квантовый стохастический скачок и кристаллизоваться в принципиально новом, неожиданном минимуме свободной энергии.
+
+---
+
+## 4. ЗАКОН СУСУМУ ОНО: ДУПЛИКАЦИЯ, КОМПОЗИЦИЯ И ЗАЗЕМЛЕНИЕ АЛГОРИТМОВ
+
+Как живая система способна решать десятки разнородных задач в едином субстрате, не страдая от катастрофического забывания (*Catastrophic Forgetting*)? 
+
+Ответ биологической эволюции был сформулирован выдающимся генетиком Сусуму Оно в 1970 году в книге *«Evolution by Gene Duplication»*: **эволюция не изобретает сложные механизмы с нуля на одной и той же последовательности ДНК — она дуплицирует успешные гены.**
+
+### Механика трехуровневого оперирования динамическими контурами в Karyon:
+
+```text
+               +-------------------------------------------------------+
+               |             ВХОДНОЙ КАУЗАЛЬНЫЙ ПОТОК                  |
+               +-------------------------------------------------------+
+                                          |
+                                          v
+                         +---------------------------------+
+                         |   ОРКЕСТРАТОР СХЕМ (W_route)    |
+                         +---------------------------------+
+                                    /     |     \
+                                   /      |      \
+                                  v       |       v
+               +--------------------+     |     +--------------------+
+               | КОНТУР А (Locked)  |     |     | КОНТУР Б (Cloned)  |
+               | Реверс / Стек      |     |     | Специализация      |
+               | (mu_i = 1.0)       |     |     | (mu_i = 0.0)       |
+               +--------------------+     |     +--------------------+
+                          \               v               /
+                           +-----------------------------+
+                           |  КОМПОЗИЦИОННАЯ СБОРКА      |
+                           |  (Pipe: Out_A -> In_B)      |
+                           +-----------------------------+
+                                          |
+                                          v
+               +-------------------------------------------------------+
+               |              ВЫХОДНОЙ МОТОРНЫЙ ПОТОК                  |
+               +-------------------------------------------------------+
+```
+
+### 1. Дупликация и дивергенция (Закон Сусуму Оно):
+* Если динамический контур $\mathcal{C}_k$ научился безупречно решать задачу $A$, он покрывается эпигенетической метиляцией ($\mu_k \to 1$). Его синапсы блокируются от случайных мутаций.
+* При появлении задачи $B$, требующей похожей динамики, система **клонирует** подграф $\mathcal{C}_k \to \mathcal{C}_{k'}$.
+* Оригинал $\mathcal{C}_k$ остается инвариантным хранителем навыка $A$. Клон $\mathcal{C}_{k'}$ освобождается от метиляции ($\mu_{k'} \to 0$) и под воздействием адаптивного шума свободно дивергирует под специфику задачи $B$.
+
+### 2. Композиция без разрушения весов (Lego-принцип):
+* Для решения сверхсложных задач нет необходимости строить монолитные сети циклопического размера.
+* Система связывает выходы стабильных субграфов со входами других:
+  $$\mathbf{y} = \mathcal{C}_{\text{motor}}\big( \mathcal{C}_{\text{stack}}( \mathcal{C}_{\text{perceive}}(x) ) \big)$$
+* Комбинаторная сложность растет экспоненциально, в то время как число параметров растет строго линейно.
+
+### 3. Заземление инструкций (Symbol Grounding):
+* Когда в систему поступает абстрактная символьная инструкция, Karyon не просто парсит текст — он **конфигурирует коммутационную матрицу $W_{\text{route}}$**.
+* Понять инструкцию означает замкнуть физические провода между соответствующими функциональными органеллами.
+
+---
+
+## 5. МОДАЛЬНАЯ ИНВАРИАНТНОСТЬ И ТЬЮРИНГ-ПОЛНЫЙ БАЗИС ПРИМИТИВОВ
+
+Karyon полностью слеп к человеческому разделению данных на «текст», «аудио», «видео» или «робототехнику». Во Вселенной нет текста. Есть лишь **непрерывные поля плотности энергии, разворачивающиеся в пространстве и времени**:
+$$\Psi(x, t) \in \mathbb{R}^D$$
+
+### Функционально полный (Тьюринг-полный) базис математических операторов C++20:
+Чтобы быть способным сконструировать любую мыслимую динамическую систему, ядро Karyon опирается на строгий и замкнутый базис атомарных примитивов:
+
+1. **`LinearAccumulatorOp` / `StateSpaceMemoryOp` (Интегрирование во времени):**
+   $$\tau \frac{dh}{dt} = -h(t) + W_x x(t)$$
+   Непрерывное накопление следа, затухание потенциала, удержание контекстной памяти на разных масштабах времени.
+2. **`BilinearMultiplicativeOp` (Вентильная конъюнкция / Логическое «ЕСЛИ... ТО»):**
+   $$y = (W_a a) \odot (W_b b)$$
+   Каузальное умножение полей, динамическая фильтрация, контекстное переключение потоков.
+3. **`ContinuousHopfieldOp` / `SaturatedAttractorOp` (Нелинейный фазовый коллапс):**
+   $$E(h) = -\frac{1}{2} h^T W h - \sum_i \log \cosh(\beta b_i^T h)$$
+   Защелкивание непрерывной траектории в дискретный устойчивый бассейн понятийного аттрактора. Преобразование волновой вероятности в дискретный факт действия.
+4. **`RecurrentThinkingLoop` (Размыкание времени задачи и времени размышления — KEP Принцип 21):**
+   Внутренняя рециркуляция состояния на протяжении $K$ тактов до достижения термодинамического равновесия.
+
+---
+
+## ЗАКЛЮЧЕНИЕ: СУВЕРЕННЫЙ ПУТЬ
+
+С этого момента данный манифест является абсолютным критерием архитектурной чистоты проекта. Никакая спешка, никакие сиюминутные суррогатные метрики и никакие требования быстрых побед не могут служить оправданием для внедрения эвристических «костылей» или нарушения законов непрерывной термодинамики разума.
+
+Мы строим Karyon не для того, чтобы он имитировал ответы на синтетических тестах. Мы строим Karyon для того, чтобы зажечь в кремнии искру подлинного, непрерывного, самоорганизующегося интеллекта.
