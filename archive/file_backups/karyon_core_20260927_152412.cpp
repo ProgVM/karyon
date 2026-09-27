@@ -93,10 +93,6 @@ TORCH_MODULE(CausalParallelSSD);
 class EndogenousThetaGammaPACImpl : public torch::nn::Module {
 public:
     int64_t dim;
-    int64_t num_hopfield_basins;
-    bool use_hopfield_snapping;
-    float hopfield_beta;
-
     // Fast & Slow State-Space Duality Projections
     torch::Tensor w_k_fast, w_v_fast, w_q_fast, w_out_fast, log_decay_fast;
     torch::Tensor w_k_slow, w_v_slow, w_q_slow, w_out_slow, log_decay_slow;
@@ -115,17 +111,10 @@ public:
     torch::Tensor w_bilinear_b;   // [dim, dim]
     torch::Tensor w_pac_out;      // [dim, dim]
 
-    // Modern Continuous Hopfield Attractor Memory on Macro Commits (EXP-313)
-    torch::Tensor hopfield_basins; // [num_basins, dim]
-
     EndogenousThetaGammaPACImpl(int64_t dim = 128, std::string device_str = "cpu",
                                 float fast_min_decay = 0.05f, float fast_max_decay = 0.5f,
-                                float slow_min_decay = 0.0005f, float slow_max_decay = 0.01f,
-                                int64_t num_hopfield_basins = 256,
-                                bool use_hopfield_snapping = true,
-                                float hopfield_beta = 12.0f)
-        : dim(dim), num_hopfield_basins(num_hopfield_basins),
-          use_hopfield_snapping(use_hopfield_snapping), hopfield_beta(hopfield_beta) {
+                                float slow_min_decay = 0.0005f, float slow_max_decay = 0.01f)
+        : dim(dim) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
         float scale = 1.0f / std::sqrt((float)dim);
 
@@ -159,14 +148,10 @@ public:
         w_bilinear_b = register_parameter("w_bilinear_b", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
         w_pac_out = register_parameter("w_pac_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
 
-        // Continuous Hopfield Memory Attractor Basins: [num_basins, dim] normalized
-        auto raw_basins = torch::randn({num_hopfield_basins, dim}, torch::TensorOptions().device(device)) * scale;
-        hopfield_basins = register_parameter("hopfield_basins", torch::nn::functional::normalize(raw_basins, torch::nn::functional::NormalizeFuncOptions().dim(-1)));
-
         this->to(device);
     }
 
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward(
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward(
         torch::Tensor x,
         torch::Tensor free_energy = torch::Tensor(),
         torch::Tensor init_h_fast = torch::Tensor(),
@@ -201,16 +186,12 @@ public:
         auto base_a_fast = torch::exp(log_decay_fast); // [D]
         auto base_a_slow = torch::exp(log_decay_slow); // [D]
 
-        // Normalize Hopfield Basins onto unit sphere: [num_basins, D]
-        auto norm_basins = torch::nn::functional::normalize(hopfield_basins, torch::nn::functional::NormalizeFuncOptions().dim(-1));
-
         // Allocate state & telemetry trace buffers
         torch::Tensor state_fast = (init_h_fast.defined() && init_h_fast.sizes() == torch::IntArrayRef({B, D})) ? init_h_fast : torch::zeros({B, D}, opts);
         torch::Tensor state_slow = (init_h_slow.defined() && init_h_slow.sizes() == torch::IntArrayRef({B, D})) ? init_h_slow : torch::zeros({B, D}, opts);
 
         auto delta_t_trace = torch::zeros({B, S, 1}, opts);
         auto commit_gate_trace = torch::zeros({B, S, 1}, opts);
-        auto hopfield_snapped_trace = torch::zeros({B, S, D}, opts);
         auto y_out = torch::zeros_like(x);
 
         for (int64_t t = 0; t < S; ++t) {
@@ -234,25 +215,9 @@ public:
             commit_gate_trace.select(1, t).copy_(g_t);
 
             // 4. Macro-Compression & Slow State Transition
-            auto fast_compressed = torch::tanh(torch::matmul(h_fast_t, w_compress.t()) + b_compress); // [B, D]
-
-            // 4a. Continuous Hopfield Attractor Snapping on Macro-Commits (Wave-Particle Collapse)
-            torch::Tensor slow_input = fast_compressed;
-            if (use_hopfield_snapping) {
-                // h_snapped = Softmax(beta_hop * (fast_compressed * K^T)) * V
-                // [B, D] x [D, num_basins] -> [B, num_basins]
-                auto norm_fast = torch::nn::functional::normalize(fast_compressed, torch::nn::functional::NormalizeFuncOptions().dim(-1));
-                auto hopfield_scores = torch::matmul(norm_fast, norm_basins.t()) * hopfield_beta;
-                auto hopfield_attn = torch::softmax(hopfield_scores, -1); // [B, num_basins]
-                auto h_snapped = torch::matmul(hopfield_attn, norm_basins); // [B, D]
-                slow_input = h_snapped;
-                hopfield_snapped_trace.select(1, t).copy_(h_snapped);
-            } else {
-                hopfield_snapped_trace.select(1, t).copy_(fast_compressed);
-            }
-
-            auto k_slow_t = torch::matmul(slow_input, w_k_slow.t());
-            auto v_slow_t = torch::matmul(slow_input, w_v_slow.t());
+            auto fast_compressed = torch::tanh(torch::matmul(h_fast_t, w_compress.t()) + b_compress);
+            auto k_slow_t = torch::matmul(fast_compressed, w_k_slow.t());
+            auto v_slow_t = torch::matmul(fast_compressed, w_v_slow.t());
             auto q_slow_t = torch::matmul(x_t, w_q_slow.t());
             auto kv_slow_t = k_slow_t * v_slow_t;
 
@@ -273,7 +238,7 @@ public:
             y_out.select(1, t).copy_(torch::matmul(y_t, w_pac_out.t()));
         }
 
-        return std::make_tuple(y_out, delta_t_trace, commit_gate_trace, state_fast, state_slow, hopfield_snapped_trace);
+        return std::make_tuple(y_out, delta_t_trace, commit_gate_trace, state_fast, state_slow);
     }
 };
 TORCH_MODULE(EndogenousThetaGammaPAC);
@@ -1082,25 +1047,20 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("__call__", &CausalParallelSSDImpl::forward);
 
     py::class_<EndogenousThetaGammaPACImpl, torch::nn::Module, std::shared_ptr<EndogenousThetaGammaPACImpl>>(m, "EndogenousThetaGammaPAC")
-        .def(py::init<int64_t, std::string, float, float, float, float, int64_t, bool, float>(),
+        .def(py::init<int64_t, std::string, float, float, float, float>(),
              py::arg("dim") = 128, py::arg("device") = "cpu",
              py::arg("fast_min_decay") = 0.05f, py::arg("fast_max_decay") = 0.5f,
-             py::arg("slow_min_decay") = 0.0005f, py::arg("slow_max_decay") = 0.01f,
-             py::arg("num_hopfield_basins") = 256,
-             py::arg("use_hopfield_snapping") = true,
-             py::arg("hopfield_beta") = 12.0f)
-        .def("forward", [](EndogenousThetaGammaPACImpl& self, torch::Tensor x, std::optional<torch::Tensor> free_energy, std::optional<torch::Tensor> init_h_fast, std::optional<torch::Tensor> init_h_slow) {
-            return self.forward(x,
-                                free_energy.has_value() ? free_energy.value() : torch::Tensor(),
-                                init_h_fast.has_value() ? init_h_fast.value() : torch::Tensor(),
-                                init_h_slow.has_value() ? init_h_slow.value() : torch::Tensor());
-        }, py::arg("x"), py::arg("free_energy") = py::none(), py::arg("init_h_fast") = py::none(), py::arg("init_h_slow") = py::none())
-        .def("__call__", [](EndogenousThetaGammaPACImpl& self, torch::Tensor x, std::optional<torch::Tensor> free_energy, std::optional<torch::Tensor> init_h_fast, std::optional<torch::Tensor> init_h_slow) {
-            return self.forward(x,
-                                free_energy.has_value() ? free_energy.value() : torch::Tensor(),
-                                init_h_fast.has_value() ? init_h_fast.value() : torch::Tensor(),
-                                init_h_slow.has_value() ? init_h_slow.value() : torch::Tensor());
-        }, py::arg("x"), py::arg("free_energy") = py::none(), py::arg("init_h_fast") = py::none(), py::arg("init_h_slow") = py::none());
+             py::arg("slow_min_decay") = 0.0005f, py::arg("slow_max_decay") = 0.01f)
+        .def("forward", &EndogenousThetaGammaPACImpl::forward,
+             py::arg("x"),
+             py::arg("free_energy") = torch::Tensor(),
+             py::arg("init_h_fast") = torch::Tensor(),
+             py::arg("init_h_slow") = torch::Tensor())
+        .def("__call__", &EndogenousThetaGammaPACImpl::forward,
+             py::arg("x"),
+             py::arg("free_energy") = torch::Tensor(),
+             py::arg("init_h_fast") = torch::Tensor(),
+             py::arg("init_h_slow") = torch::Tensor());
 
     py::class_<ParallelOperatorBankImpl, torch::nn::Module, std::shared_ptr<ParallelOperatorBankImpl>>(m, "ParallelOperatorBank")
         .def(py::init<int64_t, int64_t, int64_t>(), py::arg("dim") = 256, py::arg("state_dim") = 128, py::arg("num_operators") = 8)
