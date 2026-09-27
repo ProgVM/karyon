@@ -392,15 +392,13 @@ def run_single_pass_training():
         total_adapted_batches += 1
 
         # Interoceptive Homeostatic Updates (Ashby Homeostasis)
-        # Scaled sensitivity to achieve realistic biological wake-sleep cycle (~150-250 steps)
         if hu_nexus is not None:
-            # Free energy surprise scaled down (0.0015) so energy depletes smoothly over ~180-220 steps
-            hu_nexus.update(float(speech_loss_val) * 0.03)
+            hu_nexus.update(float(speech_loss_val))
 
-        # Check Sleep & Synaptic Consolidation Condition (Dynamic Somatic Energy < 0.15 or safety interval 250)
+        # Check Sleep & Synaptic Consolidation Condition
         states = hu_nexus.get_states() if hu_nexus is not None else torch.tensor([0.5, 1.0, 0.9, 1.0, 0.2, 0.1])
         energy_val = float(states[1].item())
-        should_sleep = (energy_val <= 0.15) or ((batch_idx + 1) % 250 == 0)
+        should_sleep = (energy_val <= 0.30) or ((batch_idx + 1) % 500 == 0)
 
         if should_sleep:
             total_sleep_cycles += 1
@@ -416,23 +414,20 @@ def run_single_pass_training():
                 with torch.no_grad():
                     states_tensor = hu_nexus.get_states()
                     states_tensor[1] = 1.0  # restore energy
-                    states_tensor[4] = 0.05  # reduce noradrenaline
-                    states_tensor[5] = 0.05  # reduce dopamine
+                    states_tensor[4] = 0.1  # reduce noradrenaline
+                    states_tensor[5] = 0.1  # reduce dopamine
 
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
             logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep Complete ({sleep_duration_ms:.1f}ms). Pruned Nodes={pruned_count}")
 
-            # Local container checkpoint save on every sleep cycle
+            # Periodic container save & cloud sync
             save_karyon(agent_brain, hopfield_mem, hu_nexus, h_fast, h_slow, epoch=1, story_idx=(batch_idx + 1) * BATCH_SIZE, filepath=kcore_path)
+            commit_msg = f"feat(weights): single-pass stream step {batch_idx+1}/{len(stream_loader)} checkpoint - loss={speech_loss_val:.4f}"
+            sync_checkpoint_to_hf(kcore_path, hf_repo_id, commit_msg)
 
             gc.collect()
             if device_str == 'cuda':
                 torch.cuda.empty_cache()
-
-        # Cloud sync to HuggingFace Hub strictly throttled: every 500 steps or at final step
-        if (batch_idx + 1) % 500 == 0:
-            commit_msg = f"feat(weights): single-pass stream step {batch_idx+1}/{len(stream_loader)} checkpoint - loss={speech_loss_val:.4f}"
-            sync_checkpoint_to_hf(kcore_path, hf_repo_id, commit_msg)
 
         batch_total_ms = (time.perf_counter() - t_batch_start) * 1000.0
         tokens_per_sec = (current_batch_size * (seq_len - 1)) / max(batch_total_ms / 1000.0, 1e-6)
