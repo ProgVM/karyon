@@ -405,15 +405,15 @@ public:
 
         // Gate 1 (Meso Valve / Theta): Default bias set for ~1 in 5-6 steps
         w_gate1 = register_parameter("w_gate1", torch::randn({1, dim}, torch::TensorOptions().device(device)) * scale);
-        b_gate1 = register_parameter("b_gate1", torch::tensor({-2.0f}, torch::TensorOptions().device(device)));
-        beta_gate1 = register_parameter("beta_gate1", torch::tensor({2.0f}, torch::TensorOptions().device(device)));
+        b_gate1 = register_parameter("b_gate1", torch::tensor({-1.5f}, torch::TensorOptions().device(device)));
+        beta_gate1 = register_parameter("beta_gate1", torch::tensor({1.5f}, torch::TensorOptions().device(device)));
         w_comp1 = register_parameter("w_comp1", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
         b_comp1 = register_parameter("b_comp1", torch::zeros({dim}, torch::TensorOptions().device(device)));
 
         // Gate 2 (Macro Valve / Delta): Default bias set for ~1 in 30-50 steps (more negative bias)
         w_gate2 = register_parameter("w_gate2", torch::randn({1, dim}, torch::TensorOptions().device(device)) * scale);
-        b_gate2 = register_parameter("b_gate2", torch::tensor({-6.0f}, torch::TensorOptions().device(device)));
-        beta_gate2 = register_parameter("beta_gate2", torch::tensor({1.75f}, torch::TensorOptions().device(device)));
+        b_gate2 = register_parameter("b_gate2", torch::tensor({-4.0f}, torch::TensorOptions().device(device)));
+        beta_gate2 = register_parameter("beta_gate2", torch::tensor({2.0f}, torch::TensorOptions().device(device)));
         w_comp2 = register_parameter("w_comp2", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
         b_comp2 = register_parameter("b_comp2", torch::zeros({dim}, torch::TensorOptions().device(device)));
 
@@ -537,8 +537,9 @@ public:
             h_theta_trace.select(1, t).copy_(h_theta_t);
 
             // 3. Gate 2 (Macro Valve / Delta Commit): g2_t = Sigmoid(W_g2 * h_theta_t + b_g2 + beta_g2 * tanh(fe_t))
+            // Macro gate only opens when Meso Theta is actively committing (g1_t > 0.3)
             auto gate2_logits = torch::matmul(h_theta_t, w_gate2.t()) + b_gate2 + beta_gate2 * torch::tanh(fe_t);
-            auto g2_t = torch::sigmoid(gate2_logits); // [B, 1]
+            auto g2_t = torch::sigmoid(gate2_logits) * torch::sigmoid((g1_t - 0.3f) * 10.0f); // [B, 1]
             gate2_trace.select(1, t).copy_(g2_t);
 
             // Compress Theta to Delta input: Compress_2(h_theta(t))

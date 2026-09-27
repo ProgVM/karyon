@@ -164,7 +164,7 @@ public:
         b_compress = register_parameter("b_compress", torch::zeros({dim}, torch::TensorOptions().device(device)));
         w_bilinear_a = register_parameter("w_bilinear_a", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
         w_bilinear_b = register_parameter("w_bilinear_b", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
-        w_pac_out = register_parameter("w_pac_out", torch::eye(dim, torch::TensorOptions().device(device)) + torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (scale * 0.1f));
+        w_pac_out = register_parameter("w_pac_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
 
         // Continuous Hopfield Memory Attractor Basins: [num_basins, dim] normalized
         auto raw_basins = torch::randn({num_hopfield_basins, dim}, torch::TensorOptions().device(device)) * scale;
@@ -405,15 +405,15 @@ public:
 
         // Gate 1 (Meso Valve / Theta): Default bias set for ~1 in 5-6 steps
         w_gate1 = register_parameter("w_gate1", torch::randn({1, dim}, torch::TensorOptions().device(device)) * scale);
-        b_gate1 = register_parameter("b_gate1", torch::tensor({-2.0f}, torch::TensorOptions().device(device)));
-        beta_gate1 = register_parameter("beta_gate1", torch::tensor({2.0f}, torch::TensorOptions().device(device)));
+        b_gate1 = register_parameter("b_gate1", torch::tensor({-0.5f}, torch::TensorOptions().device(device)));
+        beta_gate1 = register_parameter("beta_gate1", torch::tensor({1.5f}, torch::TensorOptions().device(device)));
         w_comp1 = register_parameter("w_comp1", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
         b_comp1 = register_parameter("b_comp1", torch::zeros({dim}, torch::TensorOptions().device(device)));
 
-        // Gate 2 (Macro Valve / Delta): Default bias set for ~1 in 30-50 steps (more negative bias)
+        // Gate 2 (Macro Valve / Delta): Default bias set for ~1 in 30-50 steps
         w_gate2 = register_parameter("w_gate2", torch::randn({1, dim}, torch::TensorOptions().device(device)) * scale);
-        b_gate2 = register_parameter("b_gate2", torch::tensor({-6.0f}, torch::TensorOptions().device(device)));
-        beta_gate2 = register_parameter("beta_gate2", torch::tensor({1.75f}, torch::TensorOptions().device(device)));
+        b_gate2 = register_parameter("b_gate2", torch::tensor({-1.2f}, torch::TensorOptions().device(device)));
+        beta_gate2 = register_parameter("beta_gate2", torch::tensor({2.0f}, torch::TensorOptions().device(device)));
         w_comp2 = register_parameter("w_comp2", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
         b_comp2 = register_parameter("b_comp2", torch::zeros({dim}, torch::TensorOptions().device(device)));
 
@@ -426,7 +426,7 @@ public:
         w_bilinear_b_theta = register_parameter("w_bilinear_b_theta", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
         w_bilinear_a_delta = register_parameter("w_bilinear_a_delta", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
         w_bilinear_b_delta = register_parameter("w_bilinear_b_delta", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
-        w_pac_out = register_parameter("w_pac_out", torch::eye(dim, torch::TensorOptions().device(device)) + torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (scale * 0.1f));
+        w_pac_out = register_parameter("w_pac_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
 
         this->to(device);
     }
@@ -526,7 +526,7 @@ public:
 
             auto k_theta_t = torch::matmul(gamma_comp, w_k_theta.t());
             auto v_theta_t = torch::matmul(gamma_comp, w_v_theta.t());
-            auto q_theta_t = torch::matmul(gamma_comp, w_q_theta.t());
+            auto q_theta_t = torch::matmul(x_t, w_q_theta.t());
             auto kv_theta_t = k_theta_t * v_theta_t;
 
             // Meso Theta SSD updated through Gate 1: h_theta(t) = (1 - g1) * h_theta(t-1) + g1 * candidate
@@ -559,7 +559,7 @@ public:
 
             auto k_delta_t = torch::matmul(delta_input, w_k_delta.t());
             auto v_delta_t = torch::matmul(delta_input, w_v_delta.t());
-            auto q_delta_t = torch::matmul(delta_input, w_q_delta.t());
+            auto q_delta_t = torch::matmul(x_t, w_q_delta.t());
             auto kv_delta_t = k_delta_t * v_delta_t;
 
             // Macro Delta SSD updated through Gate 2: h_delta(t) = state_delta * decay + g2 * kv_delta
@@ -568,17 +568,17 @@ public:
             auto h_delta_t = torch::matmul(q_delta_t * state_delta, w_out_delta.t());
             h_delta_trace.select(1, t).copy_(h_delta_t);
 
-            // 4. Residual Gated Modulation (Stabilized Gradient Flow):
-            // Instead of compounding multiplicative scaling, we use residual gated offsets:
+            // 4. Two-Stage Cascaded Modulation with Residual Highway:
+            // y_t = h_gamma(t) + h_gamma(t) * Bilinear_theta(h_theta(t)) + h_gamma(t) * Bilinear_delta(h_delta(t))
             auto mod_theta_a = torch::matmul(h_theta_t, w_bilinear_a_theta.t());
             auto mod_theta_b = torch::sigmoid(torch::matmul(h_theta_t, w_bilinear_b_theta.t()));
-            auto pac_theta = mod_theta_a * mod_theta_b;
+            auto bilinear_theta = mod_theta_a * mod_theta_b;
 
             auto mod_delta_a = torch::matmul(h_delta_t, w_bilinear_a_delta.t());
             auto mod_delta_b = torch::sigmoid(torch::matmul(h_delta_t, w_bilinear_b_delta.t()));
-            auto pac_delta = mod_delta_a * mod_delta_b;
+            auto bilinear_delta = mod_delta_a * mod_delta_b;
 
-            auto y_t = h_gamma_t + 0.1f * (pac_theta + pac_delta);
+            auto y_t = h_gamma_t * (1.0f + bilinear_theta + bilinear_delta);
             y_out.select(1, t).copy_(torch::matmul(y_t, w_pac_out.t()));
         }
 

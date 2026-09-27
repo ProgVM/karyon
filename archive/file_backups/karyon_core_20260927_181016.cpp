@@ -405,15 +405,15 @@ public:
 
         // Gate 1 (Meso Valve / Theta): Default bias set for ~1 in 5-6 steps
         w_gate1 = register_parameter("w_gate1", torch::randn({1, dim}, torch::TensorOptions().device(device)) * scale);
-        b_gate1 = register_parameter("b_gate1", torch::tensor({-2.0f}, torch::TensorOptions().device(device)));
-        beta_gate1 = register_parameter("beta_gate1", torch::tensor({2.0f}, torch::TensorOptions().device(device)));
+        b_gate1 = register_parameter("b_gate1", torch::tensor({-1.5f}, torch::TensorOptions().device(device)));
+        beta_gate1 = register_parameter("beta_gate1", torch::tensor({1.5f}, torch::TensorOptions().device(device)));
         w_comp1 = register_parameter("w_comp1", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
         b_comp1 = register_parameter("b_comp1", torch::zeros({dim}, torch::TensorOptions().device(device)));
 
         // Gate 2 (Macro Valve / Delta): Default bias set for ~1 in 30-50 steps (more negative bias)
         w_gate2 = register_parameter("w_gate2", torch::randn({1, dim}, torch::TensorOptions().device(device)) * scale);
-        b_gate2 = register_parameter("b_gate2", torch::tensor({-6.0f}, torch::TensorOptions().device(device)));
-        beta_gate2 = register_parameter("beta_gate2", torch::tensor({1.75f}, torch::TensorOptions().device(device)));
+        b_gate2 = register_parameter("b_gate2", torch::tensor({-4.0f}, torch::TensorOptions().device(device)));
+        beta_gate2 = register_parameter("beta_gate2", torch::tensor({2.0f}, torch::TensorOptions().device(device)));
         w_comp2 = register_parameter("w_comp2", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
         b_comp2 = register_parameter("b_comp2", torch::zeros({dim}, torch::TensorOptions().device(device)));
 

@@ -405,15 +405,15 @@ public:
 
         // Gate 1 (Meso Valve / Theta): Default bias set for ~1 in 5-6 steps
         w_gate1 = register_parameter("w_gate1", torch::randn({1, dim}, torch::TensorOptions().device(device)) * scale);
-        b_gate1 = register_parameter("b_gate1", torch::tensor({-2.0f}, torch::TensorOptions().device(device)));
-        beta_gate1 = register_parameter("beta_gate1", torch::tensor({2.0f}, torch::TensorOptions().device(device)));
+        b_gate1 = register_parameter("b_gate1", torch::tensor({-0.5f}, torch::TensorOptions().device(device)));
+        beta_gate1 = register_parameter("beta_gate1", torch::tensor({1.5f}, torch::TensorOptions().device(device)));
         w_comp1 = register_parameter("w_comp1", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
         b_comp1 = register_parameter("b_comp1", torch::zeros({dim}, torch::TensorOptions().device(device)));
 
         // Gate 2 (Macro Valve / Delta): Default bias set for ~1 in 30-50 steps (more negative bias)
         w_gate2 = register_parameter("w_gate2", torch::randn({1, dim}, torch::TensorOptions().device(device)) * scale);
-        b_gate2 = register_parameter("b_gate2", torch::tensor({-6.0f}, torch::TensorOptions().device(device)));
-        beta_gate2 = register_parameter("beta_gate2", torch::tensor({1.75f}, torch::TensorOptions().device(device)));
+        b_gate2 = register_parameter("b_gate2", torch::tensor({-2.5f}, torch::TensorOptions().device(device)));
+        beta_gate2 = register_parameter("beta_gate2", torch::tensor({2.0f}, torch::TensorOptions().device(device)));
         w_comp2 = register_parameter("w_comp2", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * scale);
         b_comp2 = register_parameter("b_comp2", torch::zeros({dim}, torch::TensorOptions().device(device)));
 
@@ -568,8 +568,8 @@ public:
             auto h_delta_t = torch::matmul(q_delta_t * state_delta, w_out_delta.t());
             h_delta_trace.select(1, t).copy_(h_delta_t);
 
-            // 4. Residual Gated Modulation (Stabilized Gradient Flow):
-            // Instead of compounding multiplicative scaling, we use residual gated offsets:
+            // 4. Two-Stage Cascaded Bilinear Modulation:
+            // Fast micro-dynamics modulated by Meso Theta and Macro Delta phases
             auto mod_theta_a = torch::matmul(h_theta_t, w_bilinear_a_theta.t());
             auto mod_theta_b = torch::sigmoid(torch::matmul(h_theta_t, w_bilinear_b_theta.t()));
             auto pac_theta = mod_theta_a * mod_theta_b;
@@ -578,7 +578,7 @@ public:
             auto mod_delta_b = torch::sigmoid(torch::matmul(h_delta_t, w_bilinear_b_delta.t()));
             auto pac_delta = mod_delta_a * mod_delta_b;
 
-            auto y_t = h_gamma_t + 0.1f * (pac_theta + pac_delta);
+            auto y_t = h_gamma_t * (1.0f + pac_theta) * (1.0f + pac_delta);
             y_out.select(1, t).copy_(torch::matmul(y_t, w_pac_out.t()));
         }
 
