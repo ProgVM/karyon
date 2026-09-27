@@ -5,6 +5,7 @@ Delegates orchestration directly to KaryonEntity as the self-contained biologica
 """
 
 import logging
+import os
 import time
 import torch
 from karyon_entity import KaryonEntity

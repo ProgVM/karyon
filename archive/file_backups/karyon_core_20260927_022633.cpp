@@ -655,8 +655,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("__call__", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("get_topology_manifest", &DynamicMorphicGraphImpl::get_topology_manifest)
-        .def("get_methylation_locks", &DynamicMorphicGraphImpl::get_methylation_locks)
-        .def("set_methylation_locks", &DynamicMorphicGraphImpl::set_methylation_locks, py::arg("locks"))
         .def("named_parameters_map", [](std::shared_ptr<DynamicMorphicGraphImpl> m) {
             return m->get_active_parameters_map();
         });

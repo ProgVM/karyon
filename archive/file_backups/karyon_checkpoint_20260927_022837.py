@@ -295,6 +295,7 @@ def save_karyon(agent, memory, hu, h_fast, h_slow, epoch=0, story_idx=0, filepat
     sec_header_size = 64
     num_sections = 4
 
+    offset_sec_headers = header_size
     offset_payload_start = header_size + (num_sections * sec_header_size)
 
     # Align Section 1

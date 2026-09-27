@@ -410,15 +410,6 @@ public:
             }
         }
     }
-    std::vector<float> get_methylation_locks() const {
-        return methylation_locks;
-    }
-
-    void set_methylation_locks(const std::vector<float>& locks) {
-        for (size_t i = 0; i < locks.size() && i < methylation_locks.size(); ++i) {
-            lock_node(i, locks[i]);
-        }
-    }
 
     int64_t duplicate_node(int64_t src_idx, std::string new_name, float initial_alpha = 0.0f) {
         if (src_idx < 0 || src_idx >= (int64_t)node_ops.size()) {
@@ -655,8 +646,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("__call__", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("get_topology_manifest", &DynamicMorphicGraphImpl::get_topology_manifest)
-        .def("get_methylation_locks", &DynamicMorphicGraphImpl::get_methylation_locks)
-        .def("set_methylation_locks", &DynamicMorphicGraphImpl::set_methylation_locks, py::arg("locks"))
         .def("named_parameters_map", [](std::shared_ptr<DynamicMorphicGraphImpl> m) {
             return m->get_active_parameters_map();
         });
