@@ -626,7 +626,7 @@ public:
 TORCH_MODULE(ParallelOperatorBank);
 
 // ============================================================================
-// 4. CONTINUOUS HOPFIELD MEMORY WITH CONTEXT-GATED REPULSOR DYNAMICS
+// 4. CONTINUOUS HOPFIELD MEMORY
 // ============================================================================
 class ContinuousHopfieldMemoryImpl : public torch::nn::Module {
 public:
@@ -634,79 +634,11 @@ public:
     int64_t num_basins;
     torch::Tensor basins;
 
-    // Context-Gated Somatic Episode Buffers (Triad: Context, Action, Valence)
-    int64_t max_episodes;
-    int64_t active_episodes;
-    torch::Tensor context_keys;  // [max_episodes, dim]
-    torch::Tensor action_keys;   // [max_episodes, dim]
-    torch::Tensor valences;      // [max_episodes]
-
-    ContinuousHopfieldMemoryImpl(int64_t dim = 256, int64_t num_basins = 32, std::string device_str = "cpu", int64_t max_episodes = 256)
-        : dim(dim), num_basins(num_basins), max_episodes(max_episodes), active_episodes(0) {
+    ContinuousHopfieldMemoryImpl(int64_t dim = 256, int64_t num_basins = 32, std::string device_str = "cpu")
+        : dim(dim), num_basins(num_basins) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
         basins = register_parameter("basins", torch::randn({num_basins, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt(dim)));
-        
-        context_keys = register_buffer("context_keys", torch::zeros({max_episodes, dim}, torch::TensorOptions().device(device)));
-        action_keys = register_buffer("action_keys", torch::zeros({max_episodes, dim}, torch::TensorOptions().device(device)));
-        valences = register_buffer("valences", torch::zeros({max_episodes}, torch::TensorOptions().device(device)));
-        
         this->to(device);
-    }
-
-    void record_somatic_episode(torch::Tensor context_key, torch::Tensor action_key, float valence) {
-        auto dev = basins.device();
-        auto ctx_norm = torch::nn::functional::normalize(context_key.to(dev).detach().view({1, dim}), torch::nn::functional::NormalizeFuncOptions().dim(-1));
-        auto act_norm = torch::nn::functional::normalize(action_key.to(dev).detach().view({1, dim}), torch::nn::functional::NormalizeFuncOptions().dim(-1));
-
-        int64_t slot = active_episodes % max_episodes;
-        context_keys.index_put_({slot}, ctx_norm.squeeze(0));
-        action_keys.index_put_({slot}, act_norm.squeeze(0));
-        valences.index_put_({slot}, torch::tensor(valence, torch::TensorOptions().device(dev)));
-
-        if (active_episodes < max_episodes) {
-            active_episodes++;
-        }
-    }
-
-    // Context-gated repulsion relaxation
-    torch::Tensor relax_with_repulsion(torch::Tensor context_t, torch::Tensor action_t, float beta = 8.0f) {
-        auto dev = action_t.device();
-        auto ctx_norm = torch::nn::functional::normalize(context_t.to(dev), torch::nn::functional::NormalizeFuncOptions().dim(-1)); // [B, dim]
-        auto act_norm = torch::nn::functional::normalize(action_t.to(dev), torch::nn::functional::NormalizeFuncOptions().dim(-1)); // [B, dim]
-
-        if (active_episodes == 0) {
-            return action_t;
-        }
-
-        // Active episodes view
-        auto valid_ctx = context_keys.slice(0, 0, active_episodes); // [N, dim]
-        auto valid_act = action_keys.slice(0, 0, active_episodes); // [N, dim]
-        auto valid_val = valences.slice(0, 0, active_episodes);    // [N]
-
-        // Context alignment: c_t^T c_i (unscaled cosine similarity between normalized vectors)
-        auto ctx_sim = torch::matmul(ctx_norm, valid_ctx.t()); // [B, N]
-        
-        // Action alignment: a_t^T a_i (unscaled cosine similarity)
-        auto act_sim = torch::matmul(act_norm, valid_act.t()); // [B, N]
-
-        // Context gating filter: sharp gate when context similarity is high
-        auto ctx_gate = torch::sigmoid((ctx_sim - 0.3f) * 12.0f); // smooth continuous gate [B, N]
-        
-        // Repulsion force vector for V_i = -1.0
-        auto rep_mask = (1.0f - valid_val.unsqueeze(0)) * 0.5f; // [B, N], 1 for negative, 0 for positive
-        auto rep_weights = ctx_gate * rep_mask * torch::clamp(act_sim, 0.0f, 1.0f); // [B, N]
-
-        // Compute repulsive shift vector
-        auto rep_force = torch::matmul(rep_weights, valid_act); // [B, dim]
-
-        // Attractor pull vector from positive episodes (V_i = +1.0)
-        auto att_mask = (1.0f + valid_val.unsqueeze(0)) * 0.5f; // [B, N], 1 for positive, 0 for negative
-        auto att_weights = ctx_gate * att_mask * torch::clamp(act_sim, 0.0f, 1.0f); // [B, N]
-        auto att_force = torch::matmul(att_weights, valid_act); // [B, dim]
-
-        // Trajectory displacement: repulse strongly when negative experience matches context
-        auto relaxed_action = action_t + 0.6f * att_force - 1.5f * rep_force;
-        return torch::nn::functional::normalize(relaxed_action, torch::nn::functional::NormalizeFuncOptions().dim(-1));
     }
 
     torch::Tensor forward(torch::Tensor x, torch::Tensor u_t = torch::Tensor()) {
@@ -1528,9 +1460,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("compute_operators", &ParallelOperatorBankImpl::compute_operators);
 
     py::class_<ContinuousHopfieldMemoryImpl, torch::nn::Module, std::shared_ptr<ContinuousHopfieldMemoryImpl>>(m, "ContinuousHopfieldMemory")
-        .def(py::init<int64_t, int64_t, std::string, int64_t>(), py::arg("dim") = 256, py::arg("num_basins") = 32, py::arg("device_str") = "cpu", py::arg("max_episodes") = 256)
-        .def("record_somatic_episode", &ContinuousHopfieldMemoryImpl::record_somatic_episode, py::arg("context_key"), py::arg("action_key"), py::arg("valence"))
-        .def("relax_with_repulsion", &ContinuousHopfieldMemoryImpl::relax_with_repulsion, py::arg("context_t"), py::arg("action_t"), py::arg("beta") = 8.0f)
+        .def(py::init<int64_t, int64_t, std::string>(), py::arg("dim") = 256, py::arg("num_basins") = 32, py::arg("device_str") = "cpu")
         .def("forward", [](ContinuousHopfieldMemoryImpl& self, torch::Tensor x, std::optional<torch::Tensor> u_t) {
             return self.forward(x, u_t.has_value() ? u_t.value() : torch::Tensor());
         }, py::arg("x"), py::arg("u_t") = py::none())

@@ -683,29 +683,34 @@ public:
         auto valid_act = action_keys.slice(0, 0, active_episodes); // [N, dim]
         auto valid_val = valences.slice(0, 0, active_episodes);    // [N]
 
-        // Context alignment: c_t^T c_i (unscaled cosine similarity between normalized vectors)
-        auto ctx_sim = torch::matmul(ctx_norm, valid_ctx.t()); // [B, N]
+        // Context alignment: c_t^T c_i / sqrt(D)
+        auto ctx_sim = torch::matmul(ctx_norm, valid_ctx.t()) * (1.0f / std::sqrt(static_cast<float>(dim))); // [B, N]
         
-        // Action alignment: a_t^T a_i (unscaled cosine similarity)
-        auto act_sim = torch::matmul(act_norm, valid_act.t()); // [B, N]
+        // Action alignment: a_t^T a_i / sqrt(D)
+        auto act_sim = torch::matmul(act_norm, valid_act.t()) * (1.0f / std::sqrt(static_cast<float>(dim))); // [B, N]
 
-        // Context gating filter: sharp gate when context similarity is high
-        auto ctx_gate = torch::sigmoid((ctx_sim - 0.3f) * 12.0f); // smooth continuous gate [B, N]
+        // Context-gated valence score: exp(beta * [ctx_sim + V_i * act_sim])
+        // When V_i = -1.0, high action similarity reduces score or pushes energy higher
+        auto energy_logits = (ctx_sim + valid_val.unsqueeze(0) * act_sim) * beta; // [B, N]
+
+        // Mask/gate: Context gating filter (only compute repulsion if context matches, e.g. ctx_sim > 0.3)
+        auto ctx_gate = torch::sigmoid((ctx_sim - 0.2f) * 10.0f); // smooth continuous gate [B, N]
         
-        // Repulsion force vector for V_i = -1.0
+        // Repulsion force vector: sum_i [ ctx_gate_i * (1 - V_i) / 2 * act_sim_i * a_i ]
+        // (1 - V_i) / 2 is 1.0 for V_i = -1.0, and 0.0 for V_i = +1.0
         auto rep_mask = (1.0f - valid_val.unsqueeze(0)) * 0.5f; // [B, N], 1 for negative, 0 for positive
         auto rep_weights = ctx_gate * rep_mask * torch::clamp(act_sim, 0.0f, 1.0f); // [B, N]
 
         // Compute repulsive shift vector
         auto rep_force = torch::matmul(rep_weights, valid_act); // [B, dim]
 
-        // Attractor pull vector from positive episodes (V_i = +1.0)
+        // Attractor pull vector from positive episodes
         auto att_mask = (1.0f + valid_val.unsqueeze(0)) * 0.5f; // [B, N], 1 for positive, 0 for negative
-        auto att_weights = ctx_gate * att_mask * torch::clamp(act_sim, 0.0f, 1.0f); // [B, N]
+        auto att_weights = torch::softmax(energy_logits * att_mask, -1); // [B, N]
         auto att_force = torch::matmul(att_weights, valid_act); // [B, dim]
 
-        // Trajectory displacement: repulse strongly when negative experience matches context
-        auto relaxed_action = action_t + 0.6f * att_force - 1.5f * rep_force;
+        // Trajectory displacement: a_relaxed = a_t + 0.5 * att_force - 0.8 * rep_force
+        auto relaxed_action = action_t + 0.5f * att_force - 0.8f * rep_force;
         return torch::nn::functional::normalize(relaxed_action, torch::nn::functional::NormalizeFuncOptions().dim(-1));
     }
 
@@ -1528,9 +1533,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("compute_operators", &ParallelOperatorBankImpl::compute_operators);
 
     py::class_<ContinuousHopfieldMemoryImpl, torch::nn::Module, std::shared_ptr<ContinuousHopfieldMemoryImpl>>(m, "ContinuousHopfieldMemory")
-        .def(py::init<int64_t, int64_t, std::string, int64_t>(), py::arg("dim") = 256, py::arg("num_basins") = 32, py::arg("device_str") = "cpu", py::arg("max_episodes") = 256)
-        .def("record_somatic_episode", &ContinuousHopfieldMemoryImpl::record_somatic_episode, py::arg("context_key"), py::arg("action_key"), py::arg("valence"))
-        .def("relax_with_repulsion", &ContinuousHopfieldMemoryImpl::relax_with_repulsion, py::arg("context_t"), py::arg("action_t"), py::arg("beta") = 8.0f)
+        .def(py::init<int64_t, int64_t, std::string>(), py::arg("dim") = 256, py::arg("num_basins") = 32, py::arg("device_str") = "cpu")
         .def("forward", [](ContinuousHopfieldMemoryImpl& self, torch::Tensor x, std::optional<torch::Tensor> u_t) {
             return self.forward(x, u_t.has_value() ? u_t.value() : torch::Tensor());
         }, py::arg("x"), py::arg("u_t") = py::none())

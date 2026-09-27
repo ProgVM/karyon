@@ -99,9 +99,6 @@ class CoREAgent(nn.Module):
         self.copy_gate = nn.Linear(embed_dim, 1, bias=True).to(device)
         self.gaze_proj = nn.Linear(embed_dim * 2, embed_dim).to(device)
 
-        # 5.1 Context-Gated Aversive Repulsor Hopfield Memory
-        self.hopfield_memory = kcore.ContinuousHopfieldMemory(embed_dim, 32, str(device), 512)
-
         # Focus Initialization / Target Saccade Trigger Query
         self.init_focus_q = nn.Linear(embed_dim, embed_dim, bias=False).to(device)
         self.norm = nn.LayerNorm(embed_dim).to(device)
