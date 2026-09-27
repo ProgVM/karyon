@@ -272,23 +272,12 @@ class CoREAgent(nn.Module):
         Records somatic episode into Hopfield repulsor memory based on Free Energy surprise.
         - F_t > tau_error: Aversive negative experience (Valence = -1.0) -> Repulsor formed.
         - F_t <= tau_success: Positive reinforcement (Valence = +1.0) -> Attractor reinforced.
-        Ensures input tensors are strictly reshaped to [1, D] vectors when passed from batched streams.
         """
-        # Ensure 2D tensor representations with strict [1, D] vector shapes
-        ctx_vec = context_t.mean(dim=0, keepdim=True) if context_t.dim() > 1 and context_t.size(0) > 1 else context_t
-        act_vec = action_t.mean(dim=0, keepdim=True) if action_t.dim() > 1 and action_t.size(0) > 1 else action_t
-
-        ctx_vec = ctx_vec.view(1, -1)
-        act_vec = act_vec.view(1, -1)
-
-        assert ctx_vec.shape[1] == self.embed_dim, f"Invalid context dimension {ctx_vec.shape[1]}, expected {self.embed_dim}"
-        assert act_vec.shape[1] == self.embed_dim, f"Invalid action dimension {act_vec.shape[1]}, expected {self.embed_dim}"
-
         if free_energy_surprise > tau_error:
-            self.hopfield_memory.record_somatic_episode(ctx_vec, act_vec, -1.0)
+            self.hopfield_memory.record_somatic_episode(context_t, action_t, -1.0)
             return -1.0
         elif free_energy_surprise <= tau_success:
-            self.hopfield_memory.record_somatic_episode(ctx_vec, act_vec, 1.0)
+            self.hopfield_memory.record_somatic_episode(context_t, action_t, 1.0)
             return 1.0
         return None
 
