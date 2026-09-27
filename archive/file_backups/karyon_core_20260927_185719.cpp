@@ -195,13 +195,7 @@ public:
         torch::Tensor f_t_seq;
         if (free_energy.defined() && free_energy.numel() > 0) {
             if (free_energy.dim() == 1) {
-                if (free_energy.size(0) == B) {
-                    f_t_seq = free_energy.unsqueeze(1).unsqueeze(-1).expand({B, S, 1});
-                } else if (free_energy.size(0) == S) {
-                    f_t_seq = free_energy.unsqueeze(0).unsqueeze(-1).expand({B, S, 1});
-                } else {
-                    f_t_seq = free_energy.mean().unsqueeze(0).unsqueeze(1).unsqueeze(-1).expand({B, S, 1});
-                }
+                f_t_seq = free_energy.unsqueeze(0).unsqueeze(-1).expand({B, S, 1});
             } else if (free_energy.dim() == 2) {
                 f_t_seq = free_energy.unsqueeze(-1);
             } else {
@@ -452,13 +446,7 @@ public:
         torch::Tensor f_t_seq;
         if (free_energy.defined() && free_energy.numel() > 0) {
             if (free_energy.dim() == 1) {
-                if (free_energy.size(0) == B) {
-                    f_t_seq = free_energy.unsqueeze(1).unsqueeze(-1).expand({B, S, 1});
-                } else if (free_energy.size(0) == S) {
-                    f_t_seq = free_energy.unsqueeze(0).unsqueeze(-1).expand({B, S, 1});
-                } else {
-                    f_t_seq = free_energy.mean().unsqueeze(0).unsqueeze(1).unsqueeze(-1).expand({B, S, 1});
-                }
+                f_t_seq = free_energy.unsqueeze(0).unsqueeze(-1).expand({B, S, 1});
             } else if (free_energy.dim() == 2) {
                 f_t_seq = free_energy.unsqueeze(-1);
             } else {

@@ -141,16 +141,12 @@ class CoREAgent(nn.Module):
         else:
             x = input_ids
 
-        is_2d = (x.dim() == 2)
-        if is_2d:
-            x = x.unsqueeze(1)
-
         # Step 1: Temporal Tri-Scale Cascade Scan
         # TriScaleHierarchicalPAC returns: (y_out, dt, g1, g2, na, da, h_gamma, h_theta, h_delta, h_snapped)
         res_tuple = self.ssd.forward(x, free_energy if free_energy is not None else torch.Tensor())
         h_seq = res_tuple[0]  # [B, S, D]
 
-        if not is_2d:
+        if x.dim() == 3:
             B, S, D = x.shape
             # Step 2: Spatial/Deliberative Graph Recirculation
             h_flat = h_seq.reshape(B * S, D)
@@ -170,16 +166,15 @@ class CoREAgent(nn.Module):
                 return logits, actual_steps
             return logits
         else:
-            # 2D input [B, D] continuous vectors: squeeze back
-            h_seq_2d = h_seq.squeeze(1)
+            # 2D input [B, D] continuous vectors
             if thinking_steps is not None:
-                h_graph = self.graph.forward(h_seq_2d, thinking_steps)
+                h_graph = self.graph.forward(h_seq, thinking_steps)
                 actual_steps = float(thinking_steps)
             else:
                 h_graph, actual_steps = self.graph.forward_adaptive(
-                    h_seq_2d, max_thinking_steps, halt_threshold, epsilon_halt
+                    h_seq, max_thinking_steps, halt_threshold, epsilon_halt
                 )
-            logits = self.head(self.norm(h_seq_2d + h_graph))
+            logits = self.head(self.norm(h_seq + h_graph))
             if return_thinking_steps:
                 return logits, actual_steps
             return logits

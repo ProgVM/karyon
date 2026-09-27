@@ -1,15 +1,15 @@
 # karyon_agent.py
 """
 ===============================================================================
-KARYON CORE AGENT MASTER WRAPPER v37.0
+KARYON CORE AGENT MASTER WRAPPER v36.0
 ===============================================================================
 Python Orchestrator Wrapper for C++20 Spatiotemporal Morphogenetic Engine:
-- Temporal Domain: C++20 TriScaleHierarchicalPAC (Gamma -> Theta -> Delta Cascade)
+- Temporal Domain: C++20 CausalParallelSSD (Continuous linear state space time-mixing)
 - Spatial Domain: C++20 DynamicMorphicGraph (Recurrent thinking cycles across dynamic mathematical operators)
 - Continuous Hopfield Attractor Memory for discrete concept snapping
 - Sleep-Consolidation, Edelman Neural Darwinism Apoptosis, Epigenetic Sprouting (AGN v7.0)
 - Susumu Ohno Gene Lock & Organelle Duplication Law integration
-- Unified Parameter Registration & 100% .kcore v6.0 Container Serialization.
+- Unified Parameter Registration & 100% .kcore v5.0 Container Serialization.
 ===============================================================================
 """
 import math
@@ -33,25 +33,18 @@ class ConfigMock:
 class CoREAgent(nn.Module):
     """
     Master Python wrapper over C++20 Spatiotemporal DynamicMorphicGraph engine.
-    Integrates TriScaleHierarchicalPAC (temporal context flow) with DynamicMorphicGraph
+    Integrates CausalParallelSSD (temporal context flow) with DynamicMorphicGraph
     (spatial/recurrent latent deliberation depth).
     Ensures 100% compliance with KEP Principle 22 (Spatiotemporal Dualism)
-    and karyon_checkpoint.py (.kcore v6.0 serialization).
+    and karyon_checkpoint.py (.kcore v5.0 serialization).
     """
     def __init__(
         self,
         vocab_size: int = 258,
         embed_dim: int = 256,
         device: str = 'cpu',
-        gamma_min_decay: float = 0.05,
-        gamma_max_decay: float = 0.50,
-        theta_min_decay: float = 0.005,
-        theta_max_decay: float = 0.05,
-        delta_min_decay: float = 0.0001,
-        delta_max_decay: float = 0.001,
-        num_hopfield_basins: int = 256,
-        use_hopfield_snapping: bool = True,
-        hopfield_beta: float = 12.0
+        min_decay: float = 0.005,
+        max_decay: float = 0.2
     ):
         super().__init__()
         self.config = ConfigMock()
@@ -67,20 +60,8 @@ class CoREAgent(nn.Module):
         self.emb = nn.Embedding(vocab_size, embed_dim).to(device)
         nn.init.normal_(self.emb.weight, 0.0, 0.02)
 
-        # 2. C++20 TriScaleHierarchicalPAC (Temporal Axis S: Three-scale Chrono-PAC Cascade)
-        self.ssd = kcore.TriScaleHierarchicalPAC(
-            embed_dim,
-            str(device),
-            gamma_min_decay,
-            gamma_max_decay,
-            theta_min_decay,
-            theta_max_decay,
-            delta_min_decay,
-            delta_max_decay,
-            num_hopfield_basins,
-            use_hopfield_snapping,
-            hopfield_beta
-        )
+        # 2. C++20 CausalParallelSSD (Temporal Axis S: State-Space Causal Sequence Mixing)
+        self.ssd = kcore.CausalParallelSSD(embed_dim, str(device), min_decay, max_decay)
 
         # 3. C++20 DynamicMorphicGraph (Spatial/Thinking Axis K: Recurrent Deliberation Depth)
         self.graph = kcore.DynamicMorphicGraph(embed_dim, str(device))
@@ -122,7 +103,6 @@ class CoREAgent(nn.Module):
     def forward(
         self,
         input_ids: torch.Tensor,
-        free_energy: Optional[torch.Tensor] = None,
         thinking_steps: Optional[int] = None,
         max_thinking_steps: int = 8,
         halt_threshold: float = 0.8,
@@ -131,58 +111,76 @@ class CoREAgent(nn.Module):
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, float]]:
         """
         Spatiotemporal Dual-Phase Forward Pass:
-        1. Temporal Tri-Scale Hierarchical PAC Causal Scan (Gamma -> Theta -> Delta Cascade).
+        1. Temporal State-Space Causal Scan (Sequence mixing across S).
         2. Spatial Morphogenetic Graph Recirculation (Deliberative latent thinking across K).
         When thinking_steps is None, executes Sovereign Adaptive Pondering / Halting (KEP Principle 21).
         """
         actual_steps = 0.0
         if input_ids.dtype in (torch.long, torch.int32, torch.int64):
             x = self.emb(input_ids)
-        else:
-            x = input_ids
+            if x.dim() == 3:
+                B, S, D = x.shape
+                # Step 1: Temporal Causal State-Space Mixing
+                h_seq = self.ssd.forward(x)  # [B, S, D]
+                # Step 2: Spatial/Deliberative Graph Recirculation
+                h_flat = h_seq.reshape(B * S, D)
+                if thinking_steps is not None:
+                    h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
+                    actual_steps = float(thinking_steps)
+                else:
+                    h_graph_flat, actual_steps = self.graph.forward_adaptive(
+                        h_flat, max_thinking_steps, halt_threshold, epsilon_halt
+                    )
+                    h_graph = h_graph_flat.reshape(B, S, D)
 
-        is_2d = (x.dim() == 2)
-        if is_2d:
-            x = x.unsqueeze(1)
-
-        # Step 1: Temporal Tri-Scale Cascade Scan
-        # TriScaleHierarchicalPAC returns: (y_out, dt, g1, g2, na, da, h_gamma, h_theta, h_delta, h_snapped)
-        res_tuple = self.ssd.forward(x, free_energy if free_energy is not None else torch.Tensor())
-        h_seq = res_tuple[0]  # [B, S, D]
-
-        if not is_2d:
-            B, S, D = x.shape
-            # Step 2: Spatial/Deliberative Graph Recirculation
-            h_flat = h_seq.reshape(B * S, D)
-            if thinking_steps is not None:
-                h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
-                actual_steps = float(thinking_steps)
+                # Step 3: Residual Highway + Readout
+                h_out = h_seq + h_graph
+                logits = self.head(self.norm(h_out))
+                if return_thinking_steps:
+                    return logits, actual_steps
+                return logits
             else:
-                h_graph_flat, actual_steps = self.graph.forward_adaptive(
-                    h_flat, max_thinking_steps, halt_threshold, epsilon_halt
-                )
-                h_graph = h_graph_flat.reshape(B, S, D)
-
-            # Step 3: Residual Highway + Readout
-            h_out = h_seq + h_graph
-            logits = self.head(self.norm(h_out))
-            if return_thinking_steps:
-                return logits, actual_steps
-            return logits
+                # 2D input [B, D] continuous vectors
+                if thinking_steps is not None:
+                    h_graph = self.graph.forward(x, thinking_steps)
+                    actual_steps = float(thinking_steps)
+                else:
+                    h_graph, actual_steps = self.graph.forward_adaptive(
+                        x, max_thinking_steps, halt_threshold, epsilon_halt
+                    )
+                logits = self.head(self.norm(x + h_graph))
+                if return_thinking_steps:
+                    return logits, actual_steps
+                return logits
         else:
-            # 2D input [B, D] continuous vectors: squeeze back
-            h_seq_2d = h_seq.squeeze(1)
-            if thinking_steps is not None:
-                h_graph = self.graph.forward(h_seq_2d, thinking_steps)
-                actual_steps = float(thinking_steps)
+            # Continuous tensor forward pass
+            if input_ids.dim() == 3:
+                B, S, D = input_ids.shape
+                h_seq = self.ssd.forward(input_ids)
+                h_flat = h_seq.reshape(B * S, D)
+                if thinking_steps is not None:
+                    h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
+                    actual_steps = float(thinking_steps)
+                else:
+                    h_graph_flat, actual_steps = self.graph.forward_adaptive(
+                        h_flat, max_thinking_steps, halt_threshold, epsilon_halt
+                    )
+                    h_graph = h_graph_flat.reshape(B, S, D)
+                out = self.head(self.norm(h_seq + h_graph))
+                if return_thinking_steps:
+                    return out, actual_steps
+                return out
             else:
-                h_graph, actual_steps = self.graph.forward_adaptive(
-                    h_seq_2d, max_thinking_steps, halt_threshold, epsilon_halt
-                )
-            logits = self.head(self.norm(h_seq_2d + h_graph))
-            if return_thinking_steps:
-                return logits, actual_steps
-            return logits
+                if thinking_steps is not None:
+                    out = self.graph.forward(input_ids, thinking_steps)
+                    actual_steps = float(thinking_steps)
+                else:
+                    out, actual_steps = self.graph.forward_adaptive(
+                        input_ids, max_thinking_steps, halt_threshold, epsilon_halt
+                    )
+                if return_thinking_steps:
+                    return out, actual_steps
+                return out
 
     def forward_autoregressive_step(
         self,
@@ -191,20 +189,16 @@ class CoREAgent(nn.Module):
         p_field: torch.Tensor,
         p_tokens: torch.Tensor,
         bump: torch.Tensor,
-        thinking_steps: int = 4,
-        free_energy: Optional[torch.Tensor] = None
+        thinking_steps: int = 4
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Closed-loop causal step utilizing native C++20 TriScaleHierarchicalPAC & ContinuousSaccadicDrift.
+        Closed-loop causal step utilizing native C++20 CausalParallelSSD & ContinuousSaccadicDrift.
         100% Modality-Agnostic Endogenous Contrast & Attractor Resonance (KEP Principles 10, 12, 19).
         Zero hardcoded ASCII values or delimiter checks.
         """
         B, L, D = p_field.shape
         # Temporal step via continuous state mixing
-        # TriScaleHierarchicalPAC accepts sequence x [B, S, D]
-        x_seq = torch.cat([h_core.unsqueeze(1), x_t.unsqueeze(1)], dim=1)
-        res_tuple = self.ssd.forward(x_seq, free_energy if free_energy is not None else torch.Tensor())
-        h_core = res_tuple[0][:, -1, :]
+        h_core = self.ssd.forward(torch.cat([h_core.unsqueeze(1), x_t.unsqueeze(1)], dim=1))[:, -1, :]
         
         # 1. Pure Modality-Agnostic Information Contrast Salience:
         # Measure feature variance/deviation of each token vector from the local field centroid
@@ -264,24 +258,22 @@ class CoREAgent(nn.Module):
         init_bump = torch.softmax((scores + salience_bias) * 10.0, dim=-1)
         return init_bump
 
-    def forward_latent(self, input_ids: torch.Tensor, thinking_steps: int = 4, free_energy: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward_latent(self, input_ids: torch.Tensor, thinking_steps: int = 4) -> torch.Tensor:
         """Returns internal continuous latent representations."""
         if input_ids.dtype in (torch.long, torch.int32, torch.int64):
             x = self.emb(input_ids)
         else:
             x = input_ids
 
-        res_tuple = self.ssd.forward(x, free_energy if free_energy is not None else torch.Tensor())
-        h_seq = res_tuple[0]
-
         if x.dim() == 3:
             B, S, D = x.shape
+            h_seq = self.ssd.forward(x)
             h_flat = h_seq.reshape(B * S, D)
             h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
             return h_seq + h_graph
         else:
-            h_graph = self.graph.forward(h_seq, thinking_steps)
-            return h_seq + h_graph
+            h_graph = self.graph.forward(x, thinking_steps)
+            return x + h_graph
 
     def update_somatic_stress_and_morphogenesis(self, free_energy: float) -> Optional[Dict[str, Any]]:
         """
@@ -340,7 +332,6 @@ class CoREAgent(nn.Module):
             )
             return event
         return None
-
     def add_node(self, name: str, op_type: str, is_core: bool = False, initial_alpha: float = 0.0) -> int:
         """Sprouts a new node inside the C++20 DynamicMorphicGraph."""
         self.graph.add_node(name, op_type, is_core, initial_alpha)
@@ -415,7 +406,7 @@ class CoREAgent(nn.Module):
     def parameters(self, recurse: bool = True):
         """
         Overrides nn.Module.parameters() to return all active parameters,
-        including dynamic C++20 graph parameters and TriScaleHierarchicalPAC parameters.
+        including dynamic C++20 graph parameters and CausalParallelSSD parameters.
         """
         for p in self.get_complete_state_dict().values():
             if isinstance(p, torch.Tensor) and p.requires_grad:
@@ -433,7 +424,7 @@ class CoREAgent(nn.Module):
         return self.graph.get_topology_manifest()
 
     def get_complete_state_dict(self) -> Dict[str, torch.Tensor]:
-        """Exposes C++20 module parameters for .kcore v6.0 container serialization."""
+        """Exposes C++20 module parameters for .kcore v5.0 container serialization."""
         state = {}
         for k, v in self.graph.named_parameters_map().items():
             state[f"graph.{k}"] = v
