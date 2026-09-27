@@ -89,15 +89,15 @@ class CoREAgent(nn.Module):
         # 6. Endogenous Somatic Stress Accumulator & Autonomous Allostatic Morphogenesis Reflex
         self.somatic_stress: float = 0.0
         self.stress_lambda: float = 0.85
-        self.tau_base: float = 0.50
-        self.theta_morph: float = 1.5
+        self.tau_base: float = 0.10
+        self.theta_morph: float = 5.0
         self.refractory_cooldown: int = 0
-        self.refractory_period: int = 150
-        self.min_grounding_steps: int = 200
+        self.refractory_period: int = 80
+        self.min_grounding_steps: int = 40
         self.step_counter: int = 0
         self.active_organelle_idx: int = 0
         self.morphogenesis_count: int = 0
-        self.max_morphogenesis_events: int = 1
+        self.max_morphogenesis_events: int = 2
         self.morphogenesis_events: List[Dict[str, Any]] = []
 
     def forward(self, input_ids: torch.Tensor, thinking_steps: int = 4) -> torch.Tensor:
@@ -244,8 +244,7 @@ class CoREAgent(nn.Module):
 
         if (self.somatic_stress > self.theta_morph and 
                 self.refractory_cooldown == 0 and 
-                self.step_counter >= self.min_grounding_steps and
-                self.morphogenesis_count < self.max_morphogenesis_events):
+                self.step_counter >= self.min_grounding_steps):
             self.morphogenesis_count += 1
             parent_idx = self.active_organelle_idx
             
@@ -384,17 +383,6 @@ class CoREAgent(nn.Module):
         state["emb.weight"] = self.emb.weight
         state["norm.weight"] = self.norm.weight
         state["norm.bias"] = self.norm.bias
-        state["content_q.weight"] = self.content_q.weight
-        state["content_k.weight"] = self.content_k.weight
-        state["salience_proj.weight"] = self.salience_proj.weight
-        state["salience_proj.bias"] = self.salience_proj.bias
-        state["gaze_gate.weight"] = self.gaze_gate.weight
-        state["gaze_gate.bias"] = self.gaze_gate.bias
-        state["copy_gate.weight"] = self.copy_gate.weight
-        state["copy_gate.bias"] = self.copy_gate.bias
-        state["gaze_proj.weight"] = self.gaze_proj.weight
-        state["gaze_proj.bias"] = self.gaze_proj.bias
-        state["init_focus_q.weight"] = self.init_focus_q.weight
         return state
 
     def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor], device: Optional[str] = None):

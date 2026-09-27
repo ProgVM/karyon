@@ -90,14 +90,14 @@ class CoREAgent(nn.Module):
         self.somatic_stress: float = 0.0
         self.stress_lambda: float = 0.85
         self.tau_base: float = 0.50
-        self.theta_morph: float = 1.5
+        self.theta_morph: float = 25.0
         self.refractory_cooldown: int = 0
-        self.refractory_period: int = 150
-        self.min_grounding_steps: int = 200
+        self.refractory_period: int = 100
+        self.min_grounding_steps: int = 60
         self.step_counter: int = 0
         self.active_organelle_idx: int = 0
         self.morphogenesis_count: int = 0
-        self.max_morphogenesis_events: int = 1
+        self.max_morphogenesis_events: int = 5
         self.morphogenesis_events: List[Dict[str, Any]] = []
 
     def forward(self, input_ids: torch.Tensor, thinking_steps: int = 4) -> torch.Tensor:

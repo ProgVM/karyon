@@ -88,16 +88,13 @@ class CoREAgent(nn.Module):
 
         # 6. Endogenous Somatic Stress Accumulator & Autonomous Allostatic Morphogenesis Reflex
         self.somatic_stress: float = 0.0
-        self.stress_lambda: float = 0.85
-        self.tau_base: float = 0.50
-        self.theta_morph: float = 1.5
+        self.stress_lambda: float = 0.92
+        self.tau_base: float = 0.15
+        self.theta_morph: float = 5.0
         self.refractory_cooldown: int = 0
-        self.refractory_period: int = 150
-        self.min_grounding_steps: int = 200
-        self.step_counter: int = 0
+        self.refractory_period: int = 40
         self.active_organelle_idx: int = 0
         self.morphogenesis_count: int = 0
-        self.max_morphogenesis_events: int = 1
         self.morphogenesis_events: List[Dict[str, Any]] = []
 
     def forward(self, input_ids: torch.Tensor, thinking_steps: int = 4) -> torch.Tensor:
@@ -228,63 +225,6 @@ class CoREAgent(nn.Module):
             h_graph = self.graph.forward(x, thinking_steps)
             return x + h_graph
 
-    def update_somatic_stress_and_morphogenesis(self, free_energy: float) -> Optional[Dict[str, Any]]:
-        """
-        Endogenous Somatic Stress Accumulator & Autonomous Allostatic Morphogenesis Reflex:
-        S_t = lambda * S_{t-1} + max(0, F_t - tau_base)
-        Triggers autonomous morphogenesis reflex when S_t > theta_morph, step_counter >= min_grounding_steps,
-        and not in refractory cooldown.
-        """
-        self.step_counter += 1
-        if self.refractory_cooldown > 0:
-            self.refractory_cooldown -= 1
-
-        stress_increment = max(0.0, free_energy - self.tau_base)
-        self.somatic_stress = self.stress_lambda * self.somatic_stress + stress_increment
-
-        if (self.somatic_stress > self.theta_morph and 
-                self.refractory_cooldown == 0 and 
-                self.step_counter >= self.min_grounding_steps and
-                self.morphogenesis_count < self.max_morphogenesis_events):
-            self.morphogenesis_count += 1
-            parent_idx = self.active_organelle_idx
-            
-            # 1. Epigenetically lock active parent organelle
-            self.lock_node(parent_idx, 1.0)
-            
-            # 2. Susumu Ohno Zero-Shock Duplication
-            clone_name = f"auto_organelle_gen{self.morphogenesis_count}"
-            clone_idx = self.duplicate_node(parent_idx, clone_name, initial_alpha=1.0)
-            
-            # 3. Update active organelle index to newly sprouted plastic clone
-            self.active_organelle_idx = clone_idx
-            
-            # 4. Adaptive Noise Injection Impulse
-            sigma_noise = min(0.2, 0.02 * math.exp(min(2.0, free_energy / 5.0)))
-            
-            # 5. Reset stress accumulator & set refractory period & step counter
-            prev_stress = self.somatic_stress
-            self.somatic_stress = 0.0
-            self.refractory_cooldown = self.refractory_period
-            self.step_counter = 0
-
-            event = {
-                "generation": self.morphogenesis_count,
-                "parent_idx": parent_idx,
-                "clone_idx": clone_idx,
-                "clone_name": clone_name,
-                "free_energy": free_energy,
-                "somatic_stress": prev_stress,
-                "sigma_noise": sigma_noise
-            }
-            self.morphogenesis_events.append(event)
-            logger.info(
-                f"🧬 [AUTONOMOUS MORPHOGENESIS] Triggered! Parent Node {parent_idx} Locked (mu=1.0) -> "
-                f"Cloned Node {clone_idx} ('{clone_name}') | Stress: {prev_stress:.2f} > {self.theta_morph:.2f} | "
-                f"Free Energy: {free_energy:.4f}"
-            )
-            return event
-        return None
     def add_node(self, name: str, op_type: str, is_core: bool = False, initial_alpha: float = 0.0) -> int:
         """Sprouts a new node inside the C++20 DynamicMorphicGraph."""
         self.graph.add_node(name, op_type, is_core, initial_alpha)
@@ -384,17 +324,6 @@ class CoREAgent(nn.Module):
         state["emb.weight"] = self.emb.weight
         state["norm.weight"] = self.norm.weight
         state["norm.bias"] = self.norm.bias
-        state["content_q.weight"] = self.content_q.weight
-        state["content_k.weight"] = self.content_k.weight
-        state["salience_proj.weight"] = self.salience_proj.weight
-        state["salience_proj.bias"] = self.salience_proj.bias
-        state["gaze_gate.weight"] = self.gaze_gate.weight
-        state["gaze_gate.bias"] = self.gaze_gate.bias
-        state["copy_gate.weight"] = self.copy_gate.weight
-        state["copy_gate.bias"] = self.copy_gate.bias
-        state["gaze_proj.weight"] = self.gaze_proj.weight
-        state["gaze_proj.bias"] = self.gaze_proj.bias
-        state["init_focus_q.weight"] = self.init_focus_q.weight
         return state
 
     def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor], device: Optional[str] = None):

@@ -90,7 +90,7 @@ class CoREAgent(nn.Module):
         self.somatic_stress: float = 0.0
         self.stress_lambda: float = 0.85
         self.tau_base: float = 0.50
-        self.theta_morph: float = 1.5
+        self.theta_morph: float = 3.0
         self.refractory_cooldown: int = 0
         self.refractory_period: int = 150
         self.min_grounding_steps: int = 200

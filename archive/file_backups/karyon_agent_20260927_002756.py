@@ -89,11 +89,11 @@ class CoREAgent(nn.Module):
         # 6. Endogenous Somatic Stress Accumulator & Autonomous Allostatic Morphogenesis Reflex
         self.somatic_stress: float = 0.0
         self.stress_lambda: float = 0.85
-        self.tau_base: float = 0.50
-        self.theta_morph: float = 1.5
+        self.tau_base: float = 0.10
+        self.theta_morph: float = 8.0
         self.refractory_cooldown: int = 0
-        self.refractory_period: int = 150
-        self.min_grounding_steps: int = 200
+        self.refractory_period: int = 100
+        self.min_grounding_steps: int = 50
         self.step_counter: int = 0
         self.active_organelle_idx: int = 0
         self.morphogenesis_count: int = 0
