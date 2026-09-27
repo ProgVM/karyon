@@ -21,22 +21,22 @@ class HomeostasisConfig:
     motor_speech_cost_per_patch: float = 0.0015
     idle_somatic_decay: float = 0.0005
     sleep_energy_recovery: float = 0.0080
-
+    
     curiosity_setpoint: float = 0.80
     energy_setpoint: float = 1.00
     stability_setpoint: float = 1.00
     health_setpoint: float = 1.00
-
+    
     curiosity_pain_weight: float = 1.00
     energy_pain_weight: float = 1.00
     stability_pain_weight: float = 1.20
     health_pain_weight: float = 1.50
-
+    
     noradrenaline_surprise_weight: float = 0.85
     noradrenaline_arousal_persistence: float = 0.35
     dopamine_reward_scale: float = 2.00
     volitional_recall_gain: float = 2.00
-
+    
     allostatic_fatigue_threshold: float = 0.25
     allostatic_sleep_trigger: float = 0.20
     wake_replay_frequency_steps: int = 50
@@ -72,7 +72,7 @@ class NetworkConfig:
     cog_action_dim: int = 3
     homeo_dim: int = 6
     text_gen_dim: int = 258
-
+    
     unified_dim: int = 256
     hidden_dim: int = 768
     latent_dim: int = 128
@@ -93,7 +93,7 @@ class MemoryConfig:
     default_attention_temp: float = 0.05
     sigmoid_gating_beta: float = 15.00
     pruning_similarity_threshold: float = 0.93
-
+    
     volitional_na_trigger: float = 0.12
     volitional_fe_trigger: float = 0.20
 
@@ -111,7 +111,7 @@ class TrainConfig:
     grad_clip_norm: float = 3.0
     loss_free_energy_weight: float = 0.05
     loss_speech_weight: float = 1.00
-
+    
     dfet_enabled: bool = True
     dfet_alpha_ma: float = 0.05
     dfet_k_sigma_base: float = 0.45
@@ -136,16 +136,11 @@ class CoREConfig:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CoREConfig":
         cfg = cls()
-        if "homeo" in data:
-            cfg.homeo = HomeostasisConfig(**data["homeo"])
-        if "sde" in data:
-            cfg.sde = SDEConfig(**data["sde"])
-        if "net" in data:
-            cfg.net = NetworkConfig(**data["net"])
-        if "memory" in data:
-            cfg.memory = MemoryConfig(**data["memory"])
-        if "train" in data:
-            cfg.train = TrainConfig(**data["train"])
+        if "homeo" in data: cfg.homeo = HomeostasisConfig(**data["homeo"])
+        if "sde" in data: cfg.sde = SDEConfig(**data["sde"])
+        if "net" in data: cfg.net = NetworkConfig(**data["net"])
+        if "memory" in data: cfg.memory = MemoryConfig(**data["memory"])
+        if "train" in data: cfg.train = TrainConfig(**data["train"])
         return cfg
 
     def save_json(self, filepath: str):

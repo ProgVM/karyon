@@ -12,6 +12,8 @@ Grounded in KEP Principles & Biological AGI Reality:
   `VolitionalActionEvaluator` triggers `INITIATE_SLEEP_CONSOLIDATION`, Karyon enters
   Phase 1 NREM Hippocampal Replay + Phase 2 REM Synthetic Dreaming + Synaptic Pruning,
   restores somatic energy to 1.00, and awakens to continue the stream!
+import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 - Error-Gated Neuromodulated Plasticity (DFET Gating):
   Backprop + Local Neuromodulated Fast-Weights adapt on high-surprise data;
   mastered data skips FLOPs to save metabolic energy.
@@ -26,12 +28,16 @@ import types
 import time
 import math
 import os
+import struct
+import json
 import importlib
 import gc
 import numpy as np
 
 # Force expandable segments to prevent CUDA VRAM fragmentation and OOM on Kaggle GPU
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+import torch
 
 # =============================================================================
 # 0. UNCONDITIONAL DYNAMO HOTFIX FOR PYTHON 3.12 / KAGGLE GPU
@@ -46,20 +52,14 @@ class DummyDynamoModule(types.ModuleType):
             return lambda *args, **kwargs: False
         return lambda *args, **kwargs: None
 
-
 def _disable(fn=None, *args, **kwargs):
     if fn is None or not callable(fn):
         return lambda *a, **kw: None
     return fn
 
-
 decorators_mod = types.ModuleType("torch._dynamo.decorators")
-
-
 class _DimRange:
     pass
-
-
 decorators_mod._DimRange = _DimRange
 
 dynamo_mod = DummyDynamoModule("torch._dynamo")
@@ -68,26 +68,25 @@ dynamo_mod.disable = _disable
 
 sys.modules["torch._dynamo"] = dynamo_mod
 sys.modules["torch._dynamo.decorators"] = decorators_mod
-
-import torch  # noqa: E402
 torch._dynamo = dynamo_mod
 
-import torch.optim as optim  # noqa: E402
-import torch.nn as nn  # noqa: E402
-from torch.utils.data import Dataset, DataLoader  # noqa: E402
-from datasets import load_dataset  # noqa: E402
-from huggingface_hub import HfApi  # noqa: E402
+import torch.optim as optim
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+from datasets import load_dataset
+from huggingface_hub import HfApi
 
-import karyon_agent  # noqa: E402
-
+import karyon_config, karyon_core, karyon_agent, karyon_checkpoint, karyon_logger
 importlib.reload(karyon_agent)
 
-from karyon_config import CoREConfig  # noqa: E402
-from karyon_agent import CoREAgent  # noqa: E402
-from karyon_core import HomeostaticUnit, BatchedEpisodicMemory  # noqa: E402
-from karyon_checkpoint import load_karyon, save_karyon  # noqa: E402
-from karyon_logger import get_logger  # noqa: E402
-from karyon_hardware import get_hardware_engine  # noqa: E402
+from karyon_config import CoREConfig
+from karyon_agent import CoREAgent
+from karyon_core import ByteTokenizer, HomeostaticUnit, BatchedEpisodicMemory
+from karyon_checkpoint import load_karyon, save_karyon
+from karyon_logger import get_logger
+from karyon_hardware import get_hardware_engine
+from init_priors import initialize_priors
 
 logger = get_logger()
 torch.set_grad_enabled(True)
@@ -103,13 +102,12 @@ logger.info(f"Execution context: {device_str.upper()} (AMP Enabled: {use_amp}, D
 kcore_path = "karyon_soul.kcore"
 hf_repo_id = "progvmoff/karyon-v31-core"
 
-
 # Function to safely push checkpoint AND training logs to Hugging Face Hub
 def sync_checkpoint_to_hf(local_file: str, repo_id: str, commit_msg: str):
     try:
         api = HfApi()
         logger.info(f"🤗 [HF Auto-Sync] Pushing checkpoint '{local_file}' & training logs to HuggingFace Hub: {repo_id}...")
-
+        
         # 1. Upload .kcore binary checkpoint
         api.upload_file(
             path_or_fileobj=local_file,
@@ -118,7 +116,7 @@ def sync_checkpoint_to_hf(local_file: str, repo_id: str, commit_msg: str):
             repo_type="model",
             commit_message=commit_msg
         )
-
+        
         # 2. Upload train.log if exists in either root or logs/ directory
         candidate_logs = ["train.log", "logs/train.log"]
         for log_candidate in candidate_logs:
@@ -132,11 +130,10 @@ def sync_checkpoint_to_hf(local_file: str, repo_id: str, commit_msg: str):
                 )
                 logger.info(f"🤗 [HF Auto-Sync] Uploaded training log '{log_candidate}' to '{repo_id}:logs/train.log'")
                 break
-
+            
         logger.info(f"🤗 [HF Auto-Sync] Checkpoint sync cycle complete for '{repo_id}'!")
     except Exception as e:
         logger.warning(f"⚠️ [HF Auto-Sync Warning] Failed to upload checkpoint/log to HuggingFace Hub: {e}")
-
 
 # =============================================================================
 # 1. MULTI-DOMAIN CONTINUOUS STREAM DATASET BUILDER
@@ -148,7 +145,7 @@ def build_multidomain_packed_stream(seq_len: int = 1024) -> np.ndarray:
     2. Factuality, Instructions & Q&A (databricks/databricks-dolly-15k)
     3. Algorithmic Logic & Python Source Code (iamtarun/python_code_instructions_18k_alpaca)
     4. Multi-Step Mathematical & Chain-of-Thought Reasoning (gsm8k)
-
+    
     Packaged as a 100% continuous byte array with zero padding and EOS (257) delimiters.
     """
     corpus_cache_file = "data/karyon_multidomain_single_pass_stream.npy"
@@ -160,9 +157,9 @@ def build_multidomain_packed_stream(seq_len: int = 1024) -> np.ndarray:
 
     os.makedirs("data", exist_ok=True)
     logger.info("Assembling Rich Multi-Domain Continuous Stream Dataset (Alpaca, Dolly, Code, GSM8k)...")
-
+    
     text_chunks = []
-
+    
     # Domain 1: General Dialogue (Alpaca GPT-4)
     logger.info(" -> Ingesting Domain 1: vicgalle/alpaca-gpt4 (General Dialogue)...")
     try:
@@ -230,9 +227,9 @@ def build_multidomain_packed_stream(seq_len: int = 1024) -> np.ndarray:
     import random
     random.seed(42)
     random.shuffle(text_chunks)
-
+    
     logger.info(f"Total Unified Multi-Domain Samples: {len(text_chunks):,}. Encoding into raw UTF-8 byte stream...")
-
+    
     encoded_bytes_list = []
     EOS_BYTE = 257
     for t in text_chunks:
@@ -241,16 +238,15 @@ def build_multidomain_packed_stream(seq_len: int = 1024) -> np.ndarray:
         encoded_bytes_list.append(EOS_BYTE)
 
     flat_stream = np.array(encoded_bytes_list, dtype=np.int16)
-
+    
     # Trim to exact multiple of (seq_len + 1)
     target_multiple = (seq_len + 1)
     valid_len = (len(flat_stream) // target_multiple) * target_multiple
     flat_stream = flat_stream[:valid_len]
-
+    
     np.save(corpus_cache_file, flat_stream)
     logger.info(f"Compiled and cached packed byte stream to '{corpus_cache_file}'. Total size: {len(flat_stream):,} bytes ({len(flat_stream) / 1024 / 1024:.2f} MB).")
     return flat_stream
-
 
 class ContinuousPackedDataset(Dataset):
     def __init__(self, flat_stream: np.ndarray, seq_len: int = 1024):
@@ -267,10 +263,8 @@ class ContinuousPackedDataset(Dataset):
         end = start + self.seq_len + 1
         return torch.from_numpy(self.flat_stream[start:end].astype(np.int64))
 
-
 def collate_packed_fn(batch):
     return torch.stack(batch, dim=0)
-
 
 BATCH_SIZE = 16
 SEQ_LEN = 512
@@ -280,10 +274,10 @@ flat_stream = build_multidomain_packed_stream(seq_len=SEQ_LEN)
 train_dataset = ContinuousPackedDataset(flat_stream, seq_len=SEQ_LEN)
 
 stream_loader = DataLoader(
-    train_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False,  # Sequential continuous stream flow (Single Pass)
-    collate_fn=collate_packed_fn,
+    train_dataset, 
+    batch_size=BATCH_SIZE, 
+    shuffle=False, # Sequential continuous stream flow (Single Pass)
+    collate_fn=collate_packed_fn, 
     drop_last=True,
     num_workers=2,
     persistent_workers=True,
@@ -317,7 +311,7 @@ episodic_mem = BatchedEpisodicMemory(batch_size=BATCH_SIZE, memory_dim=core_conf
 h_fast, h_slow, saved_epoch, saved_story_idx = load_karyon(agent_brain, episodic_mem, hu, filepath=kcore_path, device=device_str)
 start_step = (saved_story_idx // BATCH_SIZE) if saved_story_idx else 0
 if start_step >= len(stream_loader):
-    start_step = 0  # Loop stream seamlessly upon completing full stream pass
+    start_step = 0 # Loop stream seamlessly upon completing full stream pass
 if start_step > 0:
     logger.info(f"⏩ [Resume Detected] Found saved checkpoint at step {start_step}/{len(stream_loader)}. Resuming stream seamlessly...")
 
@@ -326,7 +320,6 @@ optimizer = optim.AdamW(agent_brain.get_all_parameters(), lr=BASE_LR, weight_dec
 criterion_speech = nn.CrossEntropyLoss(ignore_index=256)
 
 scaler = torch.amp.GradScaler(hw_engine.device_type, enabled=(use_amp and autocast_dtype == torch.float16))
-
 
 def get_neuromodulated_lr(base_lr: float, hu_state: torch.Tensor) -> float:
     """
@@ -337,12 +330,11 @@ def get_neuromodulated_lr(base_lr: float, hu_state: torch.Tensor) -> float:
     na = float(hu_state[0, 4].item())
     curiosity = float(hu_state[0, 0].item())
     energy = float(hu_state[0, 1].item())
-
+    
     # Neuromodulated gain in [0.40, 2.00]
     allostatic_gain = 0.40 + 1.20 * na + 0.80 * curiosity - 0.30 * (1.0 - energy)
     allostatic_gain = max(0.40, min(2.00, allostatic_gain))
     return base_lr * allostatic_gain
-
 
 moving_mean_fe = 0.15
 moving_var_fe = 0.01
@@ -351,7 +343,7 @@ alpha_ma = getattr(core_config.train, 'dfet_alpha_ma', 0.05)
 total_skipped_batches = 0
 total_adapted_batches = 0
 total_sleep_cycles = 0
-
+total_sleep_cycles = 0
 
 # =============================================================================
 # 3. KEP RULE #4: LIVE DIAGNOSTIC TEXT SAMPLER
@@ -359,17 +351,17 @@ total_sleep_cycles = 0
 def run_diagnostic_text_sample(agent, memory, hu_state, config):
     agent.eval()
     diag_prompt = "User: What is the primary source of energy for Earth?\nKaryon:"
-
+    
     diag_hu = HomeostaticUnit(batch_size=1, device=agent.device_str)
     diag_hu.state.copy_(hu_state[0:1])
-
+    
     diag_mem = BatchedEpisodicMemory(batch_size=1, memory_dim=config.net.unified_dim, max_capacity=config.memory.max_capacity, device=agent.device_str)
     k_slice = min(memory.keys.size(1), config.memory.max_capacity)
     diag_mem.keys[:, :k_slice].copy_(memory.keys[:1, :k_slice])
     diag_mem.values[:, :k_slice].copy_(memory.values[:1, :k_slice])
     diag_mem.pointer.copy_(memory.pointer[:1])
     diag_mem.size.copy_(memory.size[:1])
-
+    
     generated_chars = []
     with torch.no_grad():
         gen_stream = agent.generate_thought_and_speech(
@@ -386,31 +378,29 @@ def run_diagnostic_text_sample(agent, memory, hu_state, config):
         for event in gen_stream:
             if event["status"] == "token":
                 generated_chars.append(event["text"])
-
+                
     del diag_mem
     del diag_hu
     agent.train()
     return "".join(generated_chars).strip()
 
-
 logger.info(f"Starting Single-Pass Allostatic Session (1 Continuous Stream Pass, B={BATCH_SIZE}, S={SEQ_LEN}, {BATCH_SIZE * SEQ_LEN} tokens/step)...")
-
 
 # =============================================================================
 # 4. SINGLE-PASS CONTINUOUS ALLOSTATIC STREAMING LOOP
 # =============================================================================
 def run_single_pass_training():
-    global total_adapted_batches, total_skipped_batches, total_sleep_cycles, moving_mean_fe, moving_var_fe, optimizer, agent_brain
-
+    global total_adapted_batches, total_skipped_batches, total_sleep_cycles, moving_mean_fe, moving_var_fe, h_fast, h_slow, optimizer, lr_scheduler, agent_brain
+    
     logger.info(f"\n{'='*85}\n === [STARTING SINGLE-PASS CONTINUOUS STREAM LEARNING (N=1 PASS)] ===\n{'='*85}")
-
+    
     for batch_idx, batch_tokens in enumerate(stream_loader):
         # Seamlessly skip already completed stream steps upon resuming
         if batch_idx < start_step:
             continue
 
         t_batch_start = time.perf_counter()
-
+        
         batch_tokens = batch_tokens.to(device, non_blocking=(device_str == 'cuda'))
         current_batch_size = batch_tokens.size(0)
         seq_len = batch_tokens.size(1)
@@ -419,7 +409,7 @@ def run_single_pass_training():
         target_seq = batch_tokens[:, 1:]
 
         optimizer.zero_grad(set_to_none=True)
-
+        
         t_exec_start = time.perf_counter()
         try:
             with torch.amp.autocast(device_type=device_str, dtype=autocast_dtype, enabled=use_amp):
@@ -430,20 +420,13 @@ def run_single_pass_training():
         except (torch.OutOfMemoryError, RuntimeError) as e:
             if "out of memory" in str(e) or isinstance(e, torch.OutOfMemoryError):
                 logger.warning(f"⚠️ [Step {batch_idx+1}] CUDA OOM intercepted. Executing batch rollback & purging VRAM cache...")
-                if 'total_loss_tensor' in locals():
-                    del total_loss_tensor
-                if 'm_curr' in locals():
-                    del m_curr
-                if 'h_curr' in locals():
-                    del h_curr
-                if 'curr_u_t' in locals():
-                    del curr_u_t
-                if 'eff_dt' in locals():
-                    del eff_dt
-                if 'input_seq' in locals():
-                    del input_seq
-                if 'target_seq' in locals():
-                    del target_seq
+                if 'total_loss_tensor' in locals(): del total_loss_tensor
+                if 'm_curr' in locals(): del m_curr
+                if 'h_curr' in locals(): del h_curr
+                if 'curr_u_t' in locals(): del curr_u_t
+                if 'eff_dt' in locals(): del eff_dt
+                if 'input_seq' in locals(): del input_seq
+                if 'target_seq' in locals(): del target_seq
                 optimizer.zero_grad(set_to_none=True)
                 gc.collect()
                 if device_str == 'cuda':
@@ -468,20 +451,13 @@ def run_single_pass_training():
                         b.data.nan_to_num_(0.0)
                 if torch.isnan(hu.state).any() or torch.isinf(hu.state).any():
                     hu.state.nan_to_num_(0.5)
-            if 'total_loss_tensor' in locals():
-                del total_loss_tensor
-            if 'input_seq' in locals():
-                del input_seq
-            if 'target_seq' in locals():
-                del target_seq
-            if 'm_curr' in locals():
-                del m_curr
-            if 'h_curr' in locals():
-                del h_curr
-            if 'curr_u_t' in locals():
-                del curr_u_t
-            if 'eff_dt' in locals():
-                del eff_dt
+            if 'total_loss_tensor' in locals(): del total_loss_tensor
+            if 'input_seq' in locals(): del input_seq
+            if 'target_seq' in locals(): del target_seq
+            if 'm_curr' in locals(): del m_curr
+            if 'h_curr' in locals(): del h_curr
+            if 'curr_u_t' in locals(): del curr_u_t
+            if 'eff_dt' in locals(): del eff_dt
             gc.collect()
             if device_str == 'cuda':
                 torch.cuda.empty_cache()
@@ -490,7 +466,7 @@ def run_single_pass_training():
             continue
 
         # Update Somatic Homeostasis (Metabolic expenditure)
-        action_cost_tensor = torch.full((current_batch_size, 1), 0.003, device=device)  # Metabolic cost
+        action_cost_tensor = torch.full((current_batch_size, 1), 0.003, device=device) # Metabolic cost
         pred_err_tensor = torch.full((current_batch_size, 1), float(speech_loss_val * 0.1), device=device)
         entropy_tensor = torch.full((current_batch_size, 1), float(fe_val), device=device)
         cog_act_tensor = torch.zeros((current_batch_size, 1), dtype=torch.int64, device=device)
@@ -514,18 +490,18 @@ def run_single_pass_training():
         is_fe_unmastered = fe_val > (moving_mean_fe - 0.1 * moving_std_fe)
         is_speech_unmastered = speech_loss_val > 0.65
         is_statistical_outlier = agent_brain.evaluate_dfet_gating(fe_val, moving_mean_fe, moving_std_fe, na_val)
-
+        
         should_adapt = is_fe_unmastered or is_speech_unmastered or is_statistical_outlier
 
         t_opt_ms = 0.0
         if should_adapt:
             t_opt_start = time.perf_counter()
-
+            
             # Apply Dynamic Neuromodulated Plasticity (Dayan & Friston)
             cur_lr = get_neuromodulated_lr(BASE_LR, hu.state)
             for group in optimizer.param_groups:
                 group['lr'] = cur_lr
-
+                
             if scaler.is_enabled():
                 scaler.scale(total_loss_tensor).backward()
                 scaler.unscale_(optimizer)
@@ -536,7 +512,7 @@ def run_single_pass_training():
                 total_loss_tensor.backward()
                 torch.nn.utils.clip_grad_norm_(agent_brain.get_all_parameters(), max_norm=0.5)
                 optimizer.step()
-
+                
             t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
             total_adapted_batches += 1
             status_str = f"ADAPTED (lr={cur_lr:.6f})"
@@ -545,9 +521,9 @@ def run_single_pass_training():
             rest_recovery_rate = getattr(core_config.homeo, 'energy_recovery_rate', 0.0012)
             with torch.no_grad():
                 hu.state[:, 1] = torch.clamp(hu.state[:, 1] + rest_recovery_rate, 0.0, 1.0)
-
+                
             total_skipped_batches += 1
-            status_str = "RESTING / SKIPPED (0 Backprop FLOPs)"
+            status_str = f"RESTING / SKIPPED (0 Backprop FLOPs)"
 
         if should_sleep:
             total_sleep_cycles += 1
@@ -562,7 +538,7 @@ def run_single_pass_training():
                 eval_targets=target_seq[0:min(4, target_seq.size(0))],
                 criterion_speech=criterion_speech
             )
-
+            
             pruned_weights = sleep_res[0]
             agent_brain = sleep_res[1]
             is_structural_change = sleep_res[2] if len(sleep_res) > 2 else False
@@ -592,16 +568,16 @@ def run_single_pass_training():
             if hasattr(agent_brain.attractor_head, 'attractor_basins') and agent_brain.attractor_head.attractor_basins.grad is not None:
                 grad_head = agent_brain.attractor_head.attractor_basins.grad.norm().item()
 
-            print("\n" + "=" * 85)
+            print(f"\n" + "="*85)
             print(f" === [KEP RULE #6 SINGLE-PASS DIAGNOSTICS DASHBOARD | STREAM STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
-            print("=" * 85)
+            print("="*85)
             print(f"Plasticity Gating Status  : {status_str}")
             print(f"Submodule Timing (ms)     : Forward+Scan: {t_exec_ms:.1f}ms | Backward+Step: {t_opt_ms:.1f}ms")
             print(f"Stream Performance        : Step Duration: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
             print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f}) | Free Energy = {fe_val:.4f}")
             print(f"Gradient Flow Inspection  : Embeddings Grad Norm = {grad_embed:.6f} | Attractor Head Grad Norm = {grad_head:.6f}")
             print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy:.3f} | Sleep Cycles: {total_sleep_cycles}")
-            print("=" * 85)
+            print("="*85)
 
         if (batch_idx + 1) % 50 == 0:
             diag_sample = run_diagnostic_text_sample(agent_brain, episodic_mem, hu.state, core_config)
@@ -620,13 +596,12 @@ def run_single_pass_training():
         del total_loss_tensor, input_seq, target_seq, m_curr, h_curr, curr_u_t, eff_dt
 
     # Final container save & HF sync
-    h_save = torch.zeros(1, agent_brain.hidden_dim, device=device)
-    save_karyon(agent_brain, episodic_mem, hu, h_save[0:1], h_save[0:1], epoch=1, story_idx=len(stream_loader) * BATCH_SIZE, filepath=kcore_path)
-    final_loss_val = speech_loss_val if 'speech_loss_val' in locals() else 0.0
-    sync_checkpoint_to_hf(kcore_path, hf_repo_id, f"feat(weights): single-pass stream complete - final loss={final_loss_val:.4f}")
+    h_fast_save = h_fast if 'h_fast' in locals() else torch.zeros(1, agent_brain.hidden_dim, device=device)
+    h_slow_save = h_slow if 'h_slow' in locals() else torch.zeros(1, agent_brain.hidden_dim, device=device)
+    save_karyon(agent_brain, episodic_mem, hu, h_fast_save[0:1], h_slow_save[0:1], epoch=1, story_idx=len(stream_loader) * BATCH_SIZE, filepath=kcore_path)
+    sync_checkpoint_to_hf(kcore_path, hf_repo_id, f"feat(weights): single-pass stream complete - final loss={speech_loss_val if 'speech_loss_val' in locals() else 0.0:.4f}")
 
     logger.info(f"Single-Pass Continuous Stream Session Complete! Total Steps: {len(stream_loader)} | Total Adapted: {total_adapted_batches} | Total Skipped: {total_skipped_batches} | Total Sleep Cycles: {total_sleep_cycles}.")
-
 
 if __name__ == "__main__":
     run_single_pass_training()

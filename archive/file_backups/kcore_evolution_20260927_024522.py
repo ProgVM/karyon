@@ -11,17 +11,19 @@ Foundational Principles:
      Variational Free Energy (Delta F_t < 0) are epigenetically consolidated.
   3. Seamless Optimizer Adaptation: Safe rebinding of AdamW moment buffers (m_t, v_t)
      across topological parameter dimension changes without autograd crashes.
-  4. Native C++20 Morphic Graph Integration: Direct utilization of C++20
-     duplicate_node, lock_node, and prune_inactive_nodes methods.
 ===============================================================================
 """
 import copy
+import random
+from dataclasses import asdict
 from typing import Dict, Any, Tuple, Optional, List
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import karyon_core as kcore
+from karyon_config import CoREConfig, HomeostasisConfig, NetworkConfig, MemoryConfig
 from karyon_logger import get_logger
 
 logger = get_logger()
@@ -109,8 +111,8 @@ def rebind_optimizer_moments(
 class MorphogeneticAllostaticEngine:
     """
     Autonomous Sleep & Neuroevolution Engine for Karyon-CoRE:
-    - Governs Tononi SHY synaptic downscaling during slow-wave sleep via C++20 graph pruning.
-    - Evaluates Free Energy pressure and spawns functional morphic operators using C++20 duplicate_node/lock_node.
+    - Governs Tononi SHY synaptic downscaling during slow-wave sleep.
+    - Evaluates Free Energy pressure and spawns functional morphic operators.
     - Executes Edelman Neural Darwinism selection: retains sprouted pathways if Delta F_t < 0.
     """
 
@@ -127,7 +129,7 @@ class MorphogeneticAllostaticEngine:
         """
         device = replay_tokens.device
         h_latent = agent.forward_latent(replay_tokens)
-
+        
         # 1. Hopfield Attractor Energy (if hopfield active)
         hopfield_energy = torch.tensor(0.0, device=device)
         if hasattr(agent, "hopfield") and agent.use_hopfield:
@@ -166,30 +168,16 @@ class MorphogeneticAllostaticEngine:
     ) -> Dict[str, Any]:
         """
         Executes a complete offline sleep, synaptic normalization, and morphogenetic genesis cycle.
-        Leverages C++20 native duplicate_node, lock_node, and prune_inactive_nodes methods.
         """
         with torch.no_grad():
             f_pre = MorphogeneticAllostaticEngine.compute_variational_free_energy(agent, replay_tokens).item()
 
-        # Phase 1: Native C++20 Sleep, Epigenetic Duplication & Apoptosis Pruning
-        if hasattr(agent, "execute_deep_allostatic_sleep"):
-            sleep_telemetry = agent.execute_deep_allostatic_sleep(
-                downscaling_factor=downscaling_factor,
-                sprout_probability=sprout_probability,
-                available_ops=available_ops
-            )
-        else:
-            # Direct fall-back to native C++20 methods on agent's graph/brain
-            pruned_count = 0
-            if hasattr(agent, "prune_inactive_nodes"):
-                pruned_count = agent.prune_inactive_nodes(threshold=0.02)
-            elif hasattr(agent, "graph") and hasattr(agent.graph, "prune_inactive_nodes"):
-                pruned_count = agent.graph.prune_inactive_nodes(threshold=0.02)
-
-            sleep_telemetry = {
-                "nodes_pruned": pruned_count,
-                "status": "native_cpp_sleep_executed"
-            }
+        # Phase 1: Tononi SHY Synaptic Scaling + Epigenetic Genesis
+        sleep_telemetry = agent.execute_deep_allostatic_sleep(
+            downscaling_factor=downscaling_factor,
+            sprout_probability=sprout_probability,
+            available_ops=available_ops
+        )
 
         with torch.no_grad():
             f_post = MorphogeneticAllostaticEngine.compute_variational_free_energy(agent, replay_tokens).item()
@@ -201,12 +189,10 @@ class MorphogeneticAllostaticEngine:
         sleep_telemetry["is_viable"] = 1.0 if delta_fe >= -0.05 else 0.0
 
         return sleep_telemetry
-
-
 class SleepMetaGeneticsEngine:
     """
-    Sleep Meta-Genetics & Biophysical Parameter Genome Engine.
-    Preserves, extracts, and injects DNA biophysical genome for container serialization.
+    Sleep Meta-Genetics & Biophysical Parameter Evolution Engine.
+    Preserves and extracts DNA biophysical genome for container serialization.
     """
     @staticmethod
     def get_active_genome(agent: Any) -> Dict[str, Any]:
