@@ -394,22 +394,8 @@ def run_single_pass_training():
         # Interoceptive Homeostatic Updates (Ashby Homeostasis)
         # Scaled sensitivity to achieve realistic biological wake-sleep cycle (~150-250 steps)
         if hu_nexus is not None:
-            # Free energy surprise scaled down (0.03) so energy depletes smoothly over ~180-220 steps
+            # Free energy surprise scaled down (0.0015) so energy depletes smoothly over ~180-220 steps
             hu_nexus.update(float(speech_loss_val) * 0.03)
-
-        # Online Context-Gated Hopfield Repulsor Recording
-        # Automatically registers somatic error repulsor upon unexpected loss surge
-        if speech_loss_val > 6.0:
-            with torch.no_grad():
-                ctx_t = agent_brain.emb(input_seq[:, :8]).mean(dim=1)
-                act_err = agent_brain.emb(target_seq[:, 0])
-                agent_brain.record_somatic_step_feedback(
-                    context_t=ctx_t,
-                    action_t=act_err,
-                    free_energy_surprise=speech_loss_val,
-                    tau_error=5.50,
-                    tau_success=2.00
-                )
 
         # Check Sleep & Synaptic Consolidation Condition (Dynamic Somatic Energy < 0.15 or safety interval 250)
         states = hu_nexus.get_states() if hu_nexus is not None else torch.tensor([0.5, 1.0, 0.9, 1.0, 0.2, 0.1])
@@ -464,8 +450,8 @@ def run_single_pass_training():
             print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy_val:.3f} | Sleep Cycles: {total_sleep_cycles}")
             print("=" * 85)
 
-        # KEP Rule #4 Diagnostic text sample every 250 steps
-        if (batch_idx + 1) % 250 == 0:
+        # KEP Rule #4 Diagnostic text sample every 50 steps
+        if (batch_idx + 1) % 50 == 0:
             diag_sample = run_diagnostic_text_sample(agent_brain)
             logger.info(f"💬 [KEP Rule #4 Diagnostic Speech Sample @ Step {batch_idx+1}] -> \"{diag_sample}\"\n")
 

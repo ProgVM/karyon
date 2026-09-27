@@ -464,8 +464,8 @@ def run_single_pass_training():
             print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy_val:.3f} | Sleep Cycles: {total_sleep_cycles}")
             print("=" * 85)
 
-        # KEP Rule #4 Diagnostic text sample every 250 steps
-        if (batch_idx + 1) % 250 == 0:
+        # KEP Rule #4 Diagnostic text sample every 50 steps
+        if (batch_idx + 1) % 50 == 0:
             diag_sample = run_diagnostic_text_sample(agent_brain)
             logger.info(f"💬 [KEP Rule #4 Diagnostic Speech Sample @ Step {batch_idx+1}] -> \"{diag_sample}\"\n")
 
