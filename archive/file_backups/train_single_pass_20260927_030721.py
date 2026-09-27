@@ -396,7 +396,7 @@ def run_single_pass_training():
             hu_nexus.update(torch.tensor([-0.001, -0.002, 0.001, 0.0, 0.005, 0.005], device=device))
 
         # Autonomous Morphogenesis Reflex check
-        stress_val = agent_brain.somatic_stress
+        stress_val = agent_brain.get_somatic_stress()
         num_organelles = agent_brain.get_active_organelles_count()
         free_slots = agent_brain.get_free_organelle_slots()
 
