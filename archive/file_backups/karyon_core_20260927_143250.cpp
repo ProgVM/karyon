@@ -1046,22 +1046,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("forward", &CausalParallelSSDImpl::forward)
         .def("__call__", &CausalParallelSSDImpl::forward);
 
-    py::class_<EndogenousThetaGammaPACImpl, torch::nn::Module, std::shared_ptr<EndogenousThetaGammaPACImpl>>(m, "EndogenousThetaGammaPAC")
-        .def(py::init<int64_t, std::string, float, float, float, float>(),
-             py::arg("dim") = 128, py::arg("device") = "cpu",
-             py::arg("fast_min_decay") = 0.05f, py::arg("fast_max_decay") = 0.5f,
-             py::arg("slow_min_decay") = 0.0005f, py::arg("slow_max_decay") = 0.01f)
-        .def("forward", &EndogenousThetaGammaPACImpl::forward,
-             py::arg("x"),
-             py::arg("free_energy") = torch::Tensor(),
-             py::arg("init_h_fast") = torch::Tensor(),
-             py::arg("init_h_slow") = torch::Tensor())
-        .def("__call__", &EndogenousThetaGammaPACImpl::forward,
-             py::arg("x"),
-             py::arg("free_energy") = torch::Tensor(),
-             py::arg("init_h_fast") = torch::Tensor(),
-             py::arg("init_h_slow") = torch::Tensor());
-
     py::class_<ParallelOperatorBankImpl, torch::nn::Module, std::shared_ptr<ParallelOperatorBankImpl>>(m, "ParallelOperatorBank")
         .def(py::init<int64_t, int64_t, int64_t>(), py::arg("dim") = 256, py::arg("state_dim") = 128, py::arg("num_operators") = 8)
         .def("compute_operators", &ParallelOperatorBankImpl::compute_operators);

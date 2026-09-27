@@ -49,7 +49,6 @@ if karyon_cpp is None:
 if _is_valid_karyon_cpp(karyon_cpp):
     globals()["UniversalManifold"] = getattr(karyon_cpp, "UniversalManifold", None)
     globals()["CausalParallelSSD"] = getattr(karyon_cpp, "CausalParallelSSD", None)
-    globals()["EndogenousThetaGammaPAC"] = getattr(karyon_cpp, "EndogenousThetaGammaPAC", None)
     globals()["ParallelOperatorBank"] = getattr(karyon_cpp, "ParallelOperatorBank", None)
     globals()["ContinuousHopfieldMemory"] = getattr(karyon_cpp, "ContinuousHopfieldMemory", None)
     globals()["ContinuousSaccadicDrift"] = getattr(karyon_cpp, "ContinuousSaccadicDrift", None)
