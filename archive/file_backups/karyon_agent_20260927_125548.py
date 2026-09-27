@@ -312,8 +312,7 @@ class CoREAgent(nn.Module):
             "BilinearMultiplicative",
             "SaturatedAttractor",
             "ContinuousHopfield",
-            "StateSpaceMemory",
-            "StochasticLangevin"
+            "StateSpaceMemory"
         )
     ) -> Dict[str, float]:
         """
