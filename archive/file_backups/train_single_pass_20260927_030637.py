@@ -393,7 +393,7 @@ def run_single_pass_training():
 
         # Interoceptive Homeostatic Updates (Ashby Homeostasis)
         if hu_nexus is not None:
-            hu_nexus.update(torch.tensor([-0.001, -0.002, 0.001, 0.0, 0.005, 0.005], device=device))
+            hu_nexus.update(torch.tensor([-0.001f, -0.002f, 0.001f, 0.0f, 0.005f, 0.005f], device=device))
 
         # Autonomous Morphogenesis Reflex check
         stress_val = agent_brain.get_somatic_stress()

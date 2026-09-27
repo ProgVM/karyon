@@ -393,7 +393,12 @@ def run_single_pass_training():
 
         # Interoceptive Homeostatic Updates (Ashby Homeostasis)
         if hu_nexus is not None:
-            hu_nexus.update(torch.tensor([-0.001, -0.002, 0.001, 0.0, 0.005, 0.005], device=device))
+            hu_nexus.step(
+                action_cost=0.002,
+                prediction_error=float(speech_loss_val * 0.1),
+                entropy=float(speech_loss_val * 0.05),
+                cognitive_action=0
+            )
 
         # Autonomous Morphogenesis Reflex check
         stress_val = agent_brain.get_somatic_stress()
@@ -415,7 +420,7 @@ def run_single_pass_training():
 
             # Restore homeostatic energy
             if hu_nexus is not None:
-                hu_nexus.update(torch.tensor([0.0, 1.0 - energy_val, 0.0, 0.0, 0.0, 0.0], device=device))
+                hu_nexus.restore_energy(1.00)
 
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
             logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep Complete ({sleep_duration_ms:.1f}ms). Pruned Nodes={pruned_count} | Active Organelles={agent_brain.get_active_organelles_count()}")
