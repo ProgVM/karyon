@@ -68,11 +68,10 @@ public:
 
         auto indices = torch::arange(S, torch::TensorOptions().device(device)).to(torch::kFloat32);
         auto dist = indices.unsqueeze(1) - indices.unsqueeze(0);
-        auto causal_mask = (dist >= 0).to(torch::kFloat32);
-        auto dist_clamped = dist.clamp_min(0.0f);
+        auto causal_mask = dist >= 0;
 
-        auto log_d = -decay.unsqueeze(0).unsqueeze(0) * dist_clamped.unsqueeze(-1);
-        auto decay_weights = torch::exp(log_d) * causal_mask.unsqueeze(-1);
+        auto log_d = -decay.unsqueeze(0).unsqueeze(0) * dist.unsqueeze(-1);
+        auto decay_weights = torch::exp(log_d) * causal_mask.unsqueeze(-1).to(torch::kFloat32);
 
         auto y = torch::einsum("skd,bkd->bsd", {decay_weights, u});
         return torch::matmul(y, w_out.t());
