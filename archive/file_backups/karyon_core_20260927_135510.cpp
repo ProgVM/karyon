@@ -951,13 +951,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("forward_with_fe", &StochasticLangevinOpImpl::forward_with_fe, py::arg("x"), py::arg("f_t") = 0.0f)
         .def("forward_deterministic", &StochasticLangevinOpImpl::forward_deterministic, py::arg("x"));
 
-    py::class_<ProgrammableDelayOpImpl, torch::nn::Module, std::shared_ptr<ProgrammableDelayOpImpl>>(m, "ProgrammableDelayOp")
-        .def(py::init<int64_t, std::string, int64_t>(), py::arg("dim"), py::arg("device_str") = "cpu", py::arg("tau_max") = 16)
-        .def("reset_buffer", &ProgrammableDelayOpImpl::reset_buffer)
-        .def("forward", &ProgrammableDelayOpImpl::forward)
-        .def("__call__", &ProgrammableDelayOpImpl::forward)
-        .def("forward_fixed_delay", &ProgrammableDelayOpImpl::forward_fixed_delay, py::arg("x"), py::arg("fixed_tau"));
-
     py::class_<DynamicMorphicGraphImpl, torch::nn::Module, std::shared_ptr<DynamicMorphicGraphImpl>>(m, "DynamicMorphicGraph")
         .def(py::init<int64_t, std::string>(), py::arg("dim") = 128, py::arg("device_str") = "cpu")
         .def_readonly("k_nodes", &DynamicMorphicGraphImpl::k_nodes)
@@ -968,7 +961,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("reset_state", &DynamicMorphicGraphImpl::reset_state)
         .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("__call__", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
-        .def("forward_adaptive", &DynamicMorphicGraphImpl::forward_adaptive, py::arg("x_sensory"), py::arg("max_thinking_steps") = 8, py::arg("halt_threshold") = 0.8f, py::arg("epsilon_halt") = 1e-3f)
         .def("get_topology_manifest", &DynamicMorphicGraphImpl::get_topology_manifest)
         .def("get_methylation_locks", &DynamicMorphicGraphImpl::get_methylation_locks)
         .def("set_methylation_locks", &DynamicMorphicGraphImpl::set_methylation_locks, py::arg("locks"))

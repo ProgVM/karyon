@@ -360,8 +360,7 @@ class CoREAgent(nn.Module):
             "SaturatedAttractor",
             "ContinuousHopfield",
             "StateSpaceMemory",
-            "StochasticLangevin",
-            "ProgrammableDelay"
+            "StochasticLangevin"
         )
     ) -> Dict[str, float]:
         """

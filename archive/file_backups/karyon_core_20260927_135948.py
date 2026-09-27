@@ -59,9 +59,6 @@ if _is_valid_karyon_cpp(karyon_cpp):
     globals()["SaturatedAttractorOp"] = getattr(karyon_cpp, "SaturatedAttractorOp", None)
     globals()["ContinuousHopfieldOp"] = getattr(karyon_cpp, "ContinuousHopfieldOp", None)
     globals()["StateSpaceMemoryOp"] = getattr(karyon_cpp, "StateSpaceMemoryOp", None)
-    globals()["StochasticLangevinOp"] = getattr(karyon_cpp, "StochasticLangevinOp", None)
-    globals()["ProgrammableDelayOp"] = getattr(karyon_cpp, "ProgrammableDelayOp", None)
     globals()["DynamicMorphicGraph"] = getattr(karyon_cpp, "DynamicMorphicGraph", None)
-    globals()["kcore"] = karyon_cpp
 else:
     raise ImportError("Failed to load or compile valid Karyon C++ extension module.")

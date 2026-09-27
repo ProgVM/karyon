@@ -450,100 +450,6 @@ public:
 };
 
 // ============================================================================
-// PROGRAMMABLE DELAY OP (6th Atomic Operator - Axonal Delay Line Buffer)
-// Circular buffer holding historical states [tau_max, B, dim].
-// Dynamic delay tau_t = 1 + (tau_max - 1) * sigmoid(w_tau * h_t).
-// Differentiable continuous reading via linear interpolation between floor(tau) and ceil(tau).
-// ============================================================================
-class ProgrammableDelayOpImpl : public GraphOp {
-public:
-    int64_t dim;
-    int64_t tau_max;
-    std::string device_str;
-    torch::Tensor w_tau;
-    torch::Tensor ring_buffer;
-    int64_t buffer_ptr = 0;
-    bool buffer_initialized = false;
-
-    ProgrammableDelayOpImpl(int64_t dim, std::string device_str, int64_t tau_max = 16)
-        : dim(dim), tau_max(tau_max), device_str(device_str) {
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        w_tau = register_parameter("w_tau", torch::randn({1, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
-        this->to(device);
-    }
-
-    void reset_buffer() {
-        buffer_initialized = false;
-        buffer_ptr = 0;
-        ring_buffer = torch::Tensor();
-    }
-
-    torch::Tensor forward(torch::Tensor x) override {
-        auto B = x.size(0);
-        auto device = x.device();
-
-        // 1. Initialize ring buffer [tau_max, B, dim] if uninitialized or batch mismatch
-        if (!buffer_initialized || !ring_buffer.defined() || ring_buffer.size(1) != B || ring_buffer.device() != device) {
-            ring_buffer = torch::zeros({tau_max, B, dim}, torch::TensorOptions().device(device));
-            buffer_ptr = 0;
-            buffer_initialized = true;
-        }
-
-        // 2. Store current incoming state at buffer_ptr
-        ring_buffer[buffer_ptr] = x.detach();
-
-        // 3. Compute dynamic delay tau_t in range [1.0, tau_max]
-        // tau_t = 1.0 + (tau_max - 1.0) * sigmoid(x * w_tau^T) -> [B, 1]
-        auto sig_tau = torch::sigmoid(torch::matmul(x, w_tau.t())); // [B, 1]
-        auto tau_t = 1.0f + (static_cast<float>(tau_max) - 1.0f) * sig_tau; // [B, 1]
-
-        // 4. Circular buffer index lookup:
-        // read_idx = buffer_ptr - tau_t (modulo tau_max)
-        auto tau_flat = tau_t.squeeze(-1); // [B]
-        auto tau_floor = tau_flat.floor(); // [B]
-        auto tau_frac = (tau_flat - tau_floor).unsqueeze(-1); // [B, 1]
-
-        auto curr_ptr_tensor = torch::full({B}, static_cast<float>(buffer_ptr), torch::TensorOptions().device(device));
-        auto idx0 = torch::remainder(curr_ptr_tensor - tau_floor + static_cast<float>(tau_max * 2), static_cast<float>(tau_max)).to(torch::kLong);
-        auto idx1 = torch::remainder(idx0 - 1 + static_cast<float>(tau_max), static_cast<float>(tau_max)).to(torch::kLong);
-
-        // Gather states for each batch element
-        // ring_buffer is [tau_max, B, dim], permute to [B, tau_max, dim]
-        auto buf_perm = ring_buffer.permute({1, 0, 2}); // [B, tau_max, dim]
-        auto b_indices = torch::arange(B, torch::TensorOptions().device(device));
-
-        auto state0 = buf_perm.index({b_indices, idx0}); // [B, dim]
-        auto state1 = buf_perm.index({b_indices, idx1}); // [B, dim]
-
-        // Linear interpolation across continuous delay
-        auto delayed_out = (1.0f - tau_frac) * state0 + tau_frac * state1;
-
-        // Advance circular buffer pointer
-        buffer_ptr = (buffer_ptr + 1) % tau_max;
-
-        return delayed_out;
-    }
-
-    torch::Tensor forward_fixed_delay(torch::Tensor x, int64_t fixed_tau) {
-        auto B = x.size(0);
-        auto device = x.device();
-        if (!buffer_initialized || !ring_buffer.defined() || ring_buffer.size(1) != B || ring_buffer.device() != device) {
-            ring_buffer = torch::zeros({tau_max, B, dim}, torch::TensorOptions().device(device));
-            buffer_ptr = 0;
-            buffer_initialized = true;
-        }
-
-        ring_buffer[buffer_ptr] = x.detach();
-        int64_t lookback = std::clamp(fixed_tau, (int64_t)0, tau_max - 1);
-        int64_t read_idx = (buffer_ptr - lookback + tau_max) % tau_max;
-        auto delayed_out = ring_buffer[read_idx].clone();
-
-        buffer_ptr = (buffer_ptr + 1) % tau_max;
-        return delayed_out;
-    }
-};
-
-// ============================================================================
 // 9. DYNAMIC MORPHIC GRAPH & COMMUTATION ORCHESTRATOR R(h_t)
 // ============================================================================
 class DynamicMorphicGraphImpl : public torch::nn::Module {
@@ -564,8 +470,6 @@ public:
     torch::Tensor w_route_ctx; // Dynamic Commutation Orchestrator Matrix [64 * 64, dim]
     torch::Tensor w_sensory_in, w_motor_out;
 
-    torch::Tensor w_halt;
-
     DynamicMorphicGraphImpl(int64_t dim = 128, std::string device_str = "cpu")
         : dim(dim), device_str(device_str) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
@@ -573,7 +477,6 @@ public:
         w_route_ctx = register_parameter("w_route_ctx", torch::randn({64 * 64, dim}, torch::TensorOptions().device(device)) * (0.01f / std::sqrt((float)dim)));
         w_sensory_in = register_parameter("w_sensory_in", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
         w_motor_out = register_parameter("w_motor_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
-        w_halt = register_parameter("w_halt", torch::randn({1, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
         this->to(device);
     }
 
@@ -593,8 +496,6 @@ public:
             op = std::make_shared<StateSpaceMemoryOpImpl>(dim, device_str);
         } else if (op_type == "StochasticLangevin") {
             op = std::make_shared<StochasticLangevinOpImpl>(dim, device_str);
-        } else if (op_type == "ProgrammableDelay") {
-            op = std::make_shared<ProgrammableDelayOpImpl>(dim, device_str, 16);
         } else {
             op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
         }
@@ -675,7 +576,6 @@ public:
         params["w_route_ctx"] = w_route_ctx;
         params["w_sensory_in"] = w_sensory_in;
         params["w_motor_out"] = w_motor_out;
-        params["w_halt"] = w_halt;
         for (size_t i = 0; i < node_ops.size(); ++i) {
             params["alpha_" + node_names[i]] = alpha_epi[i];
             std::string prefix = "node_" + std::to_string(i) + "_" + node_names[i];
@@ -710,91 +610,6 @@ public:
     void reset_state() {
         has_persistent_states = false;
         persistent_node_states = torch::Tensor();
-    }
-
-    std::tuple<torch::Tensor, float> forward_adaptive(torch::Tensor x_sensory, int64_t max_thinking_steps = 8, float halt_threshold = 0.8f, float epsilon_halt = 1e-3f) {
-        auto B = x_sensory.size(0);
-        int64_t K = k_nodes;
-        auto device = x_sensory.device();
-
-        torch::Tensor node_states;
-        if (!has_persistent_states || !persistent_node_states.defined() || 
-            persistent_node_states.size(0) != K || persistent_node_states.size(1) != B || persistent_node_states.device() != device) {
-            node_states = torch::zeros({K, B, dim}, torch::TensorOptions().device(device));
-        } else {
-            node_states = persistent_node_states;
-        }
-
-        auto sensory_in = torch::matmul(x_sensory, w_sensory_in.t());
-        node_states[0] = node_states[0] + sensory_in;
-
-        auto delta_route = torch::matmul(x_sensory, w_route_ctx.t()).view({B, 64, 64});
-        auto active_w_route = w_route.slice(0, 0, K).slice(1, 0, K);
-        auto active_delta = delta_route.slice(1, 0, K).slice(2, 0, K);
-
-        auto dynamic_routing_logits = active_w_route.unsqueeze(0) + active_delta;
-        
-        std::vector<torch::Tensor> gate_factors;
-        for (int64_t j = 0; j < K; ++j) {
-            gate_factors.push_back(torch::tanh(alpha_epi[j]).abs());
-        }
-        auto gates_tensor = torch::stack(gate_factors, 0);
-        auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0);
-        dynamic_routing_logits = dynamic_routing_logits.masked_fill(inactive_mask, -1e4f);
-
-        auto routing_matrix = torch::softmax(dynamic_routing_logits, 2);
-
-        int64_t actual_steps_taken = 0;
-        torch::Tensor prev_aggregated;
-
-        for (int64_t step = 0; step < max_thinking_steps; ++step) {
-            actual_steps_taken++;
-            auto node_states_b = node_states.permute({1, 0, 2});
-            auto aggregated_inputs_b = torch::einsum("bik,bid->bkd", {routing_matrix, node_states_b});
-            auto aggregated_inputs = aggregated_inputs_b.permute({1, 0, 2});
-            aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
-
-            std::vector<torch::Tensor> new_states;
-            for (int64_t j = 0; j < K; ++j) {
-                auto raw_out = node_ops[j]->forward(aggregated_inputs[j]);
-                auto alpha = alpha_epi[j];
-                auto graft_gate = torch::tanh(alpha);
-                auto grafted_out = graft_gate * raw_out;
-                new_states.push_back(grafted_out);
-            }
-            node_states = torch::stack(new_states, 0);
-
-            // Adaptive Pondering Check
-            torch::Tensor curr_aggregated = torch::zeros({B, dim}, torch::TensorOptions().device(device));
-            for (int64_t j = 0; j < K; ++j) {
-                curr_aggregated = curr_aggregated + torch::tanh(alpha_epi[j]) * node_states[j];
-            }
-
-            // Halting probability p_halt = sigmoid(w_halt * curr_aggregated)
-            auto p_halt = torch::sigmoid(torch::matmul(curr_aggregated, w_halt.t())).mean().item<float>();
-
-            float delta_f = 1.0f;
-            if (prev_aggregated.defined()) {
-                delta_f = (curr_aggregated - prev_aggregated).norm().item<float>() / (static_cast<float>(B * dim) + 1e-6f);
-            }
-            prev_aggregated = curr_aggregated;
-
-            // Early exit if halting probability exceeded or state trajectory stabilized
-            if (step >= 1 && (p_halt > halt_threshold || delta_f < epsilon_halt)) {
-                break;
-            }
-        }
-
-        persistent_node_states = node_states.detach();
-        has_persistent_states = true;
-
-        torch::Tensor final_aggregated = torch::zeros({B, dim}, torch::TensorOptions().device(device));
-        for (int64_t j = 0; j < K; ++j) {
-            auto gate = torch::tanh(alpha_epi[j]);
-            final_aggregated = final_aggregated + gate * node_states[j];
-        }
-        auto out = torch::matmul(final_aggregated, w_motor_out.t());
-        return std::make_tuple(out, static_cast<float>(actual_steps_taken));
     }
 
     torch::Tensor forward(torch::Tensor x_sensory, int64_t thinking_steps = 4) {
@@ -951,13 +766,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("forward_with_fe", &StochasticLangevinOpImpl::forward_with_fe, py::arg("x"), py::arg("f_t") = 0.0f)
         .def("forward_deterministic", &StochasticLangevinOpImpl::forward_deterministic, py::arg("x"));
 
-    py::class_<ProgrammableDelayOpImpl, torch::nn::Module, std::shared_ptr<ProgrammableDelayOpImpl>>(m, "ProgrammableDelayOp")
-        .def(py::init<int64_t, std::string, int64_t>(), py::arg("dim"), py::arg("device_str") = "cpu", py::arg("tau_max") = 16)
-        .def("reset_buffer", &ProgrammableDelayOpImpl::reset_buffer)
-        .def("forward", &ProgrammableDelayOpImpl::forward)
-        .def("__call__", &ProgrammableDelayOpImpl::forward)
-        .def("forward_fixed_delay", &ProgrammableDelayOpImpl::forward_fixed_delay, py::arg("x"), py::arg("fixed_tau"));
-
     py::class_<DynamicMorphicGraphImpl, torch::nn::Module, std::shared_ptr<DynamicMorphicGraphImpl>>(m, "DynamicMorphicGraph")
         .def(py::init<int64_t, std::string>(), py::arg("dim") = 128, py::arg("device_str") = "cpu")
         .def_readonly("k_nodes", &DynamicMorphicGraphImpl::k_nodes)
@@ -968,7 +776,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("reset_state", &DynamicMorphicGraphImpl::reset_state)
         .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("__call__", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
-        .def("forward_adaptive", &DynamicMorphicGraphImpl::forward_adaptive, py::arg("x_sensory"), py::arg("max_thinking_steps") = 8, py::arg("halt_threshold") = 0.8f, py::arg("epsilon_halt") = 1e-3f)
         .def("get_topology_manifest", &DynamicMorphicGraphImpl::get_topology_manifest)
         .def("get_methylation_locks", &DynamicMorphicGraphImpl::get_methylation_locks)
         .def("set_methylation_locks", &DynamicMorphicGraphImpl::set_methylation_locks, py::arg("locks"))

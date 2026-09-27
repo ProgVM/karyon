@@ -14,7 +14,7 @@ Python Orchestrator Wrapper for C++20 Spatiotemporal Morphogenetic Engine:
 """
 import math
 import random
-from typing import Dict, Any, Tuple, Optional, List, Union
+from typing import Dict, Any, Tuple, Optional, List
 
 import torch
 import torch.nn as nn
@@ -100,87 +100,40 @@ class CoREAgent(nn.Module):
         self.max_morphogenesis_events: int = 1
         self.morphogenesis_events: List[Dict[str, Any]] = []
 
-    def forward(
-        self,
-        input_ids: torch.Tensor,
-        thinking_steps: Optional[int] = None,
-        max_thinking_steps: int = 8,
-        halt_threshold: float = 0.8,
-        epsilon_halt: float = 1e-3,
-        return_thinking_steps: bool = False
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, float]]:
+    def forward(self, input_ids: torch.Tensor, thinking_steps: int = 4) -> torch.Tensor:
         """
         Spatiotemporal Dual-Phase Forward Pass:
         1. Temporal State-Space Causal Scan (Sequence mixing across S).
         2. Spatial Morphogenetic Graph Recirculation (Deliberative latent thinking across K).
-        When thinking_steps is None, executes Sovereign Adaptive Pondering / Halting (KEP Principle 21).
         """
-        actual_steps = 0.0
         if input_ids.dtype in (torch.long, torch.int32, torch.int64):
             x = self.emb(input_ids)
             if x.dim() == 3:
                 B, S, D = x.shape
                 # Step 1: Temporal Causal State-Space Mixing
-                h_seq = self.ssd.forward(x)  # [B, S, D]
+                h_seq = self.ssd.forward(x) # [B, S, D]
                 # Step 2: Spatial/Deliberative Graph Recirculation
                 h_flat = h_seq.reshape(B * S, D)
-                if thinking_steps is not None:
-                    h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
-                    actual_steps = float(thinking_steps)
-                else:
-                    h_graph_flat, actual_steps = self.graph.forward_adaptive(
-                        h_flat, max_thinking_steps, halt_threshold, epsilon_halt
-                    )
-                    h_graph = h_graph_flat.reshape(B, S, D)
+                h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
 
                 # Step 3: Residual Highway + Readout
                 h_out = h_seq + h_graph
                 logits = self.head(self.norm(h_out))
-                if return_thinking_steps:
-                    return logits, actual_steps
                 return logits
             else:
                 # 2D input [B, D] continuous vectors
-                if thinking_steps is not None:
-                    h_graph = self.graph.forward(x, thinking_steps)
-                    actual_steps = float(thinking_steps)
-                else:
-                    h_graph, actual_steps = self.graph.forward_adaptive(
-                        x, max_thinking_steps, halt_threshold, epsilon_halt
-                    )
-                logits = self.head(self.norm(x + h_graph))
-                if return_thinking_steps:
-                    return logits, actual_steps
-                return logits
+                h_graph = self.graph.forward(x, thinking_steps)
+                return self.head(self.norm(x + h_graph))
         else:
             # Continuous tensor forward pass
             if input_ids.dim() == 3:
                 B, S, D = input_ids.shape
                 h_seq = self.ssd.forward(input_ids)
                 h_flat = h_seq.reshape(B * S, D)
-                if thinking_steps is not None:
-                    h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
-                    actual_steps = float(thinking_steps)
-                else:
-                    h_graph_flat, actual_steps = self.graph.forward_adaptive(
-                        h_flat, max_thinking_steps, halt_threshold, epsilon_halt
-                    )
-                    h_graph = h_graph_flat.reshape(B, S, D)
-                out = self.head(self.norm(h_seq + h_graph))
-                if return_thinking_steps:
-                    return out, actual_steps
-                return out
+                h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
+                return self.head(self.norm(h_seq + h_graph))
             else:
-                if thinking_steps is not None:
-                    out = self.graph.forward(input_ids, thinking_steps)
-                    actual_steps = float(thinking_steps)
-                else:
-                    out, actual_steps = self.graph.forward_adaptive(
-                        input_ids, max_thinking_steps, halt_threshold, epsilon_halt
-                    )
-                if return_thinking_steps:
-                    return out, actual_steps
-                return out
+                return self.graph.forward(input_ids, thinking_steps)
 
     def forward_autoregressive_step(
         self,
@@ -360,8 +313,7 @@ class CoREAgent(nn.Module):
             "SaturatedAttractor",
             "ContinuousHopfield",
             "StateSpaceMemory",
-            "StochasticLangevin",
-            "ProgrammableDelay"
+            "StochasticLangevin"
         )
     ) -> Dict[str, float]:
         """

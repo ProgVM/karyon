@@ -14,7 +14,7 @@ Python Orchestrator Wrapper for C++20 Spatiotemporal Morphogenetic Engine:
 """
 import math
 import random
-from typing import Dict, Any, Tuple, Optional, List, Union
+from typing import Dict, Any, Tuple, Optional, List
 
 import torch
 import torch.nn as nn
@@ -360,8 +360,7 @@ class CoREAgent(nn.Module):
             "SaturatedAttractor",
             "ContinuousHopfield",
             "StateSpaceMemory",
-            "StochasticLangevin",
-            "ProgrammableDelay"
+            "StochasticLangevin"
         )
     ) -> Dict[str, float]:
         """
