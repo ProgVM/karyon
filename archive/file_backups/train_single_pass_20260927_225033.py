@@ -494,14 +494,14 @@ def run_single_pass_training():
                 repulsors_count = 0
                 attractors_count = 0
 
-            print("\n" + "=" * 85, flush=True)
-            print(f" === [KARYON v6.0 SINGLE-PASS DASHBOARD | STREAM STEP {batch_idx+1:04d}/{len(stream_loader)}] ===", flush=True)
-            print("=" * 85, flush=True)
-            print(f"Stream Performance        : Step Duration: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s", flush=True)
-            print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f})", flush=True)
-            print(f"Somatic Memory State      : Repulsors (V=-1): {repulsors_count} | Attractors (V=+1): {attractors_count} | Running Loss Mean: {loss_running_mean:.3f} (Std: {loss_running_std:.3f})", flush=True)
-            print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy_val:.3f} | Sleep Cycles: {total_sleep_cycles}", flush=True)
-            print("=" * 85, flush=True)
+            print("\n" + "=" * 85)
+            print(f" === [KARYON v6.0 SINGLE-PASS DASHBOARD | STREAM STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
+            print("=" * 85)
+            print(f"Stream Performance        : Step Duration: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
+            print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f})")
+            print(f"Somatic Memory State      : Repulsors (V=-1): {repulsors_count} | Attractors (V=+1): {attractors_count} | Running Loss Mean: {loss_running_mean:.3f} (Std: {loss_running_std:.3f})")
+            print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy_val:.3f} | Sleep Cycles: {total_sleep_cycles}")
+            print("=" * 85)
 
         # KEP Rule #4 Diagnostic text sample every 250 steps
         if (batch_idx + 1) % 250 == 0:
