@@ -100,7 +100,7 @@ use_amp = hw_engine.config.enable_amp and not hw_engine.is_cpu
 autocast_dtype = torch.bfloat16
 logger.info(f"Execution context: {device_str.upper()} (AMP Enabled: {use_amp}, Dtype: {autocast_dtype})")
 
-kcore_path = "karyon_soul_v6.kcore"
+kcore_path = "karyon_soul.kcore"
 hf_repo_id = "progvmoff/karyon-v31-core"
 
 
