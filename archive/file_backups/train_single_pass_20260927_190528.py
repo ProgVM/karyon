@@ -412,10 +412,9 @@ def run_single_pass_training():
             if hu_nexus is not None:
                 # Direct buffer modification under no_grad to reset energy to 1.0
                 with torch.no_grad():
-                    states_tensor = hu_nexus.get_states()
-                    states_tensor[1] = 1.0  # restore energy
-                    states_tensor[4] = 0.1  # reduce noradrenaline
-                    states_tensor[5] = 0.1  # reduce dopamine
+                    hu_nexus.states[1] = 1.0
+                    hu_nexus.states[4] = 0.1  # reduce noradrenaline
+                    hu_nexus.states[5] = 0.1  # reduce dopamine
 
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
             logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep Complete ({sleep_duration_ms:.1f}ms). Pruned Nodes={pruned_count}")

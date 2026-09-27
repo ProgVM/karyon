@@ -255,7 +255,7 @@ core_config.net.hidden_dim = 512
 
 agent_brain = CoREAgent(vocab_size=258, embed_dim=256, device=device_str).to(device)
 hu_nexus = HomeostaticNexus(device=device_str) if HomeostaticNexus else None
-hopfield_mem = ContinuousHopfieldMemory(dim=256, num_basins=32, device_str=device_str) if ContinuousHopfieldMemory else None
+hopfield_mem = ContinuousHopfieldMemory(dim=256, num_basins=32, device=device_str) if ContinuousHopfieldMemory else None
 
 h_fast = torch.zeros(1, agent_brain.hidden_dim, device=device)
 h_slow = torch.zeros(1, agent_brain.hidden_dim, device=device)
@@ -393,7 +393,7 @@ def run_single_pass_training():
 
         # Interoceptive Homeostatic Updates (Ashby Homeostasis)
         if hu_nexus is not None:
-            hu_nexus.update(float(speech_loss_val))
+            hu_nexus.update(torch.tensor([-0.001, -0.002, 0.001, 0.0, 0.005, 0.005], device=device))
 
         # Check Sleep & Synaptic Consolidation Condition
         states = hu_nexus.get_states() if hu_nexus is not None else torch.tensor([0.5, 1.0, 0.9, 1.0, 0.2, 0.1])
@@ -410,12 +410,7 @@ def run_single_pass_training():
 
             # Restore homeostatic energy
             if hu_nexus is not None:
-                # Direct buffer modification under no_grad to reset energy to 1.0
-                with torch.no_grad():
-                    states_tensor = hu_nexus.get_states()
-                    states_tensor[1] = 1.0  # restore energy
-                    states_tensor[4] = 0.1  # reduce noradrenaline
-                    states_tensor[5] = 0.1  # reduce dopamine
+                hu_nexus.update(torch.tensor([0.0, 1.0 - energy_val, 0.0, 0.0, 0.0, 0.0], device=device))
 
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
             logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep Complete ({sleep_duration_ms:.1f}ms). Pruned Nodes={pruned_count}")
