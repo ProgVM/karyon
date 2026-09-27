@@ -351,11 +351,6 @@ def run_single_pass_training():
 
     logger.info(f"\n{'='*85}\n === [STARTING CONTINUOUS STREAM LEARNING (N=1 PASS, Spatiotemporal Dualism)] ===\n{'='*85}")
 
-    loss_running_mean = 2.00
-    loss_running_var = 0.20
-    loss_running_std = 0.45
-    loss_momentum = 0.05
-
     for batch_idx, batch_tokens in enumerate(stream_loader):
         if batch_idx < start_step:
             continue
@@ -398,12 +393,6 @@ def run_single_pass_training():
         cur_lr = get_neuromodulated_lr(BASE_LR, hu_nexus)
         for group in optimizer.param_groups:
             group['lr'] = cur_lr
-
-        # Update running loss statistics for dynamic somatic thresholding
-        loss_diff = speech_loss_val - loss_running_mean
-        loss_running_mean += loss_momentum * loss_diff
-        loss_running_var = (1.0 - loss_momentum) * loss_running_var + loss_momentum * (loss_diff ** 2)
-        loss_running_std = max(0.10, math.sqrt(loss_running_var))
 
         # Backward & Optimization Step
         if scaler.is_enabled():

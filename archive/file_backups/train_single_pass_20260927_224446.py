@@ -399,12 +399,6 @@ def run_single_pass_training():
         for group in optimizer.param_groups:
             group['lr'] = cur_lr
 
-        # Update running loss statistics for dynamic somatic thresholding
-        loss_diff = speech_loss_val - loss_running_mean
-        loss_running_mean += loss_momentum * loss_diff
-        loss_running_var = (1.0 - loss_momentum) * loss_running_var + loss_momentum * (loss_diff ** 2)
-        loss_running_std = max(0.10, math.sqrt(loss_running_var))
-
         # Backward & Optimization Step
         if scaler.is_enabled():
             scaler.scale(loss).backward()
