@@ -505,31 +505,28 @@ public:
         node_states[0] = node_states[0] + sensory_in;
 
         // Context-Dependent Commutation Routing: R(h_t) = Softmax(W_route + W_route_ctx * x_sensory)
-        // routing_matrix shape: [B, K_source, K_target] where Softmax is computed along K_target dimension
         auto delta_route = torch::matmul(x_sensory, w_route_ctx.t()).view({B, 64, 64});
         auto active_w_route = w_route.slice(0, 0, K).slice(1, 0, K);
         auto active_delta = delta_route.slice(1, 0, K).slice(2, 0, K);
 
-        auto dynamic_routing_logits = active_w_route.unsqueeze(0) + active_delta; // [B, K_src, K_tgt]
+        // Context-Dependent Dynamic Commutation Routing with Epigenetic Gating
+        // Ensure that inactive nodes (alpha_epi = 0.0) do not steal softmax routing probability from active nodes
+        // by applying a large negative penalty to un-expressed nodes in the destination column
+        auto dynamic_routing_logits = active_w_route.unsqueeze(0) + active_delta; // [B, K, K]
         
         std::vector<torch::Tensor> gate_factors;
         for (int64_t j = 0; j < K; ++j) {
             gate_factors.push_back(torch::tanh(alpha_epi[j]).abs());
         }
         auto gates_tensor = torch::stack(gate_factors, 0); // [K]
-        auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0); // [1, 1, K_tgt]
+        auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0); // [1, 1, K]
         dynamic_routing_logits = dynamic_routing_logits.masked_fill(inactive_mask, -1e4f);
 
-        auto routing_matrix = torch::softmax(dynamic_routing_logits, 2); // Softmax across target nodes
+        auto routing_matrix = torch::softmax(dynamic_routing_logits, 2);
 
         for (int64_t step = 0; step < thinking_steps; ++step) {
-            // Correct Tensor Contraction for Routing:
-            // routing_matrix: [B, i_src, k_tgt]
-            // node_states: [i_src, B, d] -> permuted to [B, i_src, d]
-            // Output aggregated_inputs_b: [B, k_tgt, d]
-            auto node_states_b = node_states.permute({1, 0, 2}); // [B, i_src, d]
-            auto aggregated_inputs_b = torch::einsum("bik,bid->bkd", {routing_matrix, node_states_b});
-            auto aggregated_inputs = aggregated_inputs_b.permute({1, 0, 2}); // [k_tgt, B, d]
+            auto aggregated_inputs_b = torch::einsum("bik,ibd->bkd", {routing_matrix, node_states});
+            auto aggregated_inputs = aggregated_inputs_b.permute({1, 0, 2});
             aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
 
             std::vector<torch::Tensor> new_states;
