@@ -331,7 +331,7 @@ logger.info(f"Starting Single-Pass Allostatic Session (1 Continuous Stream Pass,
 # 4. SINGLE-PASS CONTINUOUS ALLOSTATIC STREAMING LOOP
 # =============================================================================
 def run_single_pass_training():
-    global total_adapted_batches, total_sleep_cycles
+    global total_adapted_batches, total_sleep_cycles, optimizer, agent_brain
 
     logger.info(f"\n{'='*85}\n === [STARTING CONTINUOUS STREAM LEARNING (N=1 PASS, Spatiotemporal Dualism)] ===\n{'='*85}")
 
@@ -350,6 +350,7 @@ def run_single_pass_training():
 
         optimizer.zero_grad(set_to_none=True)
 
+        t_exec_start = time.perf_counter()
         try:
             with torch.amp.autocast(device_type=device_str, dtype=autocast_dtype, enabled=use_amp):
                 # Forward through Spatiotemporal Engine (SSD + Morphic Recirculation)
@@ -367,6 +368,8 @@ def run_single_pass_training():
             else:
                 raise e
 
+        t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
+
         speech_loss_val = loss.item()
         if math.isnan(speech_loss_val):
             logger.warning(f"⚠️ [Step {batch_idx+1}] Loss NaN detected. Resetting gradients and advancing stream...")
@@ -379,6 +382,7 @@ def run_single_pass_training():
             group['lr'] = cur_lr
 
         # Backward & Optimization Step
+        t_opt_start = time.perf_counter()
         if scaler.is_enabled():
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
@@ -389,6 +393,7 @@ def run_single_pass_training():
             loss.backward()
             torch.nn.utils.clip_grad_norm_(agent_brain.parameters(), max_norm=0.5)
             optimizer.step()
+        t_opt_ms = (time.perf_counter() - t_opt_start) * 1000.0
         total_adapted_batches += 1
 
         # Interoceptive Homeostatic Updates (Ashby Homeostasis)

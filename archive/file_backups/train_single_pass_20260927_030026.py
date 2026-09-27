@@ -350,6 +350,7 @@ def run_single_pass_training():
 
         optimizer.zero_grad(set_to_none=True)
 
+        t_exec_start = time.perf_counter()
         try:
             with torch.amp.autocast(device_type=device_str, dtype=autocast_dtype, enabled=use_amp):
                 # Forward through Spatiotemporal Engine (SSD + Morphic Recirculation)
@@ -366,6 +367,8 @@ def run_single_pass_training():
                 continue
             else:
                 raise e
+
+        t_exec_ms = (time.perf_counter() - t_exec_start) * 1000.0
 
         speech_loss_val = loss.item()
         if math.isnan(speech_loss_val):
