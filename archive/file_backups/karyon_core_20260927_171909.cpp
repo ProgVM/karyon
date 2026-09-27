@@ -242,22 +242,19 @@ public:
             // NA arousal: tracks current Free Energy surprise normalized by tau_f
             na_state = lambda_na * na_state + (1.0f - lambda_na) * torch::clamp(fe_t / tau_f, 0.0f, 5.0f);
             
-            // DA reward: tracks the positive reduction/improvement of Free Energy scaled for somatic parity
+            // DA reward: tracks the positive reduction/improvement of Free Energy
             auto delta_fe = (t == 0) ? torch::zeros_like(fe_t) : torch::clamp(fe_prev - fe_t, 0.0f, 10.0f);
-            da_state = lambda_da * da_state + (1.0f - lambda_da) * (delta_fe * 3.0f); // 3x scaling for somatic parity
+            da_state = lambda_da * da_state + (1.0f - lambda_da) * delta_fe;
             
             fe_prev = fe_t;
 
             na_trace.select(1, t).copy_(na_state);
             da_trace.select(1, t).copy_(da_state);
 
-            // Reciprocal inhibition: Dopamine inhibits Noradrenaline arousal
-            auto na_eff = torch::clamp(na_state - 1.2f * da_state, 0.0f, 10.0f);
-
             // 1. Direct Time-Speed Actuator modulated by Noradrenaline (dilation) and Dopamine (acceleration)
             auto dt_logits = torch::matmul(x_t, w_delta_t.t()) + b_delta_t; // [B, 1]
-            // Dilation: -alpha_na * tanh(na_eff) | Acceleration: +alpha_da * tanh(da_state)
-            auto dt_modulated = dt_logits - alpha_na * torch::tanh(na_eff) + alpha_da * torch::tanh(da_state);
+            // Dilation: -alpha_na * tanh(na_state) | Acceleration: +alpha_da * tanh(da_state)
+            auto dt_modulated = dt_logits - alpha_na * torch::tanh(na_state) + alpha_da * torch::tanh(da_state);
             auto dt_t = torch::softplus(dt_modulated) + 0.05f; // ensure minimal physical causality dt >= 0.05
             delta_t_trace.select(1, t).copy_(dt_t);
 

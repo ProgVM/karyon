@@ -187,9 +187,8 @@ def run_exp_313_benchmark():
     c0_indices = [idx for idx, cid in enumerate(concept_ids) if cid == 0]
     print(f"📊 Total Occurrences of Concept #0 across 2048 steps: {len(c0_indices)}")
 
-    # Fix slice selection: guaranteed non-empty occurrences
-    first_c0_steps = c0_indices[:16]
-    late_c0_steps = c0_indices[-16:]
+    first_c0_steps = [s for s in c0_indices if s < 100]
+    late_c0_steps = [s for s in c0_indices if s > 1500]
 
     # Arm A Macro-States at Concept 0
     # Probing snapped traces and output embeddings

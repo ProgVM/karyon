@@ -118,13 +118,6 @@ public:
     // Modern Continuous Hopfield Attractor Memory on Macro Commits (EXP-313)
     torch::Tensor hopfield_basins; // [num_basins, dim]
 
-    // EXP-314: Dynamic Somatic Neurotransmitter Chrono-Dilation Parameters
-    torch::Tensor alpha_na;       // [1] -> scale of noradrenaline deceleration
-    torch::Tensor alpha_da;       // [1] -> scale of dopamine acceleration
-    torch::Tensor lambda_na;      // [1] -> decay rate of NA state
-    torch::Tensor lambda_da;      // [1] -> decay rate of DA state
-    torch::Tensor tau_f;          // [1] -> normalizer for Free Energy surprise
-
     EndogenousThetaGammaPACImpl(int64_t dim = 128, std::string device_str = "cpu",
                                 float fast_min_decay = 0.05f, float fast_max_decay = 0.5f,
                                 float slow_min_decay = 0.0005f, float slow_max_decay = 0.01f,
@@ -170,17 +163,10 @@ public:
         auto raw_basins = torch::randn({num_hopfield_basins, dim}, torch::TensorOptions().device(device)) * scale;
         hopfield_basins = register_parameter("hopfield_basins", torch::nn::functional::normalize(raw_basins, torch::nn::functional::NormalizeFuncOptions().dim(-1)));
 
-        // EXP-314: Neurotransmitter calibration constants
-        alpha_na = register_parameter("alpha_na", torch::tensor({1.5f}, torch::TensorOptions().device(device)));
-        alpha_da = register_parameter("alpha_da", torch::tensor({1.2f}, torch::TensorOptions().device(device)));
-        lambda_na = register_parameter("lambda_na", torch::tensor({0.85f}, torch::TensorOptions().device(device)));
-        lambda_da = register_parameter("lambda_da", torch::tensor({0.85f}, torch::TensorOptions().device(device)));
-        tau_f = register_parameter("tau_f", torch::tensor({1.0f}, torch::TensorOptions().device(device)));
-
         this->to(device);
     }
 
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward(
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward(
         torch::Tensor x,
         torch::Tensor free_energy = torch::Tensor(),
         torch::Tensor init_h_fast = torch::Tensor(),
@@ -222,15 +208,8 @@ public:
         torch::Tensor state_fast = (init_h_fast.defined() && init_h_fast.sizes() == torch::IntArrayRef({B, D})) ? init_h_fast : torch::zeros({B, D}, opts);
         torch::Tensor state_slow = (init_h_slow.defined() && init_h_slow.sizes() == torch::IntArrayRef({B, D})) ? init_h_slow : torch::zeros({B, D}, opts);
 
-        // Somatic neurotransmitter states
-        torch::Tensor na_state = torch::zeros({B, 1}, opts);
-        torch::Tensor da_state = torch::zeros({B, 1}, opts);
-        torch::Tensor fe_prev = torch::zeros({B, 1}, opts);
-
         auto delta_t_trace = torch::zeros({B, S, 1}, opts);
         auto commit_gate_trace = torch::zeros({B, S, 1}, opts);
-        auto na_trace = torch::zeros({B, S, 1}, opts);
-        auto da_trace = torch::zeros({B, S, 1}, opts);
         auto hopfield_snapped_trace = torch::zeros({B, S, D}, opts);
         auto y_out = torch::zeros_like(x);
 
@@ -238,27 +217,9 @@ public:
             auto x_t = x.select(1, t); // [B, D]
             auto fe_t = f_t_seq.select(1, t); // [B, 1]
 
-            // Dynamic Somatic Neurotransmitter updates
-            // NA arousal: tracks current Free Energy surprise normalized by tau_f
-            na_state = lambda_na * na_state + (1.0f - lambda_na) * torch::clamp(fe_t / tau_f, 0.0f, 5.0f);
-            
-            // DA reward: tracks the positive reduction/improvement of Free Energy scaled for somatic parity
-            auto delta_fe = (t == 0) ? torch::zeros_like(fe_t) : torch::clamp(fe_prev - fe_t, 0.0f, 10.0f);
-            da_state = lambda_da * da_state + (1.0f - lambda_da) * (delta_fe * 3.0f); // 3x scaling for somatic parity
-            
-            fe_prev = fe_t;
-
-            na_trace.select(1, t).copy_(na_state);
-            da_trace.select(1, t).copy_(da_state);
-
-            // Reciprocal inhibition: Dopamine inhibits Noradrenaline arousal
-            auto na_eff = torch::clamp(na_state - 1.2f * da_state, 0.0f, 10.0f);
-
-            // 1. Direct Time-Speed Actuator modulated by Noradrenaline (dilation) and Dopamine (acceleration)
+            // 1. Direct Time-Speed Actuator: Delta t_t = Softplus(W_dt * h_t + b_dt)
             auto dt_logits = torch::matmul(x_t, w_delta_t.t()) + b_delta_t; // [B, 1]
-            // Dilation: -alpha_na * tanh(na_eff) | Acceleration: +alpha_da * tanh(da_state)
-            auto dt_modulated = dt_logits - alpha_na * torch::tanh(na_eff) + alpha_da * torch::tanh(da_state);
-            auto dt_t = torch::softplus(dt_modulated) + 0.05f; // ensure minimal physical causality dt >= 0.05
+            auto dt_t = torch::softplus(dt_logits) + 0.05f; // ensure minimal physical causality dt >= 0.05
             delta_t_trace.select(1, t).copy_(dt_t);
 
             // 2. Continuous time-warped state transition: decay = exp(-A * delta_t_t)
@@ -312,11 +273,10 @@ public:
             y_out.select(1, t).copy_(torch::matmul(y_t, w_pac_out.t()));
         }
 
-        return std::make_tuple(y_out, delta_t_trace, commit_gate_trace, na_trace, da_trace, state_fast, state_slow, hopfield_snapped_trace);
+        return std::make_tuple(y_out, delta_t_trace, commit_gate_trace, state_fast, state_slow, hopfield_snapped_trace);
     }
 };
 TORCH_MODULE(EndogenousThetaGammaPAC);
-
 
 // ============================================================================
 // 3. PARALLEL OPERATOR BANK
