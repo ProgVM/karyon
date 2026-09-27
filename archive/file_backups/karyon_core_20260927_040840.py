@@ -1,7 +1,7 @@
 # karyon_core.py
 """
 ===============================================================================
-KARYON CORE C++20 JIT LOADER & RUNTIME DISPATCHER (v35.0)
+KARYON CORE C++20 JIT LOADER & RUNTIME DISPATCHER (v34.5)
 ===============================================================================
 Compiles and loads karyon_core.cpp LibTorch extension dynamically on GPU/CPU.
 Injects compiled classes into the Python karyon_core namespace.
@@ -19,19 +19,13 @@ os.makedirs(build_dir, exist_ok=True)
 
 extra_cflags = ["-O3", "-std=c++20"]
 
-
-def _is_valid_karyon_cpp(mod):
-    return mod is not None and hasattr(mod, "CausalParallelSSD") and getattr(mod, "CausalParallelSSD") is not None
-
-
-# Step 1: Check sys.modules for any already valid loaded C++ extension binary
+# Check if a karyon_core_ext module is already loaded in sys.modules to prevent PyBind11 duplicate registration
 karyon_cpp = None
 for mod_name, mod in list(sys.modules.items()):
-    if (mod_name.startswith("karyon_core_ext") or mod_name.startswith("karyon_cpp_ext")) and _is_valid_karyon_cpp(mod):
+    if mod_name.startswith("karyon_core_ext"):
         karyon_cpp = mod
         break
 
-# Step 2: Load or compile if not already valid in memory
 if karyon_cpp is None:
     module_name = "karyon_core_ext"
     try:
@@ -46,7 +40,7 @@ if karyon_cpp is None:
         sys.stderr.write(f"❌ Karyon C++ JIT Compilation Failed: {str(e)}\n")
         raise e
 
-if _is_valid_karyon_cpp(karyon_cpp):
+if karyon_cpp is not None:
     globals()["UniversalManifold"] = getattr(karyon_cpp, "UniversalManifold", None)
     globals()["CausalParallelSSD"] = getattr(karyon_cpp, "CausalParallelSSD", None)
     globals()["ParallelOperatorBank"] = getattr(karyon_cpp, "ParallelOperatorBank", None)
@@ -61,4 +55,4 @@ if _is_valid_karyon_cpp(karyon_cpp):
     globals()["StateSpaceMemoryOp"] = getattr(karyon_cpp, "StateSpaceMemoryOp", None)
     globals()["DynamicMorphicGraph"] = getattr(karyon_cpp, "DynamicMorphicGraph", None)
 else:
-    raise ImportError("Failed to load or compile valid Karyon C++ extension module.")
+    raise ImportError("Failed to load or compile Karyon C++ extension module.")
