@@ -22,6 +22,9 @@ Benchmark Flow:
    - Verifies Parent Organelle Weight Invariant: Delta W_orig == 0.00000000.
 """
 
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import time
 import random
 import torch
