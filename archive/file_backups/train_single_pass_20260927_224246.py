@@ -307,26 +307,10 @@ def run_diagnostic_text_sample(agent: CoREAgent, max_tokens: int = 64) -> str:
     input_ids = torch.tensor([prompt_bytes], dtype=torch.long, device=agent.device)
 
     generated_bytes = []
-    past_h_states = []
-    h_core = torch.zeros(1, agent.embed_dim, device=agent.device)
-    bump = torch.zeros(1, len(prompt_bytes), device=agent.device)
-    bump[:, 0] = 1.0
-
     with torch.no_grad():
         for _ in range(max_tokens):
-            # Evaluate via full forward pass with sequence context
-            logits = agent(input_ids, thinking_steps=2)  # [1, S, V]
-            next_byte_logits = logits[0, -1, :256].clone()
-            
-            # Repulse semantic loops: penalize byte if state similarity to past 4 states is high (>0.90)
-            if len(generated_bytes) >= 3 and len(generated_bytes) % 2 == 0:
-                # Check for repetitive n-gram loops (e.g. ' a sor a sor')
-                recent_tail = bytes(generated_bytes[-8:]).decode('utf-8', errors='ignore')
-                if len(recent_tail) >= 6 and (recent_tail[-3:] == recent_tail[-6:-3]):
-                    # Strong penalty on repeating byte
-                    last_byte = generated_bytes[-1]
-                    next_byte_logits[last_byte] -= 5.0
-
+            logits = agent(input_ids, thinking_steps=2) # [1, S, V]
+            next_byte_logits = logits[0, -1, :256]
             next_byte = torch.argmax(next_byte_logits).item()
             if next_byte == 257:  # EOS
                 break
@@ -413,10 +397,9 @@ def run_single_pass_training():
             # Free energy surprise scaled down (0.03) so energy depletes smoothly over ~180-220 steps
             hu_nexus.update(float(speech_loss_val) * 0.03)
 
-        # Dynamic Somatic Repulsor Recording
-        # Triggers negative experience record (Valence = -1.0) when current loss surges beyond running baseline (mean + 1.0 * std)
-        is_error_spike = (batch_idx > 20 and speech_loss_val > (loss_running_mean + 1.0 * loss_running_std)) or (speech_loss_val > 3.20)
-        if is_error_spike:
+        # Online Context-Gated Hopfield Repulsor Recording
+        # Automatically registers somatic error repulsor upon unexpected loss surge
+        if speech_loss_val > 6.0:
             with torch.no_grad():
                 ctx_t = agent_brain.emb(input_seq[:, :8]).mean(dim=1)
                 act_err = agent_brain.emb(target_seq[:, 0])
@@ -424,8 +407,8 @@ def run_single_pass_training():
                     context_t=ctx_t,
                     action_t=act_err,
                     free_energy_surprise=speech_loss_val,
-                    tau_error=loss_running_mean + 0.5 * loss_running_std,
-                    tau_success=loss_running_mean - 0.5 * loss_running_std
+                    tau_error=5.50,
+                    tau_success=2.00
                 )
 
         # Check Sleep & Synaptic Consolidation Condition (Dynamic Somatic Energy < 0.15 or safety interval 250)
@@ -472,15 +455,12 @@ def run_single_pass_training():
         if (batch_idx + 1) % 25 == 0 or batch_idx == len(stream_loader) - 1:
             perplexity = math.exp(min(speech_loss_val, 20.0))
             peak_vram_mb = hw_engine.get_telemetry().get('max_allocated_mb', 0.0)
-            repulsors_count = (hopfield_mem.valences == -1.0).sum().item()
-            attractors_count = (hopfield_mem.valences == 1.0).sum().item()
 
             print("\n" + "=" * 85)
             print(f" === [KARYON v6.0 SINGLE-PASS DASHBOARD | STREAM STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
             print("=" * 85)
             print(f"Stream Performance        : Step Duration: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
             print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f})")
-            print(f"Somatic Memory State      : Repulsors (V=-1): {repulsors_count} | Attractors (V=+1): {attractors_count} | Basins: {hopfield_mem.num_basins}")
             print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy_val:.3f} | Sleep Cycles: {total_sleep_cycles}")
             print("=" * 85)
 

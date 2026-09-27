@@ -168,15 +168,7 @@ class CoREAgent(nn.Module):
 
             # Step 3: Residual Highway + Readout
             h_out = h_seq + h_graph
-            h_norm = self.norm(h_out)
-            
-            # Step 3.1: Context-Gated Hopfield Aversive Repulsion & Attractor Snapping across sequence
-            # Uses initial sensory context (h_seq[:, 0:1, :]) to repel known error actions in this context
-            h_ctx = h_seq[:, 0, :].unsqueeze(1).expand(B, S, D).reshape(B * S, D)
-            h_relaxed = self.hopfield_memory.relax_with_repulsion(h_ctx, h_norm.reshape(B * S, D)).reshape(B, S, D)
-            h_norm = self.norm(h_norm + h_relaxed)
-
-            logits = self.head(h_norm)
+            logits = self.head(self.norm(h_out))
             if return_thinking_steps:
                 return logits, actual_steps
             return logits

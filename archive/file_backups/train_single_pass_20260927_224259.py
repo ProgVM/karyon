@@ -472,15 +472,12 @@ def run_single_pass_training():
         if (batch_idx + 1) % 25 == 0 or batch_idx == len(stream_loader) - 1:
             perplexity = math.exp(min(speech_loss_val, 20.0))
             peak_vram_mb = hw_engine.get_telemetry().get('max_allocated_mb', 0.0)
-            repulsors_count = (hopfield_mem.valences == -1.0).sum().item()
-            attractors_count = (hopfield_mem.valences == 1.0).sum().item()
 
             print("\n" + "=" * 85)
             print(f" === [KARYON v6.0 SINGLE-PASS DASHBOARD | STREAM STEP {batch_idx+1:04d}/{len(stream_loader)}] ===")
             print("=" * 85)
             print(f"Stream Performance        : Step Duration: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
             print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f})")
-            print(f"Somatic Memory State      : Repulsors (V=-1): {repulsors_count} | Attractors (V=+1): {attractors_count} | Basins: {hopfield_mem.num_basins}")
             print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy_val:.3f} | Sleep Cycles: {total_sleep_cycles}")
             print("=" * 85)
 
