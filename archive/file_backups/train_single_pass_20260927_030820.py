@@ -395,6 +395,11 @@ def run_single_pass_training():
         if hu_nexus is not None:
             hu_nexus.update(torch.tensor([-0.001, -0.002, 0.001, 0.0, 0.005, 0.005], device=device))
 
+        # Autonomous Morphogenesis Reflex check
+        stress_val = agent_brain.somatic_stress
+        num_organelles = agent_brain.get_active_organelles_count()
+        free_slots = agent_brain.get_free_organelle_slots()
+
         # Check Sleep & Synaptic Consolidation Condition
         states = hu_nexus.get_states() if hu_nexus is not None else torch.tensor([0.5, 1.0, 0.9, 1.0, 0.2, 0.1])
         energy_val = float(states[1].item())
@@ -413,7 +418,7 @@ def run_single_pass_training():
                 hu_nexus.update(torch.tensor([0.0, 1.0 - energy_val, 0.0, 0.0, 0.0, 0.0], device=device))
 
             sleep_duration_ms = (time.perf_counter() - t_sleep_start) * 1000.0
-            logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep Complete ({sleep_duration_ms:.1f}ms). Pruned Nodes={pruned_count}")
+            logger.info(f"☀️ [Awakened @ Step {batch_idx+1}] Sleep Complete ({sleep_duration_ms:.1f}ms). Pruned Nodes={pruned_count} | Active Organelles={agent_brain.get_active_organelles_count()}")
 
             # Periodic container save & cloud sync
             save_karyon(agent_brain, hopfield_mem, hu_nexus, h_fast, h_slow, epoch=1, story_idx=(batch_idx + 1) * BATCH_SIZE, filepath=kcore_path)
@@ -437,6 +442,7 @@ def run_single_pass_training():
             print("=" * 85)
             print(f"Stream Performance        : Step Duration: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s")
             print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f})")
+            print(f"Morphogenetic Organelles  : Active Organelles = {num_organelles} | Free Slots = {free_slots} | Stress S_t = {stress_val:.4f}")
             print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy_val:.3f} | Sleep Cycles: {total_sleep_cycles}")
             print("=" * 85)
 
