@@ -239,11 +239,6 @@ class CoREAgent(nn.Module):
         h_sensory = self.norm(h_core + self.gaze_proj(torch.cat([h_core, h_gaze], dim=-1)))
         h_deliberated = self.graph.forward(h_sensory, thinking_steps)
         h_fused = self.norm(h_sensory + h_deliberated)
-
-        # 6.1 Context-Gated Hopfield Aversive Repulsion & Attractor Snapping
-        # Modulates deliberated action representation using accumulated somatic episodes
-        h_action = self.hopfield_memory.relax_with_repulsion(h_sensory, h_fused)
-        h_fused = self.norm(h_fused + h_action)
         
         # 7. Copy Projection
         p_copy = torch.sigmoid(self.copy_gate(h_fused))
@@ -251,27 +246,6 @@ class CoREAgent(nn.Module):
         copy_logits.scatter_add_(1, p_tokens, next_bump)
         
         return h_fused, h_core, next_bump, p_copy, copy_logits
-
-    def record_somatic_step_feedback(
-        self,
-        context_t: torch.Tensor,
-        action_t: torch.Tensor,
-        free_energy_surprise: float,
-        tau_error: float = 1.20,
-        tau_success: float = 0.40
-    ) -> Optional[float]:
-        """
-        Records somatic episode into Hopfield repulsor memory based on Free Energy surprise.
-        - F_t > tau_error: Aversive negative experience (Valence = -1.0) -> Repulsor formed.
-        - F_t <= tau_success: Positive reinforcement (Valence = +1.0) -> Attractor reinforced.
-        """
-        if free_energy_surprise > tau_error:
-            self.hopfield_memory.record_somatic_episode(context_t, action_t, -1.0)
-            return -1.0
-        elif free_energy_surprise <= tau_success:
-            self.hopfield_memory.record_somatic_episode(context_t, action_t, 1.0)
-            return 1.0
-        return None
 
     def compute_initial_focus(self, p_field: torch.Tensor, h_core: torch.Tensor) -> torch.Tensor:
         """
