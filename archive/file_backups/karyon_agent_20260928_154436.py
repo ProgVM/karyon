@@ -271,17 +271,14 @@ class CoREAgent(nn.Module):
         context_t: torch.Tensor,
         action_t: torch.Tensor,
         free_energy_surprise: float,
-        mean_loss: Optional[float] = None,
-        std_loss: Optional[float] = None
-    ) -> float:
+        tau_error: float = 1.20,
+        tau_success: float = 0.40
+    ) -> Optional[float]:
         """
-        EXP-318: Tripartite Continuous Valence & Neutral Anchor Memory.
-        Calculates normalized error surge and continuous step valence V_t in [-1.0, +1.0]:
-          Delta_norm = (loss_t - mean_loss) / (std_loss + 1e-5)
-          V_t = -tanh(1.5 * Delta_norm)
-          - Substantially below average (Delta_norm < -0.3) -> V_t > +0.4 (Attractor of success)
-          - Substantially above average (Delta_norm > +0.5)  -> V_t < -0.6 (Repulsor of failure)
-          - Baseline background loss   (|Delta_norm| <= 0.3) -> |V_t| <= 0.2 (Neutral topographic anchor)
+        Records somatic episode into Hopfield repulsor memory based on Free Energy surprise.
+        - F_t > tau_error: Aversive negative experience (Valence = -1.0) -> Repulsor formed.
+        - F_t <= tau_success: Positive reinforcement (Valence = +1.0) -> Attractor reinforced.
+        Ensures input tensors are strictly reshaped to [1, D] vectors when passed from batched streams.
         """
         # Ensure 2D tensor representations with strict [1, D] vector shapes
         ctx_vec = context_t.mean(dim=0, keepdim=True) if context_t.dim() > 1 and context_t.size(0) > 1 else context_t
@@ -293,30 +290,13 @@ class CoREAgent(nn.Module):
         assert ctx_vec.shape[1] == self.embed_dim, f"Invalid context dimension {ctx_vec.shape[1]}, expected {self.embed_dim}"
         assert act_vec.shape[1] == self.embed_dim, f"Invalid action dimension {act_vec.shape[1]}, expected {self.embed_dim}"
 
-        # Update internal running loss statistics if external not provided
-        loss_val = float(free_energy_surprise)
-        if mean_loss is None or std_loss is None:
-            if self.loss_stat_count == 0:
-                self.loss_running_mean = loss_val
-                self.loss_running_var = 1.0
-            else:
-                delta = loss_val - self.loss_running_mean
-                self.loss_running_mean += self.loss_ema_alpha * delta
-                self.loss_running_var = (1.0 - self.loss_ema_alpha) * self.loss_running_var + self.loss_ema_alpha * (delta ** 2)
-            self.loss_stat_count += 1
-            cur_mean = self.loss_running_mean
-            cur_std = math.sqrt(max(self.loss_running_var, 1e-6))
-        else:
-            cur_mean = float(mean_loss)
-            cur_std = max(float(std_loss), 1e-5)
-
-        # Compute normalized error deviation and continuous valence
-        delta_norm = (loss_val - cur_mean) / (cur_std + 1e-5)
-        valence = -math.tanh(1.5 * delta_norm)
-        valence = max(-1.0, min(1.0, valence))
-
-        self.hopfield_memory.record_somatic_episode(ctx_vec, act_vec, float(valence))
-        return float(valence)
+        if free_energy_surprise > tau_error:
+            self.hopfield_memory.record_somatic_episode(ctx_vec, act_vec, -1.0)
+            return -1.0
+        elif free_energy_surprise <= tau_success:
+            self.hopfield_memory.record_somatic_episode(ctx_vec, act_vec, 1.0)
+            return 1.0
+        return None
 
     def compute_initial_focus(self, p_field: torch.Tensor, h_core: torch.Tensor) -> torch.Tensor:
         """

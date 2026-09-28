@@ -691,25 +691,21 @@ public:
 
         // Context gating filter: sharp gate when context similarity is high
         auto ctx_gate = torch::sigmoid((ctx_sim - 0.3f) * 12.0f); // smooth continuous gate [B, N]
+        
+        // Repulsion force vector for V_i = -1.0
+        auto rep_mask = (1.0f - valid_val.unsqueeze(0)) * 0.5f; // [B, N], 1 for negative, 0 for positive
+        auto rep_weights = ctx_gate * rep_mask * torch::clamp(act_sim, 0.0f, 1.0f); // [B, N]
 
-        // Continuous Tripartite Valence & Forces:
-        // F_attract = sum_i [ Gate_ctx,i * max(0.0, V_i) * max(0, a_t^T a_i) * a_i ]
-        // F_repulse = sum_i [ Gate_ctx,i * max(0.0, -V_i) * max(0, a_t^T a_i) * a_i ]
-        // When V_i == 0.0 (neutral topographic anchor), both positive and negative projections are strictly 0.0
-        auto val_pos = torch::clamp(valid_val.unsqueeze(0), 0.0f, 1.0f);   // [B, N], max(0.0, V_i)
-        auto val_neg = torch::clamp(-valid_val.unsqueeze(0), 0.0f, 1.0f);  // [B, N], max(0.0, -V_i)
-
-        auto act_proj = torch::clamp(act_sim, 0.0f, 1.0f); // [B, N], max(0, a_t^T a_i)
-
-        auto att_weights = ctx_gate * val_pos * act_proj; // [B, N]
-        auto att_force = torch::matmul(att_weights, valid_act); // [B, dim]
-
-        auto rep_weights = ctx_gate * val_neg * act_proj; // [B, N]
+        // Compute repulsive shift vector
         auto rep_force = torch::matmul(rep_weights, valid_act); // [B, dim]
 
-        // Trajectory displacement:
-        // a_relaxed = Normalize(a_t + 0.8 * F_attract - 1.5 * F_repulse)
-        auto relaxed_action = action_t + 0.8f * att_force - 1.5f * rep_force;
+        // Attractor pull vector from positive episodes (V_i = +1.0)
+        auto att_mask = (1.0f + valid_val.unsqueeze(0)) * 0.5f; // [B, N], 1 for positive, 0 for negative
+        auto att_weights = ctx_gate * att_mask * torch::clamp(act_sim, 0.0f, 1.0f); // [B, N]
+        auto att_force = torch::matmul(att_weights, valid_act); // [B, dim]
+
+        // Trajectory displacement: repulse strongly when negative experience matches context
+        auto relaxed_action = action_t + 0.6f * att_force - 1.5f * rep_force;
         return torch::nn::functional::normalize(relaxed_action, torch::nn::functional::NormalizeFuncOptions().dim(-1));
     }
 

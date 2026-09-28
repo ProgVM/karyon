@@ -424,18 +424,19 @@ def run_single_pass_training():
             # Free energy surprise scaled down (0.03) so energy depletes smoothly over ~180-220 steps
             hu_nexus.update(float(speech_loss_val) * 0.03)
 
-        # Dynamic Somatic Experience Recording (EXP-318: Tripartite Continuous Valence)
-        # Records attractors (V > 0.2), repulsors (V < -0.2), and neutral anchors (|V| <= 0.2) based on normalized deviation
-        if batch_idx > 5:
+        # Dynamic Somatic Repulsor Recording
+        # Triggers negative experience record (Valence = -1.0) when current loss surges beyond running baseline (mean + 1.0 * std)
+        is_error_spike = (batch_idx > 20 and speech_loss_val > (loss_running_mean + 1.0 * loss_running_std)) or (speech_loss_val > 3.20)
+        if is_error_spike:
             with torch.no_grad():
                 ctx_t = agent_brain.emb(input_seq[:, :8]).mean(dim=1)
-                act_t = agent_brain.emb(target_seq[:, 0])
-                v_step = agent_brain.record_somatic_step_feedback(
+                act_err = agent_brain.emb(target_seq[:, 0])
+                agent_brain.record_somatic_step_feedback(
                     context_t=ctx_t,
-                    action_t=act_t,
+                    action_t=act_err,
                     free_energy_surprise=speech_loss_val,
-                    mean_loss=loss_running_mean,
-                    std_loss=loss_running_std
+                    tau_error=loss_running_mean + 0.5 * loss_running_std,
+                    tau_success=loss_running_mean - 0.5 * loss_running_std
                 )
 
         # Check Sleep & Synaptic Consolidation Condition (Dynamic Somatic Energy < 0.15 or safety interval 250)
