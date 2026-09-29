@@ -1597,6 +1597,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, int64_t, std::string, int64_t>(), py::arg("dim") = 256, py::arg("num_basins") = 32, py::arg("device_str") = "cpu", py::arg("max_episodes") = 256)
         .def("record_somatic_episode", &ContinuousHopfieldMemoryImpl::record_somatic_episode, py::arg("context_key"), py::arg("action_key"), py::arg("valence"))
         .def("relax_with_repulsion", &ContinuousHopfieldMemoryImpl::relax_with_repulsion, py::arg("context_t"), py::arg("action_t"), py::arg("beta") = 8.0f)
+        .def_readonly("active_episodes", &ContinuousHopfieldMemoryImpl::active_episodes)
+        .def_readonly("max_episodes", &ContinuousHopfieldMemoryImpl::max_episodes)
+        .def_readonly("valences", &ContinuousHopfieldMemoryImpl::valences)
         .def("forward", [](ContinuousHopfieldMemoryImpl& self, torch::Tensor x, std::optional<torch::Tensor> u_t) {
             return self.forward(x, u_t.has_value() ? u_t.value() : torch::Tensor());
         }, py::arg("x"), py::arg("u_t") = py::none())
