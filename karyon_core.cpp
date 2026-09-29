@@ -1493,29 +1493,30 @@ public:
         auto sensory_in = torch::matmul(x_sensory, w_sensory_in.t());
         node_states[0] = node_states[0] + sensory_in;
 
-        auto delta_route = torch::matmul(x_sensory, w_route_ctx.t()).view({B, max_nodes, max_nodes});
         auto active_w_route = w_route.slice(0, 0, K).slice(1, 0, K);
-        auto active_delta = delta_route.slice(1, 0, K).slice(2, 0, K);
 
-        auto dynamic_routing_logits = active_w_route.unsqueeze(0) + active_delta;
-        
         std::vector<torch::Tensor> gate_factors;
         for (int64_t j = 0; j < K; ++j) {
             gate_factors.push_back(torch::tanh(alpha_epi[j]).abs());
         }
         auto gates_tensor = torch::stack(gate_factors, 0);
         auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0);
-        dynamic_routing_logits = dynamic_routing_logits.masked_fill(inactive_mask, -1e4f);
-
-        auto routing_matrix = torch::softmax(dynamic_routing_logits, 2);
 
         int64_t actual_steps_taken = 0;
         torch::Tensor prev_aggregated;
 
         for (int64_t step = 0; step < max_thinking_steps; ++step) {
             actual_steps_taken++;
-            auto node_states_b = node_states.permute({1, 0, 2});
-            auto aggregated_inputs_b = torch::einsum("bik,bid->bkd", {routing_matrix, node_states_b});
+            auto current_node_states_b = node_states.permute({1, 0, 2});
+            auto mean_node_ctx = current_node_states_b.mean(1);
+            auto delta_route_step = torch::matmul(mean_node_ctx, w_route_ctx.t()).view({B, max_nodes, max_nodes});
+            auto active_delta_step = delta_route_step.slice(1, 0, K).slice(2, 0, K);
+
+            auto step_routing_logits = active_w_route.unsqueeze(0) + active_delta_step;
+            step_routing_logits = step_routing_logits.masked_fill(inactive_mask, -1e4f);
+            auto step_routing_matrix = torch::softmax(step_routing_logits, 2);
+
+            auto aggregated_inputs_b = torch::einsum("bik,bid->bkd", {step_routing_matrix, current_node_states_b});
             auto aggregated_inputs = aggregated_inputs_b.permute({1, 0, 2});
             aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
 
@@ -1578,29 +1579,29 @@ public:
         auto sensory_in = torch::matmul(x_sensory, w_sensory_in.t());
         node_states[0] = node_states[0] + sensory_in;
 
-        auto delta_route = torch::matmul(x_sensory, w_route_ctx.t()).view({B, max_nodes, max_nodes});
         auto active_w_route = w_route.slice(0, 0, K).slice(1, 0, K);
-        auto active_delta = delta_route.slice(1, 0, K).slice(2, 0, K);
 
-        auto dynamic_routing_logits = active_w_route.unsqueeze(0) + active_delta; // [B, K_src, K_tgt]
-        
         std::vector<torch::Tensor> gate_factors;
         for (int64_t j = 0; j < K; ++j) {
             gate_factors.push_back(torch::tanh(alpha_epi[j]).abs());
         }
         auto gates_tensor = torch::stack(gate_factors, 0); // [K]
         auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0); // [1, 1, K_tgt]
-        dynamic_routing_logits = dynamic_routing_logits.masked_fill(inactive_mask, -1e4f);
-
-        auto routing_matrix = torch::softmax(dynamic_routing_logits, 2); // Softmax across target nodes
 
         for (int64_t step = 0; step < thinking_steps; ++step) {
-            // Correct Tensor Contraction for Routing:
-            // routing_matrix: [B, i_src, k_tgt]
-            // node_states: [i_src, B, d] -> permuted to [B, i_src, d]
-            // Output aggregated_inputs_b: [B, k_tgt, d]
-            auto node_states_b = node_states.permute({1, 0, 2}); // [B, i_src, d]
-            auto aggregated_inputs_b = torch::einsum("bik,bid->bkd", {routing_matrix, node_states_b});
+            // STEP-WISE AUTOREGRESSIVE COMMUTATION ORCHESTRATION R_step(h_t)
+            // Compute current aggregate node state context across active organelles
+            auto current_node_states_b = node_states.permute({1, 0, 2}); // [B, K_src, d]
+            auto mean_node_ctx = current_node_states_b.mean(1); // [B, d]
+            auto delta_route_step = torch::matmul(mean_node_ctx, w_route_ctx.t()).view({B, max_nodes, max_nodes});
+            auto active_delta_step = delta_route_step.slice(1, 0, K).slice(2, 0, K);
+
+            auto step_routing_logits = active_w_route.unsqueeze(0) + active_delta_step; // [B, K_src, K_tgt]
+            step_routing_logits = step_routing_logits.masked_fill(inactive_mask, -1e4f);
+            auto step_routing_matrix = torch::softmax(step_routing_logits, 2); // Softmax across target nodes
+
+            // Contraction with step-wise dynamic routing matrix
+            auto aggregated_inputs_b = torch::einsum("bik,bid->bkd", {step_routing_matrix, current_node_states_b});
             auto aggregated_inputs = aggregated_inputs_b.permute({1, 0, 2}); // [k_tgt, B, d]
             aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
 
