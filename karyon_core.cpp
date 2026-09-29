@@ -1292,7 +1292,8 @@ public:
     std::vector<float> methylation_locks; // Susumu Ohno Gene Lock: 1.0 = Frozen, 0.0 = Plastic
 
     torch::Tensor w_route;
-    torch::Tensor w_route_ctx; // Dynamic Commutation Orchestrator Matrix [64 * 64, dim]
+    torch::Tensor w_query; // Dynamic Cross-Node Query Projection [dim, dim]
+    torch::Tensor w_key;   // Dynamic Cross-Node Key Projection [dim, dim]
     torch::Tensor w_sensory_in, w_motor_out;
 
     torch::Tensor w_halt;
@@ -1301,7 +1302,8 @@ public:
         : dim(dim), device_str(device_str), max_nodes(max_nodes) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
         w_route = register_parameter("w_route", torch::zeros({max_nodes, max_nodes}, torch::TensorOptions().device(device)));
-        w_route_ctx = register_parameter("w_route_ctx", torch::randn({max_nodes * max_nodes, dim}, torch::TensorOptions().device(device)) * (0.01f / std::sqrt((float)dim)));
+        w_query = register_parameter("w_query", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt((float)dim)));
+        w_key = register_parameter("w_key", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt((float)dim)));
         w_sensory_in = register_parameter("w_sensory_in", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
         w_motor_out = register_parameter("w_motor_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
         w_halt = register_parameter("w_halt", torch::randn({1, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
@@ -1407,7 +1409,8 @@ public:
     std::map<std::string, torch::Tensor> get_active_parameters_map() {
         std::map<std::string, torch::Tensor> params;
         params["w_route"] = w_route;
-        params["w_route_ctx"] = w_route_ctx;
+        params["w_query"] = w_query;
+        params["w_key"] = w_key;
         params["w_sensory_in"] = w_sensory_in;
         params["w_motor_out"] = w_motor_out;
         params["w_halt"] = w_halt;
@@ -1507,12 +1510,14 @@ public:
 
         for (int64_t step = 0; step < max_thinking_steps; ++step) {
             actual_steps_taken++;
-            auto current_node_states_b = node_states.permute({1, 0, 2});
-            auto mean_node_ctx = current_node_states_b.mean(1);
-            auto delta_route_step = torch::matmul(mean_node_ctx, w_route_ctx.t()).view({B, max_nodes, max_nodes});
-            auto active_delta_step = delta_route_step.slice(1, 0, K).slice(2, 0, K);
+            auto current_node_states_b = node_states.permute({1, 0, 2}); // [B, K, dim]
+            
+            auto Q = torch::matmul(current_node_states_b, w_query);
+            auto K_mat = torch::matmul(current_node_states_b, w_key);
+            auto dot_routing = torch::matmul(Q, K_mat.transpose(-1, -2)) * (1.0f / std::sqrt((float)dim)); // [B, K_tgt, K_src]
+            auto active_dot_routing = dot_routing.permute({0, 2, 1}); // [B, K_src, K_tgt]
 
-            auto step_routing_logits = active_w_route.unsqueeze(0) + active_delta_step;
+            auto step_routing_logits = active_w_route.unsqueeze(0) + active_dot_routing;
             step_routing_logits = step_routing_logits.masked_fill(inactive_mask, -1e4f);
             auto step_routing_matrix = torch::softmax(step_routing_logits, 2);
 
@@ -1589,14 +1594,22 @@ public:
         auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0); // [1, 1, K_tgt]
 
         for (int64_t step = 0; step < thinking_steps; ++step) {
-            // STEP-WISE AUTOREGRESSIVE COMMUTATION ORCHESTRATION R_step(h_t)
-            // Compute current aggregate node state context across active organelles
-            auto current_node_states_b = node_states.permute({1, 0, 2}); // [B, K_src, d]
-            auto mean_node_ctx = current_node_states_b.mean(1); // [B, d]
-            auto delta_route_step = torch::matmul(mean_node_ctx, w_route_ctx.t()).view({B, max_nodes, max_nodes});
-            auto active_delta_step = delta_route_step.slice(1, 0, K).slice(2, 0, K);
-
-            auto step_routing_logits = active_w_route.unsqueeze(0) + active_delta_step; // [B, K_src, K_tgt]
+            // STEP-WISE KEY-QUERY CROSS-ORGANELLE COMMUTATION R_step(h_t)
+            // current_node_states_b: [B, K, dim]
+            auto current_node_states_b = node_states.permute({1, 0, 2}); // [B, K, dim]
+            
+            // Project each organelle's state to Query and Key representations
+            // Q: [B, K, dim], K_mat: [B, K, dim]
+            auto Q = torch::matmul(current_node_states_b, w_query);
+            auto K_mat = torch::matmul(current_node_states_b, w_key);
+            
+            // Soft Cross-Node Attention Matrix: [B, K_tgt, K_src]
+            // Note: K_tgt queries K_src to gather inputs
+            auto dot_routing = torch::matmul(Q, K_mat.transpose(-1, -2)) * (1.0f / std::sqrt((float)dim)); // [B, K_tgt, K_src]
+            
+            // Transpose to match [B, K_src, K_tgt] convention for contraction einsum("bik,bid->bkd")
+            auto active_dot_routing = dot_routing.permute({0, 2, 1}); // [B, K_src, K_tgt]
+            auto step_routing_logits = active_w_route.unsqueeze(0) + active_dot_routing;
             step_routing_logits = step_routing_logits.masked_fill(inactive_mask, -1e4f);
             auto step_routing_matrix = torch::softmax(step_routing_logits, 2); // Softmax across target nodes
 
