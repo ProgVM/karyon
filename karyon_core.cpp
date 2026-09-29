@@ -1272,6 +1272,37 @@ public:
         return out;
     }
 };
+// ============================================================================
+// 8i. NON-LINEAR TRANSFORM OPERATOR PRIMITIVE (Universal Cortical Organelle)
+// Two-layer MLP with Swish/GELU activation capable of learning arbitrary
+// functional non-linear transforms (cyclic shifts, reflections, modular arithmetic).
+// ============================================================================
+class NonLinearTransformOpImpl : public GraphOp {
+public:
+    int64_t dim;
+    torch::Tensor w_up;
+    torch::Tensor b_up;
+    torch::Tensor w_down;
+    torch::Tensor b_down;
+
+    NonLinearTransformOpImpl(int64_t dim, std::string device_str) : dim(dim) {
+        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+        int64_t hidden_dim = dim * 4;
+        w_up = register_parameter("w_up", torch::randn({hidden_dim, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
+        b_up = register_parameter("b_up", torch::zeros({hidden_dim}, torch::TensorOptions().device(device)));
+        w_down = register_parameter("w_down", torch::randn({dim, hidden_dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)hidden_dim)));
+        b_down = register_parameter("b_down", torch::zeros({dim}, torch::TensorOptions().device(device)));
+        this->to(device);
+    }
+
+    torch::Tensor forward(torch::Tensor x) override {
+        // Two-layer MLP with GELU non-linearity
+        auto h = torch::matmul(x, w_up.t()) + b_up;
+        auto h_act = torch::gelu(h);
+        auto out = torch::matmul(h_act, w_down.t()) + b_down;
+        return out;
+    }
+};
 
 // ============================================================================
 // 9. DYNAMIC MORPHIC GRAPH & COMMUTATION ORCHESTRATOR R(h_t)
@@ -1332,6 +1363,8 @@ public:
             op = std::make_shared<TsodyksMarkramSynapticDepressionOpImpl>(dim, device_str, 8.0f, 0.5f);
         } else if (op_type == "SlotMemory") {
             op = std::make_shared<SlotMemoryOpImpl>(dim, device_str, 4);
+        } else if (op_type == "NonLinearTransform") {
+            op = std::make_shared<NonLinearTransformOpImpl>(dim, device_str);
         } else {
             op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
         }
@@ -1801,6 +1834,11 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("get_memory_slots", &SlotMemoryOpImpl::get_memory_slots)
         .def("forward", &SlotMemoryOpImpl::forward)
         .def("__call__", &SlotMemoryOpImpl::forward);
+
+    py::class_<NonLinearTransformOpImpl, torch::nn::Module, std::shared_ptr<NonLinearTransformOpImpl>>(m, "NonLinearTransformOp")
+        .def(py::init<int64_t, std::string>(), py::arg("dim"), py::arg("device_str") = "cpu")
+        .def("forward", &NonLinearTransformOpImpl::forward)
+        .def("__call__", &NonLinearTransformOpImpl::forward);
 
     py::class_<DynamicMorphicGraphImpl, torch::nn::Module, std::shared_ptr<DynamicMorphicGraphImpl>>(m, "DynamicMorphicGraph")
         .def(py::init<int64_t, std::string, int64_t>(), py::arg("dim") = 128, py::arg("device_str") = "cpu", py::arg("max_nodes") = 128)

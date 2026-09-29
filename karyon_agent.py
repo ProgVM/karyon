@@ -518,7 +518,8 @@ class CoREAgent(nn.Module):
             "StochasticLangevin",
             "ProgrammableDelay",
             "TsodyksMarkram",
-            "SlotMemory"
+            "SlotMemory",
+            "NonLinearTransform"
         )
     ) -> Dict[str, float]:
         """
