@@ -1195,12 +1195,92 @@ public:
 };
 
 // ============================================================================
+// 8h. BADDELEY MULTI-SLOT WORKING MEMORY & VECTOR SCRATCHPAD (EXP-322)
+// S = 4 isolated registers in R^{S x D} with read/write/reset gating
+// ============================================================================
+class SlotMemoryOpImpl : public GraphOp {
+public:
+    int64_t dim;
+    int64_t num_slots;
+    std::string device_str;
+    torch::Tensor w_write_key;   // [num_slots, dim]
+    torch::Tensor w_write_val;   // [dim, dim]
+    torch::Tensor w_read_key;    // [num_slots, dim]
+    torch::Tensor w_read_out;    // [dim, dim]
+    torch::Tensor w_erase_gate;  // [num_slots, dim]
+    
+    torch::Tensor memory_slots;  // [B, num_slots, dim]
+    bool slots_initialized = false;
+
+    SlotMemoryOpImpl(int64_t dim, std::string device_str, int64_t num_slots = 4)
+        : dim(dim), num_slots(num_slots), device_str(device_str) {
+        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+        w_write_key = register_parameter("w_write_key", torch::randn({num_slots, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
+        w_write_val = register_parameter("w_write_val", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
+        w_read_key = register_parameter("w_read_key", torch::randn({num_slots, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
+        w_read_out = register_parameter("w_read_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
+        w_erase_gate = register_parameter("w_erase_gate", torch::randn({num_slots, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
+        this->to(device);
+    }
+
+    void reset_state() {
+        slots_initialized = false;
+        memory_slots = torch::Tensor();
+    }
+
+    torch::Tensor get_memory_slots() const {
+        return memory_slots;
+    }
+
+    torch::Tensor forward(torch::Tensor x) override {
+        auto B = x.size(0);
+        auto device = x.device();
+
+        if (!slots_initialized || !memory_slots.defined() || memory_slots.size(0) != B || memory_slots.device() != device) {
+            memory_slots = torch::zeros({B, num_slots, dim}, torch::TensorOptions().device(device));
+            slots_initialized = true;
+        }
+
+        // 1. Soft Address Write Gate: alpha_write = Softmax(x * W_write_key^T / sqrt(D)) -> [B, num_slots]
+        auto write_logits = torch::matmul(x, w_write_key.t()) * (1.0f / std::sqrt((float)dim)); // [B, num_slots]
+        auto alpha_write = torch::softmax(write_logits, -1); // [B, num_slots]
+
+        // 2. Candidate Value to write: v_cand = tanh(x * W_write_val^T) -> [B, dim]
+        auto v_cand = torch::tanh(torch::matmul(x, w_write_val.t())); // [B, dim]
+
+        // 3. Selective Erase Gate: e_t = Sigmoid(x * W_erase_gate^T) -> [B, num_slots]
+        auto erase_gate = torch::sigmoid(torch::matmul(x, w_erase_gate.t())); // [B, num_slots]
+
+        // 4. Update Memory Slots in R^{B x num_slots x dim}:
+        // M_{t+1}[s] = (1.0 - alpha_write[s] * erase_gate[s]) * M_t[s] + alpha_write[s] * v_cand
+        auto erase_factor = 1.0f - (alpha_write * erase_gate).unsqueeze(-1); // [B, num_slots, 1]
+        auto write_term = alpha_write.unsqueeze(-1) * v_cand.unsqueeze(1);   // [B, num_slots, dim]
+        auto next_slots = memory_slots * erase_factor + write_term;
+
+        // Persistent update across sub-step thinking cycles
+        memory_slots = next_slots.detach();
+
+        // 5. Soft Address Read Gate: alpha_read = Softmax(x * W_read_key^T / sqrt(D)) -> [B, num_slots]
+        auto read_logits = torch::matmul(x, w_read_key.t()) * (1.0f / std::sqrt((float)dim)); // [B, num_slots]
+        auto alpha_read = torch::softmax(read_logits, -1); // [B, num_slots]
+
+        // 6. Readout: read_val = Sum_s(alpha_read[s] * M_{t+1}[s]) -> [B, dim]
+        auto read_val = torch::sum(alpha_read.unsqueeze(-1) * next_slots, 1); // [B, dim]
+
+        // 7. Output Projection & Residual Bypass
+        auto out = torch::matmul(read_val, w_read_out.t()); // [B, dim]
+        return out;
+    }
+};
+
+// ============================================================================
 // 9. DYNAMIC MORPHIC GRAPH & COMMUTATION ORCHESTRATOR R(h_t)
 // ============================================================================
 class DynamicMorphicGraphImpl : public torch::nn::Module {
 public:
     int64_t dim;
     std::string device_str;
+    int64_t max_nodes = 128;
     int64_t k_nodes = 0;
     int64_t total_sprouted_so_far = 0;
 
@@ -1217,11 +1297,11 @@ public:
 
     torch::Tensor w_halt;
 
-    DynamicMorphicGraphImpl(int64_t dim = 128, std::string device_str = "cpu")
-        : dim(dim), device_str(device_str) {
+    DynamicMorphicGraphImpl(int64_t dim = 128, std::string device_str = "cpu", int64_t max_nodes = 128)
+        : dim(dim), device_str(device_str), max_nodes(max_nodes) {
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        w_route = register_parameter("w_route", torch::zeros({64, 64}, torch::TensorOptions().device(device)));
-        w_route_ctx = register_parameter("w_route_ctx", torch::randn({64 * 64, dim}, torch::TensorOptions().device(device)) * (0.01f / std::sqrt((float)dim)));
+        w_route = register_parameter("w_route", torch::zeros({max_nodes, max_nodes}, torch::TensorOptions().device(device)));
+        w_route_ctx = register_parameter("w_route_ctx", torch::randn({max_nodes * max_nodes, dim}, torch::TensorOptions().device(device)) * (0.01f / std::sqrt((float)dim)));
         w_sensory_in = register_parameter("w_sensory_in", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
         w_motor_out = register_parameter("w_motor_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
         w_halt = register_parameter("w_halt", torch::randn({1, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
@@ -1248,6 +1328,8 @@ public:
             op = std::make_shared<ProgrammableDelayOpImpl>(dim, device_str, 16);
         } else if (op_type == "TsodyksMarkram") {
             op = std::make_shared<TsodyksMarkramSynapticDepressionOpImpl>(dim, device_str, 8.0f, 0.5f);
+        } else if (op_type == "SlotMemory") {
+            op = std::make_shared<SlotMemoryOpImpl>(dim, device_str, 4);
         } else {
             op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
         }
@@ -1314,7 +1396,7 @@ public:
         alpha_epi[dst_idx].copy_(torch::tensor(initial_alpha, alpha_epi[dst_idx].options()));
 
         // 4. Duplicate routing connection profile in w_route
-        if (dst_idx < 64 && src_idx < 64) {
+        if (dst_idx < max_nodes && src_idx < max_nodes) {
             w_route[dst_idx].copy_(w_route[src_idx]);
             w_route.select(1, dst_idx).copy_(w_route.select(1, src_idx));
         }
@@ -1357,6 +1439,36 @@ public:
         return pruned_count;
     }
 
+    int64_t prune_relative_darwinism(float relative_threshold_factor = 0.15f) {
+        int64_t pruned_count = 0;
+        torch::NoGradGuard no_grad;
+        if (k_nodes <= 1) return 0;
+
+        std::vector<float> utilities;
+        float total_u = 0.0f;
+        for (int64_t i = 0; i < k_nodes; ++i) {
+            float gate = std::abs(std::tanh(alpha_epi[i].item<float>()));
+            utilities.push_back(gate);
+            total_u += gate;
+        }
+
+        float mean_u = total_u / static_cast<float>(k_nodes);
+        float cutoff = relative_threshold_factor * mean_u;
+
+        for (int64_t i = 0; i < k_nodes; ++i) {
+            if (!is_core_node[i] && methylation_locks[i] < 0.5f) {
+                if (utilities[i] < cutoff) {
+                    alpha_epi[i].zero_();
+                    for (auto& p : node_ops[i]->named_parameters()) {
+                        p.value().zero_();
+                    }
+                    pruned_count++;
+                }
+            }
+        }
+        return pruned_count;
+    }
+
     torch::Tensor persistent_node_states;
     bool has_persistent_states = false;
 
@@ -1381,7 +1493,7 @@ public:
         auto sensory_in = torch::matmul(x_sensory, w_sensory_in.t());
         node_states[0] = node_states[0] + sensory_in;
 
-        auto delta_route = torch::matmul(x_sensory, w_route_ctx.t()).view({B, 64, 64});
+        auto delta_route = torch::matmul(x_sensory, w_route_ctx.t()).view({B, max_nodes, max_nodes});
         auto active_w_route = w_route.slice(0, 0, K).slice(1, 0, K);
         auto active_delta = delta_route.slice(1, 0, K).slice(2, 0, K);
 
@@ -1466,9 +1578,7 @@ public:
         auto sensory_in = torch::matmul(x_sensory, w_sensory_in.t());
         node_states[0] = node_states[0] + sensory_in;
 
-        // Context-Dependent Commutation Routing: R(h_t) = Softmax(W_route + W_route_ctx * x_sensory)
-        // routing_matrix shape: [B, K_source, K_target] where Softmax is computed along K_target dimension
-        auto delta_route = torch::matmul(x_sensory, w_route_ctx.t()).view({B, 64, 64});
+        auto delta_route = torch::matmul(x_sensory, w_route_ctx.t()).view({B, max_nodes, max_nodes});
         auto active_w_route = w_route.slice(0, 0, K).slice(1, 0, K);
         auto active_delta = delta_route.slice(1, 0, K).slice(2, 0, K);
 
@@ -1671,13 +1781,21 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("forward", &TsodyksMarkramSynapticDepressionOpImpl::forward)
         .def("__call__", &TsodyksMarkramSynapticDepressionOpImpl::forward);
 
+    py::class_<SlotMemoryOpImpl, torch::nn::Module, std::shared_ptr<SlotMemoryOpImpl>>(m, "SlotMemoryOp")
+        .def(py::init<int64_t, std::string, int64_t>(), py::arg("dim"), py::arg("device_str") = "cpu", py::arg("num_slots") = 4)
+        .def("reset_state", &SlotMemoryOpImpl::reset_state)
+        .def("get_memory_slots", &SlotMemoryOpImpl::get_memory_slots)
+        .def("forward", &SlotMemoryOpImpl::forward)
+        .def("__call__", &SlotMemoryOpImpl::forward);
+
     py::class_<DynamicMorphicGraphImpl, torch::nn::Module, std::shared_ptr<DynamicMorphicGraphImpl>>(m, "DynamicMorphicGraph")
-        .def(py::init<int64_t, std::string>(), py::arg("dim") = 128, py::arg("device_str") = "cpu")
+        .def(py::init<int64_t, std::string, int64_t>(), py::arg("dim") = 128, py::arg("device_str") = "cpu", py::arg("max_nodes") = 128)
         .def_readonly("k_nodes", &DynamicMorphicGraphImpl::k_nodes)
         .def("add_node", &DynamicMorphicGraphImpl::add_node, py::arg("name"), py::arg("op_type"), py::arg("is_core") = false, py::arg("initial_alpha") = 0.0f)
         .def("lock_node", &DynamicMorphicGraphImpl::lock_node, py::arg("idx"), py::arg("lock_value") = 1.0f)
         .def("duplicate_node", &DynamicMorphicGraphImpl::duplicate_node, py::arg("src_idx"), py::arg("new_name"), py::arg("initial_alpha") = 0.0f)
         .def("prune_inactive_nodes", &DynamicMorphicGraphImpl::prune_inactive_nodes, py::arg("threshold") = 0.02f)
+        .def("prune_relative_darwinism", &DynamicMorphicGraphImpl::prune_relative_darwinism, py::arg("relative_threshold_factor") = 0.15f)
         .def("reset_state", &DynamicMorphicGraphImpl::reset_state)
         .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("__call__", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)

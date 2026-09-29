@@ -83,7 +83,8 @@ class CoREAgent(nn.Module):
         )
 
         # 3. C++20 DynamicMorphicGraph (Spatial/Thinking Axis K: Recurrent Deliberation Depth)
-        self.graph = kcore.DynamicMorphicGraph(embed_dim, str(device))
+        self.max_nodes = 128
+        self.graph = kcore.DynamicMorphicGraph(embed_dim, str(device), self.max_nodes)
         # Initialize default foundational operators for immediate bidirectional graph connectivity
         self.graph.add_node("core_acc", "LinearAccumulator", True, 1.0)
         self.graph.add_node("core_sat", "SaturatedAttractor", True, 1.0)
@@ -113,14 +114,15 @@ class CoREAgent(nn.Module):
         self.stress_lambda: float = 0.85
         self.tau_base: float = 0.50
         self.theta_morph: float = 1.5
-        self.refractory_cooldown: int = 0
-        self.refractory_period: int = 150
-        self.min_grounding_steps: int = 200
-        self.step_counter: int = 0
         self.active_organelle_idx: int = 0
         self.morphogenesis_count: int = 0
-        self.max_morphogenesis_events: int = 1
+        self.max_morphogenesis_events: int = 999999  # Unconstrained morphogenesis
         self.morphogenesis_events: List[Dict[str, Any]] = []
+
+        # Endogenous Organelle Maturation & Cell Cycle Dynamics (EXP-321 Non-Constant)
+        self.running_grad_norm: float = 0.1
+        self.running_grad_var: float = 0.01
+        self.maturity_threshold: float = 0.90
 
         # 7. Running Loss Statistics for Tripartite Valence Calibration (EXP-318)
         self.loss_running_mean: float = 3.0
@@ -357,23 +359,75 @@ class CoREAgent(nn.Module):
             h_graph = self.graph.forward(h_seq, thinking_steps)
             return h_seq + h_graph
 
-    def update_somatic_stress_and_morphogenesis(self, free_energy: float) -> Optional[Dict[str, Any]]:
+    def compute_organelle_maturity(self, organelle_idx: int) -> float:
         """
-        Endogenous Somatic Stress Accumulator & Autonomous Allostatic Morphogenesis Reflex:
+        Computes the Endogenous Maturity Index M_k(t) in [0.0, 1.0] (EXP-321):
+        M_k(t) = sigmoid((|tanh(alpha_epi(t))| - 0.8) * 10.0) * exp(-||grad_k|| / (sigma_grad + 1e-5))
+        Determines when a newly sprouted infant organelle has functionally integrated.
+        If node is epigenetically locked (mu=1.0) or core, it is fully mature (M=1.0).
+        """
+        if organelle_idx >= self.graph.k_nodes:
+            return 1.0
+
+        # If the organelle is epigenetically locked (frozen) or core, it is already mature
+        active_locks = self.graph.get_methylation_locks()
+        if organelle_idx < len(active_locks) and active_locks[organelle_idx] >= 0.5:
+            return 1.0
+
+        # 1. Epigenetic Net2Net Gate Plateau Measurement
+        try:
+            alpha_val = abs(math.tanh(self.graph.alpha_epi[organelle_idx].item()))
+        except Exception:
+            alpha_val = 1.0
+
+        gate_readiness = 1.0 / (1.0 + math.exp(- (alpha_val - 0.80) * 10.0))
+
+        # 2. Local Gradient Stabilization Ratio
+        param_map = self.graph.named_parameters_map()
+        prefix = f"node_{organelle_idx}_"
+        total_sq_norm = 0.0
+        param_count = 0
+        for name, p in param_map.items():
+            if name.startswith(prefix) and p.grad is not None:
+                total_sq_norm += p.grad.detach().pow(2).sum().item()
+                param_count += 1
+
+        grad_norm = math.sqrt(total_sq_norm) if param_count > 0 else 0.0
+
+        # Update running grad stats
+        self.running_grad_norm = 0.95 * self.running_grad_norm + 0.05 * grad_norm
+        grad_diff = grad_norm - self.running_grad_norm
+        self.running_grad_var = 0.95 * self.running_grad_var + 0.05 * (grad_diff ** 2)
+        sigma_grad = math.sqrt(max(1e-6, self.running_grad_var))
+
+        # Relative grad stability relative to variance
+        grad_ratio = grad_norm / (sigma_grad + 1e-5)
+        grad_stability = 1.0 / (1.0 + grad_ratio)
+        maturity_index = float(gate_readiness * grad_stability)
+        return maturity_index
+
+    def update_somatic_stress_and_morphogenesis(
+        self,
+        free_energy: float,
+        optimizer: Optional[torch.optim.Optimizer] = None,
+        base_lr: float = 0.03
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Endogenous Somatic Stress Accumulator & Non-Constant Autonomous Morphogenesis (EXP-321):
         S_t = lambda * S_{t-1} + max(0, F_t - tau_base)
-        Triggers autonomous morphogenesis reflex when S_t > theta_morph, step_counter >= min_grounding_steps,
-        and not in refractory cooldown.
+        Mitosis occurs only when:
+        1. S_t > theta_morph
+        2. Active Infant Organelle reaches Functional Maturity M_k(t) >= maturity_threshold (0.90)
+        3. AdamW Momentum Preservation: Appends new parameters via optimizer.add_param_group().
         """
-        self.step_counter += 1
-        if self.refractory_cooldown > 0:
-            self.refractory_cooldown -= 1
+        # Calculate endogenous maturity of active infant organelle
+        maturity = self.compute_organelle_maturity(self.active_organelle_idx)
 
         stress_increment = max(0.0, free_energy - self.tau_base)
         self.somatic_stress = self.stress_lambda * self.somatic_stress + stress_increment
 
         if (self.somatic_stress > self.theta_morph and 
-                self.refractory_cooldown == 0 and 
-                self.step_counter >= self.min_grounding_steps and
+                maturity >= self.maturity_threshold and 
                 self.morphogenesis_count < self.max_morphogenesis_events):
             self.morphogenesis_count += 1
             parent_idx = self.active_organelle_idx
@@ -390,12 +444,21 @@ class CoREAgent(nn.Module):
             
             # 4. Adaptive Noise Injection Impulse
             sigma_noise = min(0.2, 0.02 * math.exp(min(2.0, free_energy / 5.0)))
+
+            # 5. AdamW Momentum Preservation: Add newly sprouted plastic weights to optimizer
+            if optimizer is not None:
+                new_params = []
+                param_map = self.graph.named_parameters_map()
+                prefix = f"node_{clone_idx}_"
+                for name, p in param_map.items():
+                    if name.startswith(prefix) and p.requires_grad:
+                        new_params.append(p)
+                if new_params:
+                    optimizer.add_param_group({"params": new_params, "lr": base_lr})
             
-            # 5. Reset stress accumulator & set refractory period & step counter
+            # 6. Reset somatic stress upon successful mitosis
             prev_stress = self.somatic_stress
             self.somatic_stress = 0.0
-            self.refractory_cooldown = self.refractory_period
-            self.step_counter = 0
 
             event = {
                 "generation": self.morphogenesis_count,
@@ -404,16 +467,21 @@ class CoREAgent(nn.Module):
                 "clone_name": clone_name,
                 "free_energy": free_energy,
                 "somatic_stress": prev_stress,
-                "sigma_noise": sigma_noise
+                "sigma_noise": sigma_noise,
+                "maturity_at_birth": maturity
             }
             self.morphogenesis_events.append(event)
             logger.info(
                 f"🧬 [AUTONOMOUS MORPHOGENESIS] Triggered! Parent Node {parent_idx} Locked (mu=1.0) -> "
-                f"Cloned Node {clone_idx} ('{clone_name}') | Stress: {prev_stress:.2f} > {self.theta_morph:.2f} | "
-                f"Free Energy: {free_energy:.4f}"
+                f"Cloned Node {clone_idx} ('{clone_name}') | Maturity: {maturity:.3f} >= {self.maturity_threshold:.2f} | "
+                f"Stress: {prev_stress:.2f} > {self.theta_morph:.2f} | Free Energy: {free_energy:.4f}"
             )
             return event
         return None
+
+    def reset_state(self):
+        """Resets persistent internal node states in C++ DynamicMorphicGraph."""
+        self.graph.reset_state()
 
     def add_node(self, name: str, op_type: str, is_core: bool = False, initial_alpha: float = 0.0) -> int:
         """Sprouts a new node inside the C++20 DynamicMorphicGraph."""
@@ -432,6 +500,10 @@ class CoREAgent(nn.Module):
         """Prunes inactive dynamic nodes via Edelman Neural Darwinism."""
         return self.graph.prune_inactive_nodes(threshold)
 
+    def prune_relative_darwinism(self, relative_threshold_factor: float = 0.15) -> int:
+        """Prunes dynamic nodes with utility U_k < relative_threshold_factor * mean_U (EXP-321)."""
+        return self.graph.prune_relative_darwinism(relative_threshold_factor)
+
     def execute_deep_allostatic_sleep(
         self,
         downscaling_factor: float = 0.01,
@@ -444,7 +516,9 @@ class CoREAgent(nn.Module):
             "ContinuousHopfield",
             "StateSpaceMemory",
             "StochasticLangevin",
-            "ProgrammableDelay"
+            "ProgrammableDelay",
+            "TsodyksMarkram",
+            "SlotMemory"
         )
     ) -> Dict[str, float]:
         """

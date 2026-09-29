@@ -46,7 +46,7 @@ class HomeostasisConfig:
     theta_morph: float = 1.50
     tau_base: float = 0.50
     theta_apoptosis: float = 0.02
-    max_nodes: int = 64
+    max_nodes: int = 128
 
 
 @dataclass
