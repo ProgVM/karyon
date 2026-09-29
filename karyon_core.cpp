@@ -1133,6 +1133,66 @@ public:
         return delayed_out;
     }
 };
+// ============================================================================
+// 9. TSODYKS-MARKRAM SYNAPTIC DEPRESSION OP (7th Atomic Operator - Activity-Dependent Vesicular Fatigue)
+// dx_i / dt = (1.0 - x_i) / tau_rec - u_depress * x_i * a_i(t)
+// W_eff(t) = W * diag(x_t)
+// y_t = x_t * (W * a_t)
+// ============================================================================
+class TsodyksMarkramSynapticDepressionOpImpl : public GraphOp {
+public:
+    int64_t dim;
+    float tau_rec;
+    float u_depress;
+    std::string device_str;
+    torch::Tensor w_proj;
+    torch::Tensor vesicle_resource; // [B, dim] in [0.0, 1.0]
+    bool state_initialized = false;
+
+    TsodyksMarkramSynapticDepressionOpImpl(int64_t dim, std::string device_str, float tau_rec = 8.0f, float u_depress = 0.5f)
+        : dim(dim), tau_rec(tau_rec), u_depress(u_depress), device_str(device_str) {
+        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+        w_proj = register_parameter("w_proj", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
+        this->to(device);
+    }
+
+    void reset_state() {
+        state_initialized = false;
+        vesicle_resource = torch::Tensor();
+    }
+
+    torch::Tensor get_vesicle_resource() const {
+        return vesicle_resource;
+    }
+
+    torch::Tensor forward(torch::Tensor x) override {
+        auto B = x.size(0);
+        auto device = x.device();
+
+        if (!state_initialized || !vesicle_resource.defined() || vesicle_resource.size(0) != B || vesicle_resource.device() != device) {
+            vesicle_resource = torch::ones({B, dim}, torch::TensorOptions().device(device));
+            state_initialized = true;
+        }
+
+        // 1. Normalized activation intensity a_i(t) = |tanh(x_i)| in [0.0, 1.0]
+        auto a_t = torch::abs(torch::tanh(x)); // [B, dim]
+
+        // 2. Tsodyks-Markram Vesicular Dynamics integration:
+        // dx_i/dt = (1.0 - x_i) / tau_rec - u_depress * x_i * a_i
+        // Discrete Euler update: x_{t+1} = clamp(x_t + (1.0 - x_t) / tau_rec - u_depress * x_t * a_t, 0.01, 1.0)
+        auto recovery = (1.0f - vesicle_resource) / tau_rec;
+        auto depression = u_depress * vesicle_resource * a_t;
+        auto next_x = torch::clamp(vesicle_resource + recovery - depression, 0.01f, 1.0f);
+        
+        // Update persistent state in-place without breaking gradient chain
+        vesicle_resource = next_x.detach();
+
+        // 3. Effective Synaptic Transmission:
+        // W_eff = W * x_t -> projection output modulated by available transmitter pool
+        auto proj = torch::matmul(x, w_proj.t()); // [B, dim]
+        return next_x * proj;
+    }
+};
 
 // ============================================================================
 // 9. DYNAMIC MORPHIC GRAPH & COMMUTATION ORCHESTRATOR R(h_t)
@@ -1186,6 +1246,8 @@ public:
             op = std::make_shared<StochasticLangevinOpImpl>(dim, device_str);
         } else if (op_type == "ProgrammableDelay") {
             op = std::make_shared<ProgrammableDelayOpImpl>(dim, device_str, 16);
+        } else if (op_type == "TsodyksMarkram") {
+            op = std::make_shared<TsodyksMarkramSynapticDepressionOpImpl>(dim, device_str, 8.0f, 0.5f);
         } else {
             op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
         }
@@ -1598,6 +1660,13 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("forward", &ProgrammableDelayOpImpl::forward)
         .def("__call__", &ProgrammableDelayOpImpl::forward)
         .def("forward_fixed_delay", &ProgrammableDelayOpImpl::forward_fixed_delay, py::arg("x"), py::arg("fixed_tau"));
+
+    py::class_<TsodyksMarkramSynapticDepressionOpImpl, torch::nn::Module, std::shared_ptr<TsodyksMarkramSynapticDepressionOpImpl>>(m, "TsodyksMarkramSynapticDepressionOp")
+        .def(py::init<int64_t, std::string, float, float>(), py::arg("dim"), py::arg("device_str") = "cpu", py::arg("tau_rec") = 8.0f, py::arg("u_depress") = 0.5f)
+        .def("reset_state", &TsodyksMarkramSynapticDepressionOpImpl::reset_state)
+        .def("get_vesicle_resource", &TsodyksMarkramSynapticDepressionOpImpl::get_vesicle_resource)
+        .def("forward", &TsodyksMarkramSynapticDepressionOpImpl::forward)
+        .def("__call__", &TsodyksMarkramSynapticDepressionOpImpl::forward);
 
     py::class_<DynamicMorphicGraphImpl, torch::nn::Module, std::shared_ptr<DynamicMorphicGraphImpl>>(m, "DynamicMorphicGraph")
         .def(py::init<int64_t, std::string>(), py::arg("dim") = 128, py::arg("device_str") = "cpu")

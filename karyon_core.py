@@ -63,6 +63,7 @@ if _is_valid_karyon_cpp(karyon_cpp):
     globals()["StateSpaceMemoryOp"] = getattr(karyon_cpp, "StateSpaceMemoryOp", None)
     globals()["StochasticLangevinOp"] = getattr(karyon_cpp, "StochasticLangevinOp", None)
     globals()["ProgrammableDelayOp"] = getattr(karyon_cpp, "ProgrammableDelayOp", None)
+    globals()["TsodyksMarkramSynapticDepressionOp"] = getattr(karyon_cpp, "TsodyksMarkramSynapticDepressionOp", None)
     globals()["DynamicMorphicGraph"] = getattr(karyon_cpp, "DynamicMorphicGraph", None)
     globals()["kcore"] = karyon_cpp
 else:
