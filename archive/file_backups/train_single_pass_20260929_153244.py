@@ -487,24 +487,18 @@ def run_single_pass_training():
             hop_buffers = dict(agent_brain.hopfield_memory.named_buffers())
             valences_buf = hop_buffers.get("valences", None)
             if valences_buf is not None:
-                # Active episodes count
-                active_eps = getattr(agent_brain.hopfield_memory, "active_episodes", valences_buf.size(0))
-                active_val = valences_buf[:active_eps]
-                attractors_count = (active_val > 0.2).sum().item()
-                repulsors_count = (active_val < -0.2).sum().item()
-                neutral_count = ((active_val >= -0.2) & (active_val <= 0.2)).sum().item()
+                repulsors_count = (valences_buf == -1.0).sum().item()
+                attractors_count = (valences_buf == 1.0).sum().item()
             else:
                 repulsors_count = 0
                 attractors_count = 0
-                neutral_count = 0
 
             print("\n" + "=" * 85, flush=True)
             print(f" === [KARYON v6.0 SINGLE-PASS DASHBOARD | STREAM STEP {batch_idx+1:04d}/{len(stream_loader)}] ===", flush=True)
             print("=" * 85, flush=True)
             print(f"Stream Performance        : Step Duration: {batch_total_ms:.1f}ms | Throughput: {tokens_per_sec:.1f} tok/s", flush=True)
             print(f"Metrics Progress          : Speech Loss = {speech_loss_val:.4f} (PPL: {perplexity:.2f})", flush=True)
-            print(f"Somatic Memory State      : Attractors (V>+0.2): {attractors_count} | Repulsors (V<-0.2): {repulsors_count} | Neutral Anchors (|V|<=0.2): {neutral_count}", flush=True)
-            print(f"Loss Dynamics Calibration : Running Mean: {loss_running_mean:.3f} | Running Std: {loss_running_std:.3f}", flush=True)
+            print(f"Somatic Memory State      : Repulsors (V=-1): {repulsors_count} | Attractors (V=+1): {attractors_count} | Running Loss Mean: {loss_running_mean:.3f} (Std: {loss_running_std:.3f})", flush=True)
             print(f"Hardware & Somatic        : Peak VRAM: {peak_vram_mb:.1f} MB | Somatic Energy: {energy_val:.3f} | Sleep Cycles: {total_sleep_cycles}", flush=True)
             print("=" * 85, flush=True)
 
