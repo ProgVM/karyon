@@ -1337,8 +1337,8 @@ public:
         w_route = register_parameter("w_route", torch::zeros({max_nodes, max_nodes}, torch::TensorOptions().device(device)));
         w_query = register_parameter("w_query", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt((float)dim)));
         w_key = register_parameter("w_key", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt((float)dim)));
-        w_sensory_in = register_parameter("w_sensory_in", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
-        w_motor_out = register_parameter("w_motor_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
+        w_sensory_in = register_parameter("w_sensory_in", torch::eye(dim, torch::TensorOptions().device(device)));
+        w_motor_out = register_parameter("w_motor_out", torch::eye(dim, torch::TensorOptions().device(device)));
         w_readout_ctx_proj = register_parameter("w_readout_ctx_proj", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
         w_init_route = register_parameter("w_init_route", torch::randn({dim, max_nodes}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
         w_halt = register_parameter("w_halt", torch::randn({1, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
@@ -1514,6 +1514,13 @@ public:
     torch::Tensor persistent_node_states;
     bool has_persistent_states = false;
 
+    torch::Tensor get_node_gate(int64_t j) {
+        if (j < (int64_t)methylation_locks.size() && methylation_locks[j] >= 1.0f) {
+            return torch::tensor(1.0f, alpha_epi[j].options());
+        }
+        return torch::tanh(3.5f * alpha_epi[j]);
+    }
+
     void reset_state() {
         has_persistent_states = false;
         persistent_node_states = torch::Tensor();
@@ -1552,7 +1559,7 @@ public:
 
         std::vector<torch::Tensor> gate_factors;
         for (int64_t j = 0; j < K; ++j) {
-            gate_factors.push_back(torch::tanh(alpha_epi[j]).abs());
+            gate_factors.push_back(get_node_gate(j).abs());
         }
         auto gates_tensor = torch::stack(gate_factors, 0);
         auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0);
@@ -1590,8 +1597,7 @@ public:
             std::vector<torch::Tensor> new_states;
             for (int64_t j = 0; j < K; ++j) {
                 auto raw_out = node_ops[j]->forward(aggregated_inputs[j]);
-                auto alpha = alpha_epi[j];
-                auto graft_gate = torch::tanh(alpha);
+                auto graft_gate = get_node_gate(j);
                 auto grafted_out = graft_gate * raw_out;
                 new_states.push_back(grafted_out);
             }
@@ -1600,7 +1606,7 @@ public:
             // Adaptive Pondering Check
             torch::Tensor curr_aggregated = torch::zeros({B, dim}, torch::TensorOptions().device(device));
             for (int64_t j = 0; j < K; ++j) {
-                curr_aggregated = curr_aggregated + torch::tanh(alpha_epi[j]) * node_states[j];
+                curr_aggregated = curr_aggregated + get_node_gate(j) * node_states[j];
             }
 
             // Halting probability p_halt = sigmoid(w_halt * curr_aggregated)
@@ -1668,7 +1674,7 @@ public:
 
         std::vector<torch::Tensor> gate_factors;
         for (int64_t j = 0; j < K; ++j) {
-            gate_factors.push_back(torch::tanh(alpha_epi[j]).abs());
+            gate_factors.push_back(get_node_gate(j).abs());
         }
         auto gates_tensor = torch::stack(gate_factors, 0); // [K]
         auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0); // [1, 1, K_tgt]
@@ -1700,8 +1706,7 @@ public:
             std::vector<torch::Tensor> new_states;
             for (int64_t j = 0; j < K; ++j) {
                 auto raw_out = node_ops[j]->forward(aggregated_inputs[j]);
-                auto alpha = alpha_epi[j];
-                auto graft_gate = torch::tanh(alpha);
+                auto graft_gate = get_node_gate(j);
                 auto grafted_out = graft_gate * raw_out;
                 new_states.push_back(grafted_out);
             }
@@ -1760,7 +1765,7 @@ public:
 
         std::vector<torch::Tensor> gate_factors;
         for (int64_t j = 0; j < K; ++j) {
-            gate_factors.push_back(torch::tanh(alpha_epi[j]).abs());
+            gate_factors.push_back(get_node_gate(j).abs());
         }
         auto gates_tensor = torch::stack(gate_factors, 0);
         auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0);
@@ -1786,8 +1791,7 @@ public:
             std::vector<torch::Tensor> new_states;
             for (int64_t j = 0; j < K; ++j) {
                 auto raw_out = node_ops[j]->forward(aggregated_inputs[j]);
-                auto alpha = alpha_epi[j];
-                auto graft_gate = torch::tanh(alpha);
+                auto graft_gate = get_node_gate(j);
                 auto grafted_out = graft_gate * raw_out;
                 new_states.push_back(grafted_out);
             }
