@@ -1326,6 +1326,7 @@ public:
     torch::Tensor w_query; // Dynamic Cross-Node Query Projection [dim, dim]
     torch::Tensor w_key;   // Dynamic Cross-Node Key Projection [dim, dim]
     torch::Tensor w_sensory_in, w_motor_out;
+    torch::Tensor w_readout_query; // Targeted Motor Readout Query Vector [dim, 1]
 
     torch::Tensor w_halt;
 
@@ -1337,6 +1338,7 @@ public:
         w_key = register_parameter("w_key", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * (0.1f / std::sqrt((float)dim)));
         w_sensory_in = register_parameter("w_sensory_in", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
         w_motor_out = register_parameter("w_motor_out", torch::randn({dim, dim}, torch::TensorOptions().device(device)) * 0.2f);
+        w_readout_query = register_parameter("w_readout_query", torch::randn({dim, 1}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
         w_halt = register_parameter("w_halt", torch::randn({1, dim}, torch::TensorOptions().device(device)) * (1.0f / std::sqrt((float)dim)));
         this->to(device);
     }
@@ -1446,6 +1448,7 @@ public:
         params["w_key"] = w_key;
         params["w_sensory_in"] = w_sensory_in;
         params["w_motor_out"] = w_motor_out;
+        params["w_readout_query"] = w_readout_query;
         params["w_halt"] = w_halt;
         for (size_t i = 0; i < node_ops.size(); ++i) {
             params["alpha_" + node_names[i]] = alpha_epi[i];
@@ -1556,7 +1559,9 @@ public:
 
             auto aggregated_inputs_b = torch::einsum("bik,bid->bkd", {step_routing_matrix, current_node_states_b});
             auto aggregated_inputs = aggregated_inputs_b.permute({1, 0, 2});
-            aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
+            if (step == 0) {
+                aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
+            }
 
             std::vector<torch::Tensor> new_states;
             for (int64_t j = 0; j < K; ++j) {
@@ -1592,12 +1597,15 @@ public:
         persistent_node_states = node_states.detach();
         has_persistent_states = true;
 
-        torch::Tensor final_aggregated = torch::zeros({B, dim}, torch::TensorOptions().device(device));
-        for (int64_t j = 0; j < K; ++j) {
-            auto gate = torch::tanh(alpha_epi[j]);
-            final_aggregated = final_aggregated + gate * node_states[j];
-        }
-        auto out = torch::matmul(final_aggregated, w_motor_out.t());
+        // Targeted Motor Readout Attention over Epigenetically Active Organelles
+        // node_states_b: [B, K, dim]
+        auto node_states_b = node_states.permute({1, 0, 2});
+        auto readout_logits = torch::matmul(node_states_b, w_readout_query) * (1.0f / std::sqrt((float)dim)); // [B, K, 1]
+        readout_logits = readout_logits.masked_fill((gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(-1), -1e4f);
+        auto readout_weights = torch::softmax(readout_logits, 1); // [B, K, 1]
+        auto final_readout = torch::einsum("bk,bkd->bd", {readout_weights.squeeze(-1), node_states_b});
+
+        auto out = torch::matmul(final_readout, w_motor_out.t());
         return std::make_tuple(out, static_cast<float>(actual_steps_taken));
     }
 
@@ -1649,7 +1657,9 @@ public:
             // Contraction with step-wise dynamic routing matrix
             auto aggregated_inputs_b = torch::einsum("bik,bid->bkd", {step_routing_matrix, current_node_states_b});
             auto aggregated_inputs = aggregated_inputs_b.permute({1, 0, 2}); // [k_tgt, B, d]
-            aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
+            if (step == 0) {
+                aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
+            }
 
             std::vector<torch::Tensor> new_states;
             for (int64_t j = 0; j < K; ++j) {
@@ -1665,13 +1675,80 @@ public:
         persistent_node_states = node_states.detach();
         has_persistent_states = true;
 
-        // Final output is weighted by epigenetic gates to ensure exact Net2Net zero-shock when alpha=0.0
-        torch::Tensor final_aggregated = torch::zeros({B, dim}, torch::TensorOptions().device(device));
-        for (int64_t j = 0; j < K; ++j) {
-            auto gate = torch::tanh(alpha_epi[j]);
-            final_aggregated = final_aggregated + gate * node_states[j];
+        // Targeted Motor Readout Attention over Epigenetically Active Organelles
+        // node_states_b: [B, K, dim]
+        auto node_states_b = node_states.permute({1, 0, 2});
+        auto readout_logits = torch::matmul(node_states_b, w_readout_query) * (1.0f / std::sqrt((float)dim)); // [B, K, 1]
+        readout_logits = readout_logits.masked_fill((gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(-1), -1e4f);
+        auto readout_weights = torch::softmax(readout_logits, 1); // [B, K, 1]
+        auto final_readout = torch::einsum("bk,bkd->bd", {readout_weights.squeeze(-1), node_states_b});
+
+        return torch::matmul(final_readout, w_motor_out.t());
+    }
+
+    std::tuple<torch::Tensor, torch::Tensor> forward_with_readout_weights(torch::Tensor x_sensory, int64_t thinking_steps = 4) {
+        auto B = x_sensory.size(0);
+        int64_t K = k_nodes;
+        auto device = x_sensory.device();
+
+        torch::Tensor node_states;
+        if (!has_persistent_states || !persistent_node_states.defined() || 
+            persistent_node_states.size(0) != K || persistent_node_states.size(1) != B || persistent_node_states.device() != device) {
+            node_states = torch::zeros({K, B, dim}, torch::TensorOptions().device(device));
+        } else {
+            node_states = persistent_node_states;
         }
-        return torch::matmul(final_aggregated, w_motor_out.t());
+
+        auto sensory_in = torch::matmul(x_sensory, w_sensory_in.t());
+        node_states[0] = node_states[0] + sensory_in;
+
+        auto active_w_route = w_route.slice(0, 0, K).slice(1, 0, K);
+
+        std::vector<torch::Tensor> gate_factors;
+        for (int64_t j = 0; j < K; ++j) {
+            gate_factors.push_back(torch::tanh(alpha_epi[j]).abs());
+        }
+        auto gates_tensor = torch::stack(gate_factors, 0); // [K]
+        auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0); // [1, 1, K_tgt]
+
+        for (int64_t step = 0; step < thinking_steps; ++step) {
+            auto current_node_states_b = node_states.permute({1, 0, 2});
+            auto Q = torch::matmul(current_node_states_b, w_query);
+            auto K_mat = torch::matmul(current_node_states_b, w_key);
+            auto dot_routing = torch::matmul(Q, K_mat.transpose(-1, -2)) * (1.0f / std::sqrt((float)dim));
+            auto active_dot_routing = dot_routing.permute({0, 2, 1});
+            auto step_routing_logits = active_w_route.unsqueeze(0) + active_dot_routing;
+            step_routing_logits = step_routing_logits.masked_fill(inactive_mask, -1e4f);
+            auto step_routing_matrix = torch::softmax(step_routing_logits, 2);
+
+            auto aggregated_inputs_b = torch::einsum("bik,bid->bkd", {step_routing_matrix, current_node_states_b});
+            auto aggregated_inputs = aggregated_inputs_b.permute({1, 0, 2});
+            if (step == 0) {
+                aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
+            }
+
+            std::vector<torch::Tensor> new_states;
+            for (int64_t j = 0; j < K; ++j) {
+                auto raw_out = node_ops[j]->forward(aggregated_inputs[j]);
+                auto alpha = alpha_epi[j];
+                auto graft_gate = torch::tanh(alpha);
+                auto grafted_out = graft_gate * raw_out;
+                new_states.push_back(grafted_out);
+            }
+            node_states = torch::stack(new_states, 0);
+        }
+
+        persistent_node_states = node_states.detach();
+        has_persistent_states = true;
+
+        auto node_states_b = node_states.permute({1, 0, 2});
+        auto readout_logits = torch::matmul(node_states_b, w_readout_query) * (1.0f / std::sqrt((float)dim));
+        readout_logits = readout_logits.masked_fill((gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(-1), -1e4f);
+        auto readout_weights = torch::softmax(readout_logits, 1);
+        auto final_readout = torch::einsum("bk,bkd->bd", {readout_weights.squeeze(-1), node_states_b});
+
+        auto out = torch::matmul(final_readout, w_motor_out.t());
+        return std::make_tuple(out, readout_weights.squeeze(-1));
     }
 
     std::vector<std::string> get_topology_manifest() {
@@ -1852,6 +1929,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("forward", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("__call__", &DynamicMorphicGraphImpl::forward, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("forward_adaptive", &DynamicMorphicGraphImpl::forward_adaptive, py::arg("x_sensory"), py::arg("max_thinking_steps") = 8, py::arg("halt_threshold") = 0.8f, py::arg("epsilon_halt") = 1e-3f)
+        .def("forward_with_readout_weights", &DynamicMorphicGraphImpl::forward_with_readout_weights, py::arg("x_sensory"), py::arg("thinking_steps") = 4)
         .def("get_topology_manifest", &DynamicMorphicGraphImpl::get_topology_manifest)
         .def("get_methylation_locks", &DynamicMorphicGraphImpl::get_methylation_locks)
         .def("set_methylation_locks", &DynamicMorphicGraphImpl::set_methylation_locks, py::arg("locks"))
