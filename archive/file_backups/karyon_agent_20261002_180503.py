@@ -130,10 +130,6 @@ class CoREAgent(nn.Module):
         self.loss_stat_count: int = 0
         self.loss_ema_alpha: float = 0.05
 
-    def set_organelle_signature(self, node_idx: int, signature: torch.Tensor):
-        """Sets the static molecular/Hox-gene signature passport for an organelle node."""
-        self.graph.set_organelle_signature(node_idx, signature)
-
     def forward(
         self,
         input_ids: torch.Tensor,

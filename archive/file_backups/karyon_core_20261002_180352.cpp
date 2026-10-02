@@ -1941,14 +1941,6 @@ public:
         return std::make_tuple(out, readout_weights.squeeze(-1), init_routing_weights, all_step_routings, all_step_states);
     }
 
-    void set_organelle_signature(int64_t node_idx, torch::Tensor signature) {
-        if (node_idx >= 0 && node_idx < k_nodes) {
-            auto device = organelle_signatures.device();
-            torch::NoGradGuard no_grad;
-            organelle_signatures[node_idx].copy_(signature.to(device));
-        }
-    }
-
     std::vector<std::string> get_topology_manifest() {
         std::vector<std::string> manifest;
         for (int64_t i = 0; i < k_nodes; ++i) {
@@ -2131,7 +2123,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("get_topology_manifest", &DynamicMorphicGraphImpl::get_topology_manifest)
         .def("get_methylation_locks", &DynamicMorphicGraphImpl::get_methylation_locks)
         .def("set_methylation_locks", &DynamicMorphicGraphImpl::set_methylation_locks, py::arg("locks"))
-        .def("set_organelle_signature", &DynamicMorphicGraphImpl::set_organelle_signature, py::arg("node_idx"), py::arg("signature"))
         .def("named_parameters_map", [](std::shared_ptr<DynamicMorphicGraphImpl> m) {
             return m->get_active_parameters_map();
         });

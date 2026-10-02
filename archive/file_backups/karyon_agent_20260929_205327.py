@@ -130,10 +130,6 @@ class CoREAgent(nn.Module):
         self.loss_stat_count: int = 0
         self.loss_ema_alpha: float = 0.05
 
-    def set_organelle_signature(self, node_idx: int, signature: torch.Tensor):
-        """Sets the static molecular/Hox-gene signature passport for an organelle node."""
-        self.graph.set_organelle_signature(node_idx, signature)
-
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -368,14 +364,8 @@ class CoREAgent(nn.Module):
         Computes the Endogenous Maturity Index M_k(t) in [0.0, 1.0] (EXP-321):
         M_k(t) = sigmoid((|tanh(alpha_epi(t))| - 0.8) * 10.0) * exp(-||grad_k|| / (sigma_grad + 1e-5))
         Determines when a newly sprouted infant organelle has functionally integrated.
-        If node is epigenetically locked (mu=1.0) or core, it is fully mature (M=1.0).
         """
         if organelle_idx >= self.graph.k_nodes:
-            return 1.0
-
-        # If the organelle is epigenetically locked (frozen) or core, it is already mature
-        active_locks = self.graph.get_methylation_locks()
-        if organelle_idx < len(active_locks) and active_locks[organelle_idx] >= 0.5:
             return 1.0
 
         # 1. Epigenetic Net2Net Gate Plateau Measurement
@@ -404,9 +394,7 @@ class CoREAgent(nn.Module):
         self.running_grad_var = 0.95 * self.running_grad_var + 0.05 * (grad_diff ** 2)
         sigma_grad = math.sqrt(max(1e-6, self.running_grad_var))
 
-        # Relative grad stability relative to variance
-        grad_ratio = grad_norm / (sigma_grad + 1e-5)
-        grad_stability = 1.0 / (1.0 + grad_ratio)
+        grad_stability = math.exp(- grad_norm / (sigma_grad + 1e-5))
         maturity_index = float(gate_readiness * grad_stability)
         return maturity_index
 
@@ -483,10 +471,6 @@ class CoREAgent(nn.Module):
             return event
         return None
 
-    def reset_state(self):
-        """Resets persistent internal node states in C++ DynamicMorphicGraph."""
-        self.graph.reset_state()
-
     def add_node(self, name: str, op_type: str, is_core: bool = False, initial_alpha: float = 0.0) -> int:
         """Sprouts a new node inside the C++20 DynamicMorphicGraph."""
         self.graph.add_node(name, op_type, is_core, initial_alpha)
@@ -504,10 +488,6 @@ class CoREAgent(nn.Module):
         """Prunes inactive dynamic nodes via Edelman Neural Darwinism."""
         return self.graph.prune_inactive_nodes(threshold)
 
-    def prune_relative_darwinism(self, relative_threshold_factor: float = 0.15) -> int:
-        """Prunes dynamic nodes with utility U_k < relative_threshold_factor * mean_U (EXP-321)."""
-        return self.graph.prune_relative_darwinism(relative_threshold_factor)
-
     def execute_deep_allostatic_sleep(
         self,
         downscaling_factor: float = 0.01,
@@ -520,10 +500,7 @@ class CoREAgent(nn.Module):
             "ContinuousHopfield",
             "StateSpaceMemory",
             "StochasticLangevin",
-            "ProgrammableDelay",
-            "TsodyksMarkram",
-            "SlotMemory",
-            "NonLinearTransform"
+            "ProgrammableDelay"
         )
     ) -> Dict[str, float]:
         """

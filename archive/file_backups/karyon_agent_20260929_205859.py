@@ -130,10 +130,6 @@ class CoREAgent(nn.Module):
         self.loss_stat_count: int = 0
         self.loss_ema_alpha: float = 0.05
 
-    def set_organelle_signature(self, node_idx: int, signature: torch.Tensor):
-        """Sets the static molecular/Hox-gene signature passport for an organelle node."""
-        self.graph.set_organelle_signature(node_idx, signature)
-
     def forward(
         self,
         input_ids: torch.Tensor,
@@ -486,8 +482,6 @@ class CoREAgent(nn.Module):
     def reset_state(self):
         """Resets persistent internal node states in C++ DynamicMorphicGraph."""
         self.graph.reset_state()
-
-    def add_node(self, name: str, op_type: str, is_core: bool = False, initial_alpha: float = 0.0) -> int:
         """Sprouts a new node inside the C++20 DynamicMorphicGraph."""
         self.graph.add_node(name, op_type, is_core, initial_alpha)
         return self.graph.k_nodes - 1
@@ -520,10 +514,7 @@ class CoREAgent(nn.Module):
             "ContinuousHopfield",
             "StateSpaceMemory",
             "StochasticLangevin",
-            "ProgrammableDelay",
-            "TsodyksMarkram",
-            "SlotMemory",
-            "NonLinearTransform"
+            "ProgrammableDelay"
         )
     ) -> Dict[str, float]:
         """

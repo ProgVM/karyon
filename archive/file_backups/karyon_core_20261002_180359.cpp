@@ -2131,7 +2131,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("get_topology_manifest", &DynamicMorphicGraphImpl::get_topology_manifest)
         .def("get_methylation_locks", &DynamicMorphicGraphImpl::get_methylation_locks)
         .def("set_methylation_locks", &DynamicMorphicGraphImpl::set_methylation_locks, py::arg("locks"))
-        .def("set_organelle_signature", &DynamicMorphicGraphImpl::set_organelle_signature, py::arg("node_idx"), py::arg("signature"))
         .def("named_parameters_map", [](std::shared_ptr<DynamicMorphicGraphImpl> m) {
             return m->get_active_parameters_map();
         });
