@@ -12,15 +12,11 @@ Hypothesis:
    deduction chains (lengths 2-3 and 4-5).
 =====================================================================================
 """
-import sys
-import os
 import random
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
-sys.path.insert(0, os.path.abspath("."))
 
 from karyon_agent import CoREAgent
 from experiments.exp_331_selective_write import StepWiseChainedDeductionEnvironment
