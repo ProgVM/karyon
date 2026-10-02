@@ -1583,8 +1583,19 @@ public:
                 active_h_sum = active_h_sum + get_node_gate(j) * current_node_states_b.select(1, j);
             }
 
+            torch::Tensor curr_step_ctx;
             if (context_chain.defined() && context_chain.numel() > 0) {
-                active_h_sum = active_h_sum + context_chain;
+                if (context_chain.dim() == 3) {
+                    // [B, S_ops, dim] -> select instruction step
+                    int64_t s_idx = std::min(step, context_chain.size(1) - 1);
+                    curr_step_ctx = context_chain.select(1, s_idx);
+                } else if (context_chain.dim() == 2) {
+                    curr_step_ctx = context_chain;
+                }
+            }
+
+            if (curr_step_ctx.defined() && curr_step_ctx.numel() > 0) {
+                active_h_sum = active_h_sum + curr_step_ctx;
             }
 
             auto Q_step = torch::matmul(active_h_sum, w_query_step);
@@ -1641,7 +1652,13 @@ public:
         auto node_states_b = node_states.permute({1, 0, 2}); // [B, K, dim]
         torch::Tensor readout_logits;
         if (context_chain.defined() && context_chain.numel() > 0) {
-            auto q_readout = torch::matmul(context_chain, w_readout_ctx_proj).unsqueeze(1); // [B, 1, dim]
+            torch::Tensor final_step_ctx;
+            if (context_chain.dim() == 3) {
+                final_step_ctx = context_chain.select(1, context_chain.size(1) - 1);
+            } else {
+                final_step_ctx = context_chain;
+            }
+            auto q_readout = torch::matmul(final_step_ctx, w_readout_ctx_proj).unsqueeze(1); // [B, 1, dim]
             readout_logits = torch::matmul(node_states_b, q_readout.transpose(-1, -2)) * (1.0f / std::sqrt((float)dim)); // [B, K, 1]
         } else {
             readout_logits = torch::zeros({B, K, 1}, torch::TensorOptions().device(device));
@@ -1694,22 +1711,29 @@ public:
         for (int64_t step = 0; step < thinking_steps; ++step) {
             auto current_node_states_b = node_states.permute({1, 0, 2}); // [B, K, dim]
 
-            // Dynamic Step Query from active node state sum + context_chain
-            // Aggregate active state across nodes [B, dim]
             torch::Tensor active_h_sum = torch::zeros({B, dim}, torch::TensorOptions().device(device));
             for (int64_t j = 0; j < K; ++j) {
                 active_h_sum = active_h_sum + get_node_gate(j) * current_node_states_b.select(1, j);
             }
 
+            torch::Tensor curr_step_ctx;
             if (context_chain.defined() && context_chain.numel() > 0) {
-                active_h_sum = active_h_sum + context_chain;
+                if (context_chain.dim() == 3) {
+                    // [B, S_ops, dim] -> select instruction step
+                    int64_t s_idx = std::min(step, context_chain.size(1) - 1);
+                    curr_step_ctx = context_chain.select(1, s_idx);
+                } else if (context_chain.dim() == 2) {
+                    curr_step_ctx = context_chain;
+                }
+            }
+
+            if (curr_step_ctx.defined() && curr_step_ctx.numel() > 0) {
+                active_h_sum = active_h_sum + curr_step_ctx;
             }
 
             auto Q_step = torch::matmul(active_h_sum, w_query_step); // [B, dim]
-            // Project Q_step against static functional passports organelle_signatures [K, dim]
             auto sig_routing_logits = torch::matmul(Q_step, active_signatures.t()) * (1.0f / std::sqrt((float)dim)); // [B, K]
 
-            // Combine static base routing w_route with static passport matching
             auto step_routing_logits = active_w_route.unsqueeze(0) + sig_routing_logits.unsqueeze(1); // [B, K_src, K_tgt]
             step_routing_logits = step_routing_logits.masked_fill(inactive_mask, -1e4f);
             auto step_routing_matrix = torch::softmax(step_routing_logits, 2); // [B, K_src, K_tgt]
@@ -1739,11 +1763,17 @@ public:
         persistent_node_states = node_states.detach();
         has_persistent_states = true;
 
-        // Dynamic Context-Dependent Readout Attention
+        // Dynamic Context-Dependent Readout Attention targeting the final executed operation
         auto node_states_b = node_states.permute({1, 0, 2}); // [B, K, dim]
         torch::Tensor readout_logits;
         if (context_chain.defined() && context_chain.numel() > 0) {
-            auto q_readout = torch::matmul(context_chain, w_readout_ctx_proj).unsqueeze(1); // [B, 1, dim]
+            torch::Tensor final_step_ctx;
+            if (context_chain.dim() == 3) {
+                final_step_ctx = context_chain.select(1, context_chain.size(1) - 1);
+            } else {
+                final_step_ctx = context_chain;
+            }
+            auto q_readout = torch::matmul(final_step_ctx, w_readout_ctx_proj).unsqueeze(1); // [B, 1, dim]
             readout_logits = torch::matmul(node_states_b, q_readout.transpose(-1, -2)) * (1.0f / std::sqrt((float)dim)); // [B, K, 1]
         } else {
             readout_logits = torch::zeros({B, K, 1}, torch::TensorOptions().device(device));
@@ -1804,8 +1834,18 @@ public:
                 active_h_sum = active_h_sum + get_node_gate(j) * current_node_states_b.select(1, j);
             }
 
+            torch::Tensor curr_step_ctx;
             if (context_chain.defined() && context_chain.numel() > 0) {
-                active_h_sum = active_h_sum + context_chain;
+                if (context_chain.dim() == 3) {
+                    int64_t s_idx = std::min(step, context_chain.size(1) - 1);
+                    curr_step_ctx = context_chain.select(1, s_idx);
+                } else if (context_chain.dim() == 2) {
+                    curr_step_ctx = context_chain;
+                }
+            }
+
+            if (curr_step_ctx.defined() && curr_step_ctx.numel() > 0) {
+                active_h_sum = active_h_sum + curr_step_ctx;
             }
 
             auto Q_step = torch::matmul(active_h_sum, w_query_step);
@@ -1840,7 +1880,13 @@ public:
         auto node_states_b = node_states.permute({1, 0, 2});
         torch::Tensor readout_logits;
         if (context_chain.defined() && context_chain.numel() > 0) {
-            auto q_readout = torch::matmul(context_chain, w_readout_ctx_proj).unsqueeze(1);
+            torch::Tensor final_step_ctx;
+            if (context_chain.dim() == 3) {
+                final_step_ctx = context_chain.select(1, context_chain.size(1) - 1);
+            } else {
+                final_step_ctx = context_chain;
+            }
+            auto q_readout = torch::matmul(final_step_ctx, w_readout_ctx_proj).unsqueeze(1);
             readout_logits = torch::matmul(node_states_b, q_readout.transpose(-1, -2)) * (1.0f / std::sqrt((float)dim));
         } else {
             readout_logits = torch::zeros({B, K, 1}, torch::TensorOptions().device(device));
