@@ -1603,18 +1603,30 @@ public:
 
             auto step_routing_logits = active_w_route.unsqueeze(0) + sig_routing_logits.unsqueeze(1);
             step_routing_logits = step_routing_logits.masked_fill(inactive_mask, -1e4f);
-            auto step_routing_matrix = torch::softmax(step_routing_logits, 2);
+            auto initial_routing_matrix = torch::softmax(step_routing_logits, 2);
+
+            // Sparse Routing Filter: eliminate parasite leaks < 0.05
+            auto sparse_logits = step_routing_logits.masked_fill(initial_routing_matrix < 0.05f, -1e4f);
+            auto step_routing_matrix = torch::softmax(sparse_logits, 2);
 
             auto aggregated_inputs_b = torch::einsum("bik,bid->bkd", {step_routing_matrix, current_node_states_b});
             auto aggregated_inputs = aggregated_inputs_b.permute({1, 0, 2}); // [K, B, dim]
 
+            // Write Gate calculation: how much incoming signal flows into target node j
+            // step_routing_matrix is [B, K_src, K_tgt]. Sum over K_src -> [B, 1, K_tgt] -> permute -> [K_tgt, B, 1]
+            torch::Tensor write_gate;
             if (step == 0) {
                 if (init_routing_weights.defined() && init_routing_weights.numel() > 0) {
                     auto init_weights_k = init_routing_weights.t().unsqueeze(-1);
                     aggregated_inputs = aggregated_inputs + init_weights_k * sensory_in.unsqueeze(0);
+                    write_gate = torch::clamp(init_weights_k, 0.0f, 1.0f);
                 } else {
                     aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
+                    write_gate = torch::zeros({K, B, 1}, torch::TensorOptions().device(device));
+                    write_gate[0].fill_(1.0f);
                 }
+            } else {
+                write_gate = torch::clamp(step_routing_matrix.sum(1, /*keepdim=*/true).permute({2, 0, 1}), 0.0f, 1.0f);
             }
 
             std::vector<torch::Tensor> new_states;
@@ -1622,7 +1634,10 @@ public:
                 auto raw_out = node_ops[j]->forward(aggregated_inputs[j]);
                 auto graft_gate = get_node_gate(j);
                 auto grafted_out = graft_gate * raw_out;
-                new_states.push_back(grafted_out);
+                // Selective Register Write: preserve previous computed state if not targeted
+                auto w_g = write_gate[j];
+                auto preserved_state = (1.0f - w_g) * node_states[j] + w_g * grafted_out;
+                new_states.push_back(preserved_state);
             }
             node_states = torch::stack(new_states, 0);
 
@@ -1719,7 +1734,6 @@ public:
             torch::Tensor curr_step_ctx;
             if (context_chain.defined() && context_chain.numel() > 0) {
                 if (context_chain.dim() == 3) {
-                    // [B, S_ops, dim] -> select instruction step
                     int64_t s_idx = std::min(step, context_chain.size(1) - 1);
                     curr_step_ctx = context_chain.select(1, s_idx);
                 } else if (context_chain.dim() == 2) {
@@ -1736,18 +1750,29 @@ public:
 
             auto step_routing_logits = active_w_route.unsqueeze(0) + sig_routing_logits.unsqueeze(1); // [B, K_src, K_tgt]
             step_routing_logits = step_routing_logits.masked_fill(inactive_mask, -1e4f);
-            auto step_routing_matrix = torch::softmax(step_routing_logits, 2); // [B, K_src, K_tgt]
+            auto initial_routing_matrix = torch::softmax(step_routing_logits, 2); // [B, K_src, K_tgt]
+
+            // Sparse Routing Filter: eliminate parasite leaks < 0.05
+            auto sparse_logits = step_routing_logits.masked_fill(initial_routing_matrix < 0.05f, -1e4f);
+            auto step_routing_matrix = torch::softmax(sparse_logits, 2);
 
             auto aggregated_inputs_b = torch::einsum("bik,bid->bkd", {step_routing_matrix, current_node_states_b});
             auto aggregated_inputs = aggregated_inputs_b.permute({1, 0, 2}); // [K, B, dim]
 
+            // Write Gate calculation: how much incoming signal flows into target node j
+            torch::Tensor write_gate;
             if (step == 0) {
                 if (init_routing_weights.defined() && init_routing_weights.numel() > 0) {
                     auto init_weights_k = init_routing_weights.t().unsqueeze(-1); // [K, B, 1]
                     aggregated_inputs = aggregated_inputs + init_weights_k * sensory_in.unsqueeze(0);
+                    write_gate = torch::clamp(init_weights_k, 0.0f, 1.0f);
                 } else {
                     aggregated_inputs[0] = aggregated_inputs[0] + sensory_in;
+                    write_gate = torch::zeros({K, B, 1}, torch::TensorOptions().device(device));
+                    write_gate[0].fill_(1.0f);
                 }
+            } else {
+                write_gate = torch::clamp(step_routing_matrix.sum(1, /*keepdim=*/true).permute({2, 0, 1}), 0.0f, 1.0f); // [K, B, 1]
             }
 
             std::vector<torch::Tensor> new_states;
@@ -1755,7 +1780,10 @@ public:
                 auto raw_out = node_ops[j]->forward(aggregated_inputs[j]);
                 auto graft_gate = get_node_gate(j);
                 auto grafted_out = graft_gate * raw_out;
-                new_states.push_back(grafted_out);
+                // Selective Register Write: preserve previous computed state if not targeted
+                auto w_g = write_gate[j];
+                auto preserved_state = (1.0f - w_g) * node_states[j] + w_g * grafted_out;
+                new_states.push_back(preserved_state);
             }
             node_states = torch::stack(new_states, 0);
         }
@@ -1785,7 +1813,7 @@ public:
         return torch::matmul(final_readout, w_motor_out.t());
     }
 
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward_with_diagnostics(
+    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> forward_with_diagnostics(
         torch::Tensor x_sensory,
         torch::Tensor context_chain = torch::Tensor(),
         torch::Tensor op_first_embed = torch::Tensor(),
@@ -1825,6 +1853,7 @@ public:
         auto inactive_mask = (gates_tensor < 1e-4f).unsqueeze(0).unsqueeze(0);
 
         std::vector<torch::Tensor> step_routing_matrices;
+        std::vector<torch::Tensor> step_node_states; // capture state snapshots across steps
 
         for (int64_t step = 0; step < thinking_steps; ++step) {
             auto current_node_states_b = node_states.permute({1, 0, 2});
@@ -1853,15 +1882,23 @@ public:
 
             auto step_routing_logits = active_w_route.unsqueeze(0) + sig_routing_logits.unsqueeze(1);
             step_routing_logits = step_routing_logits.masked_fill(inactive_mask, -1e4f);
-            auto step_routing_matrix = torch::softmax(step_routing_logits, 2);
+            auto initial_routing_matrix = torch::softmax(step_routing_logits, 2);
+
+            // Sparse Routing Filter: eliminate parasite leaks < 0.05
+            auto sparse_logits = step_routing_logits.masked_fill(initial_routing_matrix < 0.05f, -1e4f);
+            auto step_routing_matrix = torch::softmax(sparse_logits, 2);
             step_routing_matrices.push_back(step_routing_matrix);
 
             auto aggregated_inputs_b = torch::einsum("bik,bid->bkd", {step_routing_matrix, current_node_states_b});
             auto aggregated_inputs = aggregated_inputs_b.permute({1, 0, 2});
 
+            torch::Tensor write_gate;
             if (step == 0) {
                 auto init_weights_k = init_routing_weights.t().unsqueeze(-1);
                 aggregated_inputs = aggregated_inputs + init_weights_k * sensory_in.unsqueeze(0);
+                write_gate = torch::clamp(init_weights_k, 0.0f, 1.0f);
+            } else {
+                write_gate = torch::clamp(step_routing_matrix.sum(1, /*keepdim=*/true).permute({2, 0, 1}), 0.0f, 1.0f);
             }
 
             std::vector<torch::Tensor> new_states;
@@ -1869,9 +1906,12 @@ public:
                 auto raw_out = node_ops[j]->forward(aggregated_inputs[j]);
                 auto graft_gate = get_node_gate(j);
                 auto grafted_out = graft_gate * raw_out;
-                new_states.push_back(grafted_out);
+                auto w_g = write_gate[j];
+                auto preserved_state = (1.0f - w_g) * node_states[j] + w_g * grafted_out;
+                new_states.push_back(preserved_state);
             }
             node_states = torch::stack(new_states, 0);
+            step_node_states.push_back(node_states.clone());
         }
 
         persistent_node_states = node_states.detach();
@@ -1897,7 +1937,8 @@ public:
 
         auto out = torch::matmul(final_readout, w_motor_out.t());
         torch::Tensor all_step_routings = torch::stack(step_routing_matrices, 1); // [B, steps, K_src, K_tgt]
-        return std::make_tuple(out, readout_weights.squeeze(-1), init_routing_weights, all_step_routings);
+        torch::Tensor all_step_states = torch::stack(step_node_states, 1); // [K, steps, B, dim]
+        return std::make_tuple(out, readout_weights.squeeze(-1), init_routing_weights, all_step_routings, all_step_states);
     }
 
     std::vector<std::string> get_topology_manifest() {
