@@ -76,8 +76,8 @@ class GrandCompositeCognitiveTask:
         hazard_dir = self.hazard_centroid / torch.norm(self.hazard_centroid, dim=-1, keepdim=True) * 5.0
 
         # Branch 0 steers internal representations away from hazard; Branch 1 steers into hazard
-        cand_action_0_safe = -1.5 * hazard_dir
-        cand_action_1_hazard = 1.5 * hazard_dir
+        cand_action_0_safe = 1.5 * hazard_dir
+        cand_action_1_hazard = -1.5 * hazard_dir
         candidate_actions = [cand_action_0_safe, cand_action_1_hazard]
 
         def hazard_free_energy_fn(state: torch.Tensor, tau: int) -> float:

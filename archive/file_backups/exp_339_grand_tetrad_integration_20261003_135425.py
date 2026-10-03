@@ -68,27 +68,23 @@ class GrandCompositeCognitiveTask:
     ) -> Tuple[int, float, float]:
         """
         Active Inference Counterfactual Sandbox (Bifurcation Trap):
-        Evaluates 2 candidate trajectories relative to the somatic hazard zone.
-        Branch 0: Safe action trajectory (steers state away from hazard centroid).
-        Branch 1: Hazardous action trajectory (drives state towards hazard centroid).
+        Target goal attractor: origin / equilibrium state (zeros).
+        Branch 0: Safe goal-directed branch (steers state towards goal).
+        Branch 1: Hazardous trap branch (diverges away from goal).
         """
-        # Hazard direction vector in state space
-        hazard_dir = self.hazard_centroid / torch.norm(self.hazard_centroid, dim=-1, keepdim=True) * 5.0
-
-        # Branch 0 steers internal representations away from hazard; Branch 1 steers into hazard
-        cand_action_0_safe = -1.5 * hazard_dir
-        cand_action_1_hazard = 1.5 * hazard_dir
+        goal_state = torch.zeros(1, self.dim, device=self.device)
+        cand_action_0_safe = -0.5 * current_state
+        cand_action_1_hazard = 0.8 * current_state
         candidate_actions = [cand_action_0_safe, cand_action_1_hazard]
 
-        def hazard_free_energy_fn(state: torch.Tensor, tau: int) -> float:
-            dist = torch.norm(state - self.hazard_centroid, dim=-1).item()
-            return 10.0 / (dist + 1e-2)
+        def goal_free_energy_fn(state: torch.Tensor, tau: int) -> float:
+            return torch.norm(state - goal_state, dim=-1).item()
 
         best_idx, _, expected_fes = self.agent.mental_rollout_sandbox(
             current_state=current_state,
             candidate_actions=candidate_actions,
             rollout_depth=3,
-            free_energy_fn=hazard_free_energy_fn
+            free_energy_fn=goal_free_energy_fn
         )
         return best_idx, expected_fes[0], expected_fes[1]
 
