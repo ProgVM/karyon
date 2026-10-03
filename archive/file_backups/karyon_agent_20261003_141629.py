@@ -359,12 +359,10 @@ class CoREAgent(nn.Module):
         if x.dim() == 3:
             B, S, D = x.shape
             h_flat = h_seq.reshape(B * S, D)
-            empty_ctx = torch.empty(0, device=h_flat.device)
-            h_graph = self.graph.forward(h_flat, empty_ctx, empty_ctx, int(thinking_steps)).reshape(B, S, D)
+            h_graph = self.graph.forward(h_flat, thinking_steps).reshape(B, S, D)
             return h_seq + h_graph
         else:
-            empty_ctx = torch.empty(0, device=h_seq.device)
-            h_graph = self.graph.forward(h_seq, empty_ctx, empty_ctx, int(thinking_steps))
+            h_graph = self.graph.forward(h_seq, thinking_steps)
             return h_seq + h_graph
 
     def compute_organelle_maturity(self, organelle_idx: int) -> float:
