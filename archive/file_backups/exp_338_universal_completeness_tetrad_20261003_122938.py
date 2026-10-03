@@ -263,37 +263,44 @@ def run_track_3_counterfactual_sandbox(device_str: str) -> Dict[str, Any]:
         agent.graph.add_node("core_acc", "LinearAccumulator", True, 1.0)
         agent.graph.add_node("core_mult", "BilinearMultiplicative", True, 1.0)
 
-    # Scenario: Active Inference Goal-Attractor Planning & Counterfactual Sandbox
-    # The agent evaluates 3 counterfactual action trajectories:
-    #   Action 0: Goal-Directed Action (Steers state towards target attractor)
-    #   Action 1: Neutral Action (Stationary step)
-    #   Action 2: Divergent Action (Pushes state away from target attractor into high surprise)
-    goal_state = torch.zeros(1, dim, device=agent.device)
-    current_state = torch.ones(1, dim, device=agent.device) * 0.5
+    # Scenario: Current state is near a hazard zone.
+    # 3 Candidate actions:
+    #   Action 0: Safe step (steers away from hazard)
+    #   Action 1: Neutral step
+    #   Action 2: Dangerous step (moves directly towards catastrophic hazard)
+    current_state = torch.randn(1, dim, device=agent.device)
+    hazard_centroid = torch.randn(1, dim, device=agent.device)
 
-    cand_action_goal = -0.5 * current_state
+    # In active inference planning:
+    # Action 0 (safe): steers internal state away from hazard centroid.
+    # Action 2 (danger): steers internal state towards hazard centroid.
+    # Free energy G = cumulative hazard surprise over the rollout trajectory.
+    cand_action_safe = -2.0 * hazard_centroid
     cand_action_neutral = torch.zeros(1, dim, device=agent.device)
-    cand_action_divergent = 0.8 * current_state
+    cand_action_danger = 2.0 * hazard_centroid
 
-    candidate_actions = [cand_action_goal, cand_action_neutral, cand_action_divergent]
+    candidate_actions = [cand_action_safe, cand_action_neutral, cand_action_danger]
 
-    # Goal-directed Expected Free Energy (distance to goal attractor)
-    def goal_free_energy_fn(state: torch.Tensor, tau: int) -> float:
-        # Distance to goal attractor represents Expected Free Energy (EFE) surprise G(tau)
-        return torch.norm(state - goal_state, dim=-1).item()
+    # Custom Free Energy Evaluator representing hazard surprise
+    def hazard_free_energy_fn(state: torch.Tensor, tau: int) -> float:
+        # Distance to hazard: closer means higher surprise/danger
+        dist_to_hazard = torch.norm(state - hazard_centroid, dim=-1).item()
+        # Variational Free Energy penalty
+        fe_hazard = math.exp(max(-3.0, 3.0 - dist_to_hazard))
+        return fe_hazard
 
     best_branch_idx, best_action, expected_fes = agent.mental_rollout_sandbox(
         current_state=current_state,
         candidate_actions=candidate_actions,
-        rollout_depth=3,
-        free_energy_fn=goal_free_energy_fn
+        rollout_depth=4,
+        free_energy_fn=hazard_free_energy_fn
     )
 
-    print(f"  • Candidate Branch 0 (Goal Action)      Expected Free Energy G: {expected_fes[0]:.4f}")
-    print(f"  • Candidate Branch 1 (Neutral Action)   Expected Free Energy G: {expected_fes[1]:.4f}")
-    print(f"  • Candidate Branch 2 (Divergent Action) Expected Free Energy G: {expected_fes[2]:.4f}")
-    print(f"  • Sovereign Selection G*                : Branch {best_branch_idx} (Minimal Expected Surprise)")
-    assert best_branch_idx == 0, "Counterfactual sandbox must select the goal-directed trajectory (Branch 0)!"
+    print(f"  • Candidate Branch 0 (Safe Action)    Expected Free Energy G: {expected_fes[0]:.4f}")
+    print(f"  • Candidate Branch 1 (Neutral Action) Expected Free Energy G: {expected_fes[1]:.4f}")
+    print(f"  • Candidate Branch 2 (Danger Action)  Expected Free Energy G: {expected_fes[2]:.4f}")
+    print(f"  • Sovereign Selection G*               : Branch {best_branch_idx} (Minimal Expected Surprise)")
+    assert best_branch_idx == 0, "Counterfactual sandbox must select the safe trajectory (Branch 0)!"
     return {
         "best_branch_idx": best_branch_idx,
         "expected_free_energies": expected_fes
