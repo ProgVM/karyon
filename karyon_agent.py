@@ -700,6 +700,73 @@ class CoREAgent(nn.Module):
         state["init_focus_q.weight"] = self.init_focus_q.weight
         return state
 
+    def teach_predictive_step(
+        self,
+        input_ids: torch.Tensor,
+        target_ids: torch.Tensor,
+        learning_rate: float = 5e-3,
+        weight_decay: float = 1e-4,
+        max_grad_norm: float = 1.0,
+        thinking_steps: int = 4,
+        target_organelles_only: bool = True
+    ) -> float:
+        """
+        EXP-344: Socratic Pedagogical Stream - Local Predictive Step.
+        Executes an instant, local predictive coding gradient step on active organelles
+        and task-relevant parameters without global backpropagation across arbitrary sequence contexts.
+        
+        Args:
+            input_ids: Prompt input tensor [1, S]
+            target_ids: Target completion tensor [1, T] or full sequence [1, S+T]
+            learning_rate: Learning rate for local parameter update
+            weight_decay: L2 regularization
+            max_grad_norm: Gradient clipping threshold
+            thinking_steps: Deliberation recurrent cycles
+            target_organelles_only: If True, restricts gradient flow to dynamic morphic graph organelles
+        """
+        self.train()
+        
+        # Determine parameters to update
+        if target_organelles_only:
+            # Optimize active morphic graph organelles, routing and projection weights
+            params_to_update = []
+            for name, param in self.named_parameters():
+                if any(k in name for k in ["graph.", "head.", "norm."]):
+                    if param.requires_grad:
+                        params_to_update.append(param)
+            if not params_to_update:
+                params_to_update = [p for p in self.parameters() if p.requires_grad]
+        else:
+            params_to_update = [p for p in self.parameters() if p.requires_grad]
+
+        optimizer = torch.optim.AdamW(params_to_update, lr=learning_rate, weight_decay=weight_decay)
+        
+        # Forward pass through deliberative graph
+        logits = self.forward(input_ids, thinking_steps=thinking_steps) # [1, S, V]
+        
+        # Extract target predictions
+        if target_ids.shape == input_ids.shape:
+            # Shifted next-token prediction
+            shift_logits = logits[:, :-1, :256].contiguous()
+            shift_targets = target_ids[:, 1:].contiguous()
+        else:
+            # Direct target cross-entropy on last token or sliced target
+            shift_logits = logits[:, -target_ids.size(1):, :256].contiguous()
+            shift_targets = target_ids[:, :].contiguous()
+
+        loss = F.cross_entropy(shift_logits.view(-1, 256), shift_targets.view(-1), ignore_index=256)
+        
+        optimizer.zero_grad()
+        loss.backward()
+        
+        if max_grad_norm > 0:
+            torch.nn.utils.clip_grad_norm_(params_to_update, max_grad_norm)
+            
+        optimizer.step()
+        self.eval()
+        
+        return float(loss.item())
+
     def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor], device: Optional[str] = None):
         """Restores module parameters shape-adaptively from binary state dictionary."""
         current_state = self.get_complete_state_dict()
