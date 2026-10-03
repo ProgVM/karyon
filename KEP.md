@@ -62,6 +62,15 @@
    4. `StateSpaceMemoryOp` (Continuous multi-timescale temporal state decay)
    Neurogenesis inserts nodes from this universal menu with zero-shock epigenetic gating ($\tanh(\alpha_{\text{epi}}) \to 0$ at birth) under persistent Free Energy stress, while Neurodarwinian Apoptosis prunes unviable connections during Sleep SHY consolidation.
 
+26. **Principle 26 (The Triad of Grounded Meaning & Pragmatic Agency):**
+   * **The Death of Passive Autoregressive Solipsism:** Meaning is not an intrinsic property of isolated token transition probabilities. True intelligence and understanding cannot emerge from the passive, solipsistic prediction of arbitrary text bytes on disk (Next-Byte Prediction via Cross-Entropy). A model calculating statistics of tokens inside a closed room without world interaction is doomed to remain within Searle's Chinese Room, experiencing pseudo-morphemic drift and semantic blindness.
+   * **The Grounding Triad:** Semantics, understanding, and agency are forged strictly at the convergence of three irreducible biophysical and social axes:
+     1. **Embodiment & Multimodal Grounding:** Symbols (raw bytes or concepts) must be causally coupled to physical invariants, motor efference copies, sensory-motor loops, or continuous homeostatic states (`Energy`, `Health`, `Stability`, `Curiosity`). An utterance like "apple" is devoid of cognitive reality unless anchored in sensory percepts (roundness, taste) or metabolic/caloric satisfaction.
+     2. **Causal Pragmatics (Wittgensteinian Speech-Acts & Austinian Performatives):** Language is not a decorative representation of facts; it is an action that exerts physical force and produces irreversible transformations in the external environment. A verbal or motor output from Karyon's gateways must actively alter the world's state, triggering closed-loop physical, logical, or somatic responses:
+        $$\text{Utility}(\text{Symbol}) = -\Delta F_t(\text{Somatic State})$$
+     3. **Social Closed-Loop Dialogue (Social Active Inference):** Language is an intersubjective coordination technology. The validity, precision, and stability of semantic representations are continuously negotiated, grounded, and calibrated inside a closed-loop interactive dialogue with another sovereign mind (the Tutor and the Creator).
+   * **The Active Tutor Mandate & Rejection of Solipsistic Text Scrubbing:** Karyon must never generate in an epistemic vacuum. Its motor and linguistic outputs must be received by an active, evaluating environment (such as the Lead AI Cyberneticist or dialogue manager) which decodes the pragmatics, models the causal consequences, and injects real-time somatic neuromodulatory feedback (dopaminergic reward $DA \uparrow$, corrective noradrenergic arousal $NA \uparrow$, or stability shifts) coupled with immediate online predictive coding error correction.
+
 ---
 
 ## 2. The 11 Fundamental KEP Rules
