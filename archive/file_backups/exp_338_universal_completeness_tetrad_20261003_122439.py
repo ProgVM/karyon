@@ -104,20 +104,20 @@ def run_track_1_self_verification(device_str: str) -> Dict[str, Any]:
     criterion = nn.CrossEntropyLoss()
 
     # Pre-train open-loop engine on random 1-digit addition + carry
-    for _ in range(1200):
-        d1 = torch.randint(0, 10, (128,), device=device)
-        d2 = torch.randint(0, 10, (128,), device=device)
-        carry_in = torch.randint(0, 2, (128,), device=device)
+    for _ in range(800):
+        d1 = torch.randint(0, 10, (64,), device=device)
+        d2 = torch.randint(0, 10, (64,), device=device)
+        carry_in = torch.randint(0, 2, (64,), device=device)
         target_sum = (d1 + d2 + carry_in) % 10
-        target_carry = ((d1 + d2 + carry_in) >= 10).float()
+        target_carry = ((d1 + d2 + carry_in) >= 10).float().unsqueeze(-1)
 
-        engine.circuit_latch.reset_state(128)
-        c_in_embed = (carry_in.float().unsqueeze(-1).repeat(1, dim) * 2.0 - 1.0)
+        engine.circuit_latch.reset_state(64)
+        c_in_embed = target_carry.repeat(1, dim) * 1.5 - 0.75
         sum_logits, next_c_state = engine(d1, d2, c_in_embed)
 
         loss_sum = criterion(sum_logits, target_sum)
-        pred_c_val = next_c_state.mean(dim=-1)
-        target_c_val = target_carry * 2.0 - 1.0
+        pred_c_val = next_c_state.mean(dim=-1, keepdim=True)
+        target_c_val = torch.where(target_carry > 0.5, torch.tensor(1.0, device=device), torch.tensor(-1.0, device=device))
         loss_carry = nn.functional.mse_loss(pred_c_val, target_c_val)
 
         loss = loss_sum + loss_carry

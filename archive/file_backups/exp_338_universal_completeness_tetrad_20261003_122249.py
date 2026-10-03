@@ -104,20 +104,20 @@ def run_track_1_self_verification(device_str: str) -> Dict[str, Any]:
     criterion = nn.CrossEntropyLoss()
 
     # Pre-train open-loop engine on random 1-digit addition + carry
-    for _ in range(1200):
-        d1 = torch.randint(0, 10, (128,), device=device)
-        d2 = torch.randint(0, 10, (128,), device=device)
-        carry_in = torch.randint(0, 2, (128,), device=device)
+    for _ in range(800):
+        d1 = torch.randint(0, 10, (64,), device=device)
+        d2 = torch.randint(0, 10, (64,), device=device)
+        carry_in = torch.randint(0, 2, (64,), device=device)
         target_sum = (d1 + d2 + carry_in) % 10
-        target_carry = ((d1 + d2 + carry_in) >= 10).float()
+        target_carry = ((d1 + d2 + carry_in) >= 10).float().unsqueeze(-1)
 
-        engine.circuit_latch.reset_state(128)
-        c_in_embed = (carry_in.float().unsqueeze(-1).repeat(1, dim) * 2.0 - 1.0)
+        engine.circuit_latch.reset_state(64)
+        c_in_embed = target_carry.repeat(1, dim) * 1.5 - 0.75
         sum_logits, next_c_state = engine(d1, d2, c_in_embed)
 
         loss_sum = criterion(sum_logits, target_sum)
-        pred_c_val = next_c_state.mean(dim=-1)
-        target_c_val = target_carry * 2.0 - 1.0
+        pred_c_val = next_c_state.mean(dim=-1, keepdim=True)
+        target_c_val = torch.where(target_carry > 0.5, torch.tensor(1.0, device=device), torch.tensor(-1.0, device=device))
         loss_carry = nn.functional.mse_loss(pred_c_val, target_c_val)
 
         loss = loss_sum + loss_carry
@@ -268,12 +268,12 @@ def run_track_3_counterfactual_sandbox(device_str: str) -> Dict[str, Any]:
     #   Action 0: Safe step (steers away from hazard)
     #   Action 1: Neutral step
     #   Action 2: Dangerous step (moves directly towards catastrophic hazard)
-    current_state = torch.randn(1, dim, device=agent.device)
-    hazard_centroid = torch.randn(1, dim, device=agent.device)
+    current_state = torch.randn(1, dim)
+    hazard_centroid = torch.randn(1, dim)
 
-    cand_action_safe = -1.5 * hazard_centroid + torch.randn(1, dim, device=agent.device) * 0.1
-    cand_action_neutral = torch.randn(1, dim, device=agent.device) * 0.2
-    cand_action_danger = 2.0 * hazard_centroid + torch.randn(1, dim, device=agent.device) * 0.1
+    cand_action_safe = -1.5 * hazard_centroid + torch.randn(1, dim) * 0.1
+    cand_action_neutral = torch.randn(1, dim) * 0.2
+    cand_action_danger = 2.0 * hazard_centroid + torch.randn(1, dim) * 0.1
 
     candidate_actions = [cand_action_safe, cand_action_neutral, cand_action_danger]
 
@@ -329,9 +329,8 @@ def run_track_4_fractal_geometry_throughput(device_str: str) -> Dict[str, Any]:
     dummy_sensory = torch.randn(batch_size * seq_len, dim, device=device)
 
     # Warmup
-    empty_t = torch.empty(0, device=device)
     for _ in range(5):
-        _ = graph.forward(dummy_sensory, empty_t, empty_t, 3)
+        _ = graph.forward(dummy_sensory, thinking_steps=3)
 
     if device_str.startswith("cuda"):
         torch.cuda.synchronize()
@@ -339,7 +338,7 @@ def run_track_4_fractal_geometry_throughput(device_str: str) -> Dict[str, Any]:
     start_time = time.perf_counter()
     iterations = 20
     for _ in range(iterations):
-        _ = graph.forward(dummy_sensory, empty_t, empty_t, 3)
+        _ = graph.forward(dummy_sensory, thinking_steps=3)
 
     if device_str.startswith("cuda"):
         torch.cuda.synchronize()

@@ -478,8 +478,8 @@ class CoREAgent(nn.Module):
                 flux = sim_state + act_embed * (0.8 ** tau)
                 sim_state = torch.tanh(self.graph.forward(
                     flux,
-                    torch.empty(0, device=flux.device),
-                    torch.empty(0, device=flux.device),
+                    torch::Tensor(),
+                    torch::Tensor(),
                     2
                 ))
                 

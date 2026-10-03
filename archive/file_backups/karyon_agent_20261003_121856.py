@@ -476,12 +476,7 @@ class CoREAgent(nn.Module):
             # Rollout tau forward steps in mental imagination
             for tau in range(rollout_depth):
                 flux = sim_state + act_embed * (0.8 ** tau)
-                sim_state = torch.tanh(self.graph.forward(
-                    flux,
-                    torch.empty(0, device=flux.device),
-                    torch.empty(0, device=flux.device),
-                    2
-                ))
+                sim_state = torch.tanh(self.graph.forward(flux, thinking_steps=2))
                 
                 # Evaluate branch Expected Free Energy G(tau)
                 if free_energy_fn is not None:
