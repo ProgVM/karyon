@@ -402,14 +402,6 @@ class CoREAgent(nn.Module):
         self.running_grad_norm = 0.95 * self.running_grad_norm + 0.05 * grad_norm
         grad_diff = grad_norm - self.running_grad_norm
         self.running_grad_var = 0.95 * self.running_grad_var + 0.05 * (grad_diff ** 2)
-        sigma_grad = math.sqrt(max(1e-6, self.running_grad_var))
-
-        # Relative grad stability relative to variance
-        grad_ratio = grad_norm / (sigma_grad + 1e-5)
-        grad_stability = 1.0 / (1.0 + grad_ratio)
-        maturity_index = float(gate_readiness * grad_stability)
-        return maturity_index
-
     def verify_and_refine_arithmetic_action(
         self,
         candidate_sum_logits: torch.Tensor,
@@ -492,6 +484,13 @@ class CoREAgent(nn.Module):
         best_branch_idx = int(torch.tensor(expected_free_energies).argmin().item())
         best_action = candidate_actions[best_branch_idx]
         return best_branch_idx, best_action, expected_free_energies
+        sigma_grad = math.sqrt(max(1e-6, self.running_grad_var))
+
+        # Relative grad stability relative to variance
+        grad_ratio = grad_norm / (sigma_grad + 1e-5)
+        grad_stability = 1.0 / (1.0 + grad_ratio)
+        maturity_index = float(gate_readiness * grad_stability)
+        return maturity_index
 
     def update_somatic_stress_and_morphogenesis(
         self,

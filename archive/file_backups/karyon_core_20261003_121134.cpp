@@ -1303,55 +1303,6 @@ public:
         return out;
     }
 };
-// ============================================================================
-// 8j. VECTOR SYMBOLIC BINDING OPERATOR (HDC / VSA Role-Filler Binding)
-// Reversible holographic binding via circular convolution / Hadamard product in frequency domain:
-// z_bound = Role (*) Filler = IFFT(FFT(Role) * FFT(Filler))
-// Filler_extracted = z_bound (*) Role^{-1}
-// Ensures lossless variable-value binding with CosSim >= 0.99
-// ============================================================================
-class VectorSymbolicBindingOpImpl : public GraphOp {
-public:
-    int64_t dim;
-    torch::Tensor w_role;
-    torch::Tensor w_filler;
-    torch::Tensor w_out;
-
-    VectorSymbolicBindingOpImpl(int64_t dim, std::string device_str) : dim(dim) {
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-        w_role = register_parameter("w_role", torch::eye(dim, torch::TensorOptions().device(device)));
-        w_filler = register_parameter("w_filler", torch::eye(dim, torch::TensorOptions().device(device)));
-        w_out = register_parameter("w_out", torch::eye(dim, torch::TensorOptions().device(device)));
-        this->to(device);
-    }
-
-    torch::Tensor bind(torch::Tensor role, torch::Tensor filler) {
-        auto r_fft = torch::fft::rfft(role, c10::nullopt, -1);
-        auto f_fft = torch::fft::rfft(filler, c10::nullopt, -1);
-        auto bound_fft = r_fft * f_fft;
-        auto bound = torch::fft::irfft(bound_fft, role.size(-1), -1);
-        return bound;
-    }
-
-    torch::Tensor unbind(torch::Tensor bound, torch::Tensor role) {
-        auto b_fft = torch::fft::rfft(bound, c10::nullopt, -1);
-        auto r_fft = torch::fft::rfft(role, c10::nullopt, -1);
-        auto eps = 1e-6f;
-        auto r_inv_fft = torch::conj(r_fft) / (torch::abs(r_fft).pow(2) + eps);
-        auto extracted_fft = b_fft * r_inv_fft;
-        auto extracted = torch::fft::irfft(extracted_fft, bound.size(-1), -1);
-        return extracted;
-    }
-
-    torch::Tensor forward(torch::Tensor x) override {
-        // Linear projections of role and filler components from incoming flux
-        auto role = torch::matmul(x, w_role.t());
-        auto filler = torch::matmul(x, w_filler.t());
-        auto bound = bind(role, filler);
-        auto out = torch::matmul(bound, w_out.t());
-        return out;
-    }
-};
 
 // ============================================================================
 // 9. DYNAMIC MORPHIC GRAPH & COMMUTATION ORCHESTRATOR R(h_t)
@@ -1422,8 +1373,6 @@ public:
             op = std::make_shared<SlotMemoryOpImpl>(dim, device_str, 4);
         } else if (op_type == "NonLinearTransform") {
             op = std::make_shared<NonLinearTransformOpImpl>(dim, device_str);
-        } else if (op_type == "VectorSymbolicBinding") {
-            op = std::make_shared<VectorSymbolicBindingOpImpl>(dim, device_str);
         } else {
             op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
         }
@@ -2165,13 +2114,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, std::string>(), py::arg("dim"), py::arg("device_str") = "cpu")
         .def("forward", &NonLinearTransformOpImpl::forward)
         .def("__call__", &NonLinearTransformOpImpl::forward);
-
-    py::class_<VectorSymbolicBindingOpImpl, torch::nn::Module, std::shared_ptr<VectorSymbolicBindingOpImpl>>(m, "VectorSymbolicBindingOp")
-        .def(py::init<int64_t, std::string>(), py::arg("dim"), py::arg("device_str") = "cpu")
-        .def("bind", &VectorSymbolicBindingOpImpl::bind, py::arg("role"), py::arg("filler"))
-        .def("unbind", &VectorSymbolicBindingOpImpl::unbind, py::arg("bound"), py::arg("role"))
-        .def("forward", &VectorSymbolicBindingOpImpl::forward)
-        .def("__call__", &VectorSymbolicBindingOpImpl::forward);
 
     py::class_<DynamicMorphicGraphImpl, torch::nn::Module, std::shared_ptr<DynamicMorphicGraphImpl>>(m, "DynamicMorphicGraph")
         .def(py::init<int64_t, std::string, int64_t>(), py::arg("dim") = 128, py::arg("device_str") = "cpu", py::arg("max_nodes") = 128)

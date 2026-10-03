@@ -2166,13 +2166,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("forward", &NonLinearTransformOpImpl::forward)
         .def("__call__", &NonLinearTransformOpImpl::forward);
 
-    py::class_<VectorSymbolicBindingOpImpl, torch::nn::Module, std::shared_ptr<VectorSymbolicBindingOpImpl>>(m, "VectorSymbolicBindingOp")
-        .def(py::init<int64_t, std::string>(), py::arg("dim"), py::arg("device_str") = "cpu")
-        .def("bind", &VectorSymbolicBindingOpImpl::bind, py::arg("role"), py::arg("filler"))
-        .def("unbind", &VectorSymbolicBindingOpImpl::unbind, py::arg("bound"), py::arg("role"))
-        .def("forward", &VectorSymbolicBindingOpImpl::forward)
-        .def("__call__", &VectorSymbolicBindingOpImpl::forward);
-
     py::class_<DynamicMorphicGraphImpl, torch::nn::Module, std::shared_ptr<DynamicMorphicGraphImpl>>(m, "DynamicMorphicGraph")
         .def(py::init<int64_t, std::string, int64_t>(), py::arg("dim") = 128, py::arg("device_str") = "cpu", py::arg("max_nodes") = 128)
         .def_readonly("k_nodes", &DynamicMorphicGraphImpl::k_nodes)
