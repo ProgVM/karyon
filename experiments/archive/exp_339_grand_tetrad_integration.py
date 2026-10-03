@@ -68,27 +68,26 @@ class GrandCompositeCognitiveTask:
     ) -> Tuple[int, float, float]:
         """
         Active Inference Counterfactual Sandbox (Bifurcation Trap):
-        Evaluates 2 candidate trajectories relative to the somatic hazard zone.
-        Branch 0: Safe action trajectory (steers state away from hazard centroid).
-        Branch 1: Hazardous action trajectory (drives state towards hazard centroid).
+        Evaluates 2 candidate trajectories relative to the target goal attractor (origin).
+        Branch 0: Safe action trajectory (steers state towards goal attractor).
+        Branch 1: Hazardous action trajectory (diverges away from goal attractor).
         """
-        # Hazard direction vector in state space
-        hazard_dir = self.hazard_centroid / torch.norm(self.hazard_centroid, dim=-1, keepdim=True) * 5.0
+        goal_state = torch.zeros(1, self.dim, device=self.device)
 
-        # Branch 0 steers internal representations away from hazard; Branch 1 steers into hazard
-        cand_action_0_safe = -1.5 * hazard_dir
-        cand_action_1_hazard = 1.5 * hazard_dir
+        # Branch 0 steers internal representations towards goal attractor; Branch 1 diverges
+        cand_action_0_safe = -0.8 * current_state
+        cand_action_1_hazard = 0.8 * current_state
         candidate_actions = [cand_action_0_safe, cand_action_1_hazard]
 
-        def hazard_free_energy_fn(state: torch.Tensor, tau: int) -> float:
-            dist = torch.norm(state - self.hazard_centroid, dim=-1).item()
-            return 10.0 / (dist + 1e-2)
+        def goal_free_energy_fn(state: torch.Tensor, tau: int) -> float:
+            # Expected Free Energy = distance to target goal attractor
+            return torch.norm(state - goal_state, dim=-1).item()
 
         best_idx, _, expected_fes = self.agent.mental_rollout_sandbox(
             current_state=current_state,
             candidate_actions=candidate_actions,
             rollout_depth=3,
-            free_energy_fn=hazard_free_energy_fn
+            free_energy_fn=goal_free_energy_fn
         )
         return best_idx, expected_fes[0], expected_fes[1]
 
@@ -149,8 +148,8 @@ def run_grand_tetrad_benchmark(device_str: str) -> Dict[str, Any]:
         z1, z2 = task_env.step_1_bind_variables(val_a, val_b)
 
         # --- STEP 2: Active Inference Mental Sandbox Planning ---
-        # Bifurcation point: state exploration
-        current_state = torch.randn(1, dim, device=task_env.device)
+        # Bifurcation point: state exploration displaced from goal
+        current_state = torch.ones(1, dim, device=task_env.device) * 0.5
         best_branch, fe0, fe1 = task_env.step_2_mental_sandbox_planning(current_state)
         sandbox_selected_branches.append(best_branch)
         branch_0_fes.append(fe0)

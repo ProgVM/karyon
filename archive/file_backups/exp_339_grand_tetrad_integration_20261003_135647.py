@@ -148,8 +148,8 @@ def run_grand_tetrad_benchmark(device_str: str) -> Dict[str, Any]:
         z1, z2 = task_env.step_1_bind_variables(val_a, val_b)
 
         # --- STEP 2: Active Inference Mental Sandbox Planning ---
-        # Bifurcation point: state exploration displaced from goal
-        current_state = torch.ones(1, dim, device=task_env.device) * 0.5
+        # Bifurcation point: state exploration
+        current_state = torch.randn(1, dim, device=task_env.device)
         best_branch, fe0, fe1 = task_env.step_2_mental_sandbox_planning(current_state)
         sandbox_selected_branches.append(best_branch)
         branch_0_fes.append(fe0)
