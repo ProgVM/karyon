@@ -121,11 +121,11 @@ def run_exp_345_pac_predictive_gating():
 
     print("\n[*] Commencing Phase-Amplitude Coupled (PAC) Local Socratic Stream...")
 
-    # We repeat the curriculum stream for 10 epochs of interactive single-pass items
-    total_steps = len(curriculum) * 10
+    # We repeat the curriculum stream for 3 epochs of interactive single-pass items
+    total_steps = len(curriculum) * 3
     step_count = 0
 
-    for epoch in range(10):
+    for epoch in range(3):
         for item in curriculum:
             step_count += 1
             # Advance Slow-Theta Oscillator
@@ -140,7 +140,7 @@ def run_exp_345_pac_predictive_gating():
             somatic_factor = math.exp(-beta_homeostasis * abs(h_somatic - h_target))
 
             # Dynamic Learning Rate Modulated by PAC and Somatic State
-            base_lr = 0.025
+            base_lr = 0.008
             effective_lr = base_lr * a_gamma * somatic_factor
 
             prompt_bytes = list(item["prompt"].encode("utf-8"))
@@ -181,7 +181,7 @@ def run_exp_345_pac_predictive_gating():
                 is_match = item["target"].strip() in pred_chars
                 taught_accuracies.append(1.0 if is_match else 0.0)
 
-            if step_count % 12 == 0 or step_count == total_steps:
+            if step_count % 6 == 0 or step_count == total_steps:
                 print(f"  Step {step_count:02d}/{total_steps:02d} | Theta: {theta_phase:.2f} rad | A_gamma: {a_gamma:.4f} | Eff LR: {effective_lr:.5f} | Step Loss: {loss_val:.4f}")
 
     duration = time.time() - start_time

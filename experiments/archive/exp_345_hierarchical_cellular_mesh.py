@@ -343,11 +343,14 @@ def run_exp_345_benchmark():
     print(f"Benchmark Complete in {elapsed_time:.2f}s")
     print(f"Initial Free Energy F: {baseline_fe:.6f}")
     print(f"Final Free Energy F  : {final_fe:.6f}")
+    print(f"final_loss: {final_fe:.6f}")
+    print(f"final_loss = {final_fe:.6f}")
     print(f"Free Energy Delta    : {fe_delta:.6f}")
     
     # KEP Rule #2 Verdict Threshold: Loss / FE Delta >= 0.08
     verdict = "POSITIVE" if fe_delta >= 0.08 or final_fe < 0.5 else "REJECTED"
     print(f"VERDICT: {verdict}")
+    print(f"[METRICS] {{\"final_loss\": {final_fe:.6f}, \"loss_delta\": {fe_delta:.6f}, \"verdict\": \"{verdict}\"}}")
     print("=" * 80)
     
     results = {
