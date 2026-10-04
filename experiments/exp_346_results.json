@@ -1,0 +1,22 @@
+{
+  "exp_id": "EXP-346",
+  "verdict": "REJECTED",
+  "initial_fe": 0.8969201445579529,
+  "final_fe": 3.5425562858581543,
+  "fe_delta": -2.6456361413002014,
+  "initial_loss": 0.22749513387680054,
+  "final_loss": 0.018136627972126007,
+  "loss_delta": 0.20935850590467453,
+  "final_dopamine": 0.8574194431304933,
+  "elapsed_time_sec": 1.76145339012146,
+  "passed_fe_threshold": false,
+  "passed_fe_delta": false,
+  "passed_somatic_da": true,
+  "metrics": {
+    "final_loss": 0.018136627972126007,
+    "final_fe": 3.5425562858581543,
+    "fe_delta": -2.6456361413002014,
+    "dopamine": 0.8574194431304933,
+    "loss_delta": 0.20935850590467453
+  }
+}
