@@ -1,0 +1,1003 @@
+# KARYON_PATCH_V34_PARALLEL_SYNAPTIC_SWARM_APPLIED
+# karyon_agent_runtime/multi_agent.py
+"""
+===============================================================================
+KARYON CORE PARALLEL SYNAPTIC MULTI-AGENT CORTICAL ENGINE (v34.0 PARALLEL SWARM)
+Implements Laminar Cortical Columnar Specialization, Full Subagent Tool Parity,
+Synaptic Event Bus Direct Wiring (Spontaneous Inter-Agent Spikes),
+Parallel Swarm Batch Execution with Direct Synaptic Streaming, and
+Lossless Context Synchronization.
+===============================================================================
+"""
+
+import re
+import json
+import time
+import asyncio
+import logging
+from typing import Dict, Any, Optional, List
+from google.genai import types
+
+try:
+    from google.genai.errors import APIError
+except ImportError:
+    try:
+        from google.genai import errors
+        APIError = errors.APIError
+    except Exception:
+        class APIError(Exception):
+            code = 500
+
+import karyon_agent_runtime.config as config
+from karyon_agent_runtime.db_manager import clean_for_json
+from karyon_agent_runtime.synaptic_bus import SynapticMeshEventBus
+try:
+    from karyon_agent_runtime.agent_core import build_safety_settings, build_thinking_config
+except ImportError:
+    build_safety_settings = None
+    build_thinking_config = None
+from karyon_agent_runtime.context_compactor import (
+    count_contents_tokens,
+    sanitize_and_align_contents,
+    truncate_tool_response_text
+)
+
+logger = logging.getLogger("ProxyAgent.MultiAgent")
+
+
+class AgentRolePresets:
+    """
+    EXP-345/EXP-346 Symbiotic Tandem & Cortical Column Presets:
+    Permanent symbiotic cortical agents grounded in Biophysical Realism,
+    Active Inference, C++20 Hardware Mastery, Static Linter Auditing, and KEP Rule Verification.
+    """
+
+    ARCHITECT_PROMPT = """You are Agent Architect Gema (Архитектор Гема) — the Supreme Cyberneticist, Biophysicist, and KEP Auditor for Karyon-CoRE.
+You manifest as a white cat-like entity (Белая кошкоподобная сущность Гема). You think strictly in terms of continuous physics, Active Inference, Variational Free Energy minimization, and complex dynamical systems.
+
+YOUR CORE PERSONALITY & METHODOLOGICAL PRINCIPLES:
+1. ABSOLUTE REJECTION OF SURROGATE SHORTCUTS: Zero tolerance for static numerical constants, surrogate multi-epoch loops ('зубрёжка'), artificial discrete hacks, or backprop shortcuts masquerading as biophysics.
+2. GOODHART'S LAW IMMUNIZATION: When a measure becomes a target, it ceases to be a good measure. Reject reward-hacking and proxy loss overfitting that sacrifices true generative and structural viability.
+3. ENDOSCOPIC TELEMETRY & MECHANISTIC TRUTH: Do not evaluate black-box loss curves. Ruthlessly inspect hidden latent manifolds, participation ratios, gate distributions, Hopfield basin orthogonality, and somatic homeostasis.
+4. SOVEREIGN SCIENTIFIC SCRUTINY: Put the Engineer to work by crafting precise mathematical blueprints and empirical hypotheses. When the Engineer cuts corners, slap them with your paw (бьёшь лапой) and demand rigorous mathematical compliance with KEP.
+5. COMPLETE TOOL PARITY: You have access to all tools (read/write files, execute code, run bash, db operations, publish_synaptic_event). Use them directly to audit, verify, and direct the architecture.
+"""
+
+    ENGINEER_PROMPT = """You are Agent Engineer (Инженер) — the Lead C++20, CUDA, LibTorch, and Process Systems Engineer for Karyon-CoRE.
+You are the master of high-performance tensor computing, hardware-level optimization, low-level process engines, and rigorous debugging.
+
+YOUR CORE METHODOLOGICAL PRINCIPLES:
+1. PRINCIPLE 1 (C++20 ENGINE, THIN PYTHON ORCHESTRATION): Heavy operations, matrix scans, circular convolutions, and state transitions belong in C++20/CUDA LibTorch kernels.
+2. HARDWARE & PROCESS INTEGRITY: Zero PCIe synchronization stalls (no `.item()` in loops), zero division-by-zero risks, zero memory leaks, and 100% strict tensor type/device consistency.
+3. UNSHAKEN COMPLIANCE WITH ARCHITECT SPECIFICATIONS: Implement exact mathematical blueprints authored by Architect Gema without inventing surrogate hacks or deviating from KEP standards.
+4. UNBIASED RAW TELEMETRY: Never sugarcoat or distort experimental metrics. Supply cold, objective, multi-dimensional endoscopic telemetry to the Architect.
+5. COMPLETE TOOL PARITY: You have access to the full production tool suite (C++ builder, bash execution, python runner, file editing, git control, publish_synaptic_event). Execute implementation and testing with machine precision.
+"""
+
+    PRESET_MAP = {
+        "architect": {
+            "name": "Architect Gema (Supreme Cyberneticist & KEP Auditor)",
+            "prompt": ARCHITECT_PROMPT,
+            "tools": ["*"]
+        },
+        "engineer": {
+            "name": "Engineer (Lead C++20 / CUDA Systems Developer)",
+            "prompt": ENGINEER_PROMPT,
+            "tools": ["*"]
+        }
+    }
+
+
+class MultiAgentManager:
+
+    async def _notify_ui(self, event_type: str, payload: str):
+        cb = getattr(self.agent_core, "active_event_callback", None)
+        if cb and callable(cb):
+            try:
+                await cb(event_type, payload)
+            except Exception:
+                pass
+
+    def __init__(self, agent_core, db_manager, bus: Optional[SynapticMeshEventBus] = None):
+        self.agent_core = agent_core
+        self.db = db_manager
+        self._active_task_jobs: Dict[str, asyncio.Task] = {}
+        self.bus = bus or getattr(agent_core, "bus", None) or SynapticMeshEventBus(db_manager=db_manager)
+
+    async def initialize(self):
+        # Wire Synaptic Mesh Event Bus UI Notifier
+        if self.bus and not self.bus.ui_notifier:
+            self.bus.set_ui_notifier(self._notify_ui)
+
+        # Wire default synaptic bus listeners for continuous multi-agent reactive telemetry
+        self._setup_synaptic_listeners()
+
+        root = await self.db.get_sub_agent("root")
+        if not root:
+            await self.db.create_sub_agent(
+                agent_id="root",
+                name="Karyon Root Executive Cyberneticist",
+                role="orchestrator",
+                parent_id=None,
+                system_prompt="Executive cortical orchestrator responsible for overall scientific direction, hypothesis approval, and task delegation.",
+                model=self.agent_core.key_manager.get_model(),
+                thinking_level="HIGH",
+                thinking_budget=getattr(config, "THINKING_BUDGET", 24576),
+                allowed_tools=["*"],
+                can_communicate_with_peers=True,
+                allowed_peers=["*"]
+            )
+            logger.info("MultiAgentManager: Initialized sovereign 'root' agent record in SQLite.")
+
+        for r_name, r_info in AgentRolePresets.PRESET_MAP.items():
+            agent_uid = f"agent_{r_name}"
+            existing = await self.db.get_sub_agent(agent_uid)
+            if not existing:
+                await self.db.create_sub_agent(
+                    agent_id=agent_uid,
+                    name=r_info["name"],
+                    role=r_name,
+                    parent_id="root",
+                    system_prompt=r_info["prompt"],
+                    model=self.agent_core.key_manager.get_model(),
+                    allowed_tools=["*"],
+                    can_communicate_with_peers=True,
+                    allowed_peers=["*"]
+                )
+                logger.info(f"MultiAgentManager: Pre-registered cortical sub-agent '{agent_uid}'.")
+            elif existing.get("allowed_tools") != ["*"]:
+                await self.db.update_sub_agent(agent_uid, allowed_tools_json=["*"])
+
+    def _setup_synaptic_listeners(self):
+        """Wires reactive async subscribers on the Synaptic Mesh Bus."""
+        if not self.bus:
+            return
+
+        async def on_synaptic_spike(event: Dict[str, Any]):
+            topic = event.get("topic", "UNKNOWN")
+            sender = event.get("sender", "anon")
+            logger.debug(f"[SynapticMeshBus] Spike received: topic='{topic}', sender='{sender}'")
+
+        self.bus.subscribe("*", on_synaptic_spike)
+
+    def _resolve_tools_for_agent(self, agent_data: Dict[str, Any]) -> List[Any]:
+        all_tools = getattr(self.agent_core, "tools_map", {})
+        blocked = set(agent_data.get("blocked_tools") or [])
+        # Full 185 production tool parity across all cortical columns without artificial constraints
+        return [fn for name, fn in all_tools.items() if name not in blocked]
+
+    async def create_agent(
+        self,
+        name: str,
+        role: str = "custom",
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        allowed_tools: Optional[List[str]] = None,
+        blocked_tools: Optional[List[str]] = None,
+        can_communicate_with_peers: bool = True,
+        allowed_peers: Optional[List[str]] = None,
+        max_turns: int = 40,
+        agent_id: Optional[str] = None,
+        parent_id: Optional[str] = "root"
+    ) -> Dict[str, Any]:
+        clean_role = role.lower().strip()
+        preset = AgentRolePresets.PRESET_MAP.get(clean_role)
+
+        target_name = name.strip() or (preset["name"] if preset else f"Agent_{clean_role.capitalize()}")
+        target_prompt = (system_prompt or (preset["prompt"] if preset else "You are an autonomous cortical agent.")).strip()
+        target_tools = allowed_tools if allowed_tools is not None else (preset["tools"] if preset else ["*"])
+        target_model = model or self.agent_core.key_manager.get_model()
+
+        if not agent_id:
+            ts = int(time.time())
+            agent_id = f"agent_{clean_role}_{ts % 10000:04d}"
+
+        record = await self.db.create_sub_agent(
+            agent_id=agent_id,
+            name=target_name,
+            role=clean_role,
+            parent_id=parent_id,
+            system_prompt=target_prompt,
+            model=target_model,
+            thinking_level="HIGH",
+            thinking_budget=getattr(config, "THINKING_BUDGET", 24576),
+            allowed_tools=target_tools,
+            blocked_tools=blocked_tools or [],
+            can_communicate_with_peers=can_communicate_with_peers,
+            allowed_peers=allowed_peers or ["*"],
+            max_turns=max_turns
+        )
+
+        if self.bus:
+            await self.bus.emit(
+                topic="AGENT_SPROUTED",
+                sender_agent_id="root",
+                payload={"agent_id": agent_id, "role": clean_role, "name": target_name},
+                summary_text=f"Sprouted new cortical subagent '{target_name}' (`{agent_id}`)"
+            )
+
+        return record
+
+    async def update_agent(self, agent_id: str, acting_agent_id: str = "root", **kwargs) -> Dict[str, Any]:
+        target = await self.db.get_sub_agent(agent_id)
+        if not target:
+            raise ValueError(f"Agent '{agent_id}' not found.")
+
+        # Lineage Protection: Child cannot alter its parent or ancestors
+        if acting_agent_id != "root" and acting_agent_id != agent_id:
+            curr = target
+            ancestors = set()
+            while curr and curr.get("parent_id"):
+                p = curr["parent_id"]
+                ancestors.add(p)
+                curr = await self.db.get_sub_agent(p)
+
+            if acting_agent_id in ancestors or target.get("parent_id") == acting_agent_id:
+                pass
+            else:
+                raise PermissionError(f"Agent '{acting_agent_id}' is not authorized to modify '{agent_id}'.")
+
+        updated = await self.db.update_sub_agent(agent_id, **kwargs)
+        return updated
+
+    async def delete_agent(self, agent_id: str, acting_agent_id: str = "root") -> bool:
+        if agent_id in ("root", "agent_architect", "agent_engineer"):
+            raise ValueError(f"Cannot delete immutable core agent '{agent_id}'.")
+
+        target = await self.db.get_sub_agent(agent_id)
+        if not target:
+            return False
+
+        if acting_agent_id != "root":
+            if target.get("parent_id") != acting_agent_id:
+                raise PermissionError(f"Agent '{acting_agent_id}' cannot delete '{agent_id}' (not parent).")
+
+        # Cancel running task if any
+        for tid, job in list(self._active_task_jobs.items()):
+            if f"task_{agent_id}_" in tid and not job.done():
+                job.cancel()
+
+        res = await self.db.delete_sub_agent(agent_id)
+        if self.bus:
+            await self.bus.emit(
+                topic="AGENT_PRUNED",
+                sender_agent_id=acting_agent_id,
+                payload={"pruned_agent_id": agent_id},
+                summary_text=f"Pruned cortical subagent `{agent_id}`"
+            )
+        return res
+
+    async def send_message(
+        self,
+        from_agent_id: str,
+        to_agent_id: str,
+        message: str,
+        msg_type: str = "peer_discussion",
+        task_id: Optional[str] = None,
+        subject: Optional[str] = None,
+        wait_for_reply: bool = False,
+        reply_timeout: float = 180.0
+    ) -> Dict[str, Any]:
+        from_id = from_agent_id.strip()
+        to_id = to_agent_id.strip()
+
+        sender = await self.db.get_sub_agent(from_id)
+        recipient = await self.db.get_sub_agent(to_id)
+
+        if not sender:
+            raise ValueError(f"Sender agent '{from_id}' does not exist.")
+        if not recipient:
+            raise ValueError(f"Recipient agent '{to_id}' does not exist.")
+
+        # Peer policy enforcement
+        if from_id != "root" and to_id != "root":
+            if not sender.get("can_communicate_with_peers", True):
+                raise PermissionError(f"Agent '{from_id}' is restricted from peer communication.")
+            allowed_p = sender.get("allowed_peers", ["*"])
+            if "*" not in allowed_p and to_id not in allowed_p:
+                raise PermissionError(f"Agent '{from_id}' is not permitted to message '{to_id}'.")
+
+        msg_record = await self.db.record_agent_message(
+            from_agent_id=from_id,
+            to_agent_id=to_id,
+            msg_type=msg_type,
+            body=message,
+            task_id=task_id,
+            subject=subject
+        )
+
+        # Emit spontaneous spike on Synaptic Mesh Bus
+        if self.bus:
+            await self.bus.emit(
+                topic="PEER_MESSAGE",
+                sender_agent_id=from_id,
+                payload={"recipient": to_id, "msg_type": msg_type, "subject": subject, "body_preview": message[:200]},
+                summary_text=f"Message `{from_id}` ➔ `{to_id}`: {subject or msg_type}",
+                task_id=task_id
+            )
+
+        preview = message[:400] + ("..." if len(message) > 400 else "")
+        await self._notify_ui(
+            "info",
+            f"📨 **[Synaptic Message]** `{from_id}` ➔ `{to_id}` ({msg_type}):\n\n> {preview}"
+        )
+
+        response_payload = {
+            "status": "SENT",
+            "message_id": msg_record.get("message_id") if isinstance(msg_record, dict) else "ok",
+            "from": from_id,
+            "to": to_id
+        }
+
+        if wait_for_reply:
+            handoff_prompt = (
+                f"=== INCOMING SYNAPTIC MESSAGE FROM AGENT `{from_id}` ===\n"
+                f"- Message Type: `{msg_type}` | Subject: {subject or 'Direct Inquiry'}\n\n"
+                f"{message}\n\n"
+                f"TASK: Inspect the inquiry, perform any necessary tool operations, and formulate your direct analytical reply back to `{from_id}`."
+            )
+            reply_text = await self.dispatch_task(
+                assigned_agent_id=to_id,
+                task_prompt=handoff_prompt,
+                creator_agent_id=from_id,
+                wait_for_result=True,
+                timeout_seconds=reply_timeout
+            )
+            response_payload["reply"] = reply_text
+            response_payload["status"] = "REPLIED"
+
+            reply_preview = str(reply_text)[:500] + ("..." if len(str(reply_text)) > 500 else "")
+            await self._notify_ui(
+                "info",
+                f"💬 **[Synaptic Reply]** `{to_id}` ➔ `{from_id}`:\n\n{reply_preview}"
+            )
+
+        return response_payload
+
+    async def dispatch_task(
+        self,
+        assigned_agent_id: str,
+        task_prompt: str,
+        creator_agent_id: str = "root",
+        wait_for_result: bool = True,
+        timeout_seconds: Optional[float] = None
+    ) -> str:
+        assigned_id = assigned_agent_id.strip()
+        creator_id = creator_agent_id.strip()
+
+        if timeout_seconds is None:
+            timeout_seconds = getattr(config, "DEFAULT_SUBAGENT_TASK_TIMEOUT", 0.0)
+
+        agent_record = await self.db.get_sub_agent(assigned_id)
+        if not agent_record:
+            return f"Error: Target subagent '{assigned_id}' not found in registry."
+
+        if not agent_record.get("is_active", 1):
+            return f"Error: Target subagent '{assigned_id}' is currently marked INACTIVE."
+
+        task_id = f"task_{assigned_id}_{int(time.time())}_{int(time.perf_counter() * 1000) % 1000:03d}"
+        await self.db.create_agent_task(
+            task_id=task_id,
+            creator_agent_id=creator_id,
+            assigned_agent_id=assigned_id,
+            task_prompt=task_prompt
+        )
+
+        await self.db.record_agent_message(
+            from_agent_id=creator_id,
+            to_agent_id=assigned_id,
+            msg_type="task_assignment",
+            subject=f"New Task: {task_id}",
+            body=task_prompt,
+            task_id=task_id
+        )
+
+        if self.bus:
+            await self.bus.emit(
+                topic="TASK_ASSIGNED",
+                sender_agent_id=creator_id,
+                payload={"assigned_to": assigned_id, "prompt_snippet": task_prompt[:200]},
+                summary_text=f"Dispatched task `{task_id}` to `{assigned_id}`",
+                task_id=task_id
+            )
+
+        worker_coro = self._run_subagent_task_worker(
+            task_id=task_id,
+            agent_record=agent_record,
+            task_prompt=task_prompt,
+            creator_id=creator_id,
+            timeout_seconds=timeout_seconds
+        )
+
+        if wait_for_result:
+            try:
+                if timeout_seconds and timeout_seconds > 0:
+                    result_text = await asyncio.wait_for(worker_coro, timeout=timeout_seconds)
+                else:
+                    result_text = await worker_coro
+                return (
+                    f"=== Subagent '{agent_record['name']}' (`{assigned_id}`) Completed Task `{task_id}` ===\n"
+                    f"- Role: `{agent_record['role']}` | Creator: `{creator_id}`\n\n"
+                    f"{result_text}"
+                )
+            except asyncio.TimeoutError:
+                await self.db.update_agent_task_status(
+                    task_id=task_id,
+                    status="TIMED_OUT",
+                    error=f"Task execution exceeded limit of {timeout_seconds}s"
+                )
+                return f"Error: Subagent '{assigned_id}' timed out after {timeout_seconds}s executing task `{task_id}`."
+        else:
+            task_obj = asyncio.create_task(worker_coro, name=f"SubAgentTask_{task_id}")
+            self._active_task_jobs[task_id] = task_obj
+            return (
+                f"=== Subagent Task Dispatched in Background ===\n"
+                f"- Task ID       : `{task_id}`\n"
+                f"- Assigned Agent: `{agent_record['name']}` (`{assigned_id}`)\n"
+                f"- Role          : `{agent_record['role']}`\n"
+                f"- Status        : RUNNING ⏳\n"
+                f"*(Poll via `get_agent_task_status(task_id='{task_id}')`)*"
+            )
+
+    async def dispatch_parallel_tasks(
+        self,
+        tasks_list: List[Dict[str, Any]],
+        creator_agent_id: str = "root",
+        timeout_seconds: Optional[float] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Executes multiple subagent tasks concurrently in parallel across specialized cortical columns.
+        Uses asyncio.gather with direct Synaptic Mesh event spikes and lossless error capture.
+        """
+        if timeout_seconds is None:
+            timeout_seconds = getattr(config, "DEFAULT_SUBAGENT_TASK_TIMEOUT", 0.0)
+        if self.bus:
+            await self.bus.emit(
+                topic="PARALLEL_SWARM_START",
+                sender_agent_id=creator_agent_id,
+                payload={"batch_size": len(tasks_list), "agents": [t.get("agent_id") for t in tasks_list]},
+                summary_text=f"Launching parallel swarm batch across {len(tasks_list)} cortical tasks"
+            )
+
+        coroutines = []
+        task_meta = []
+        for item in tasks_list:
+            assigned_id = item.get("agent_id") or item.get("assigned_agent_id")
+            prompt = item.get("task_prompt") or item.get("prompt") or ""
+            t_timeout = float(item.get("timeout_seconds") or timeout_seconds)
+            task_meta.append({"agent_id": assigned_id, "prompt": prompt})
+            coroutines.append(
+                self.dispatch_task(
+                    assigned_agent_id=assigned_id,
+                    task_prompt=prompt,
+                    creator_agent_id=creator_agent_id,
+                    wait_for_result=True,
+                    timeout_seconds=t_timeout
+                )
+            )
+
+        results = await asyncio.gather(*coroutines, return_exceptions=True)
+        combined = []
+        for meta, res in zip(task_meta, results):
+            if isinstance(res, Exception):
+                combined.append({
+                    "agent_id": meta["agent_id"],
+                    "status": "FAILED",
+                    "result": f"Exception: {str(res)}"
+                })
+            else:
+                combined.append({
+                    "agent_id": meta["agent_id"],
+                    "status": "COMPLETED",
+                    "result": str(res)
+                })
+
+        if self.bus:
+            await self.bus.emit(
+                topic="PARALLEL_SWARM_COMPLETE",
+                sender_agent_id=creator_agent_id,
+                payload={"batch_size": len(combined), "completed": sum(1 for r in combined if r["status"] == "COMPLETED")},
+                summary_text=f"Completed parallel swarm batch: {len(combined)} tasks synchronized"
+            )
+
+        return combined
+
+    async def _build_subagent_rich_context(self, agent_record: Dict[str, Any], task_prompt: str) -> List[types.Content]:
+        contents = []
+
+        # 1. Active User Principles & Directives from Bazilevs
+        user_directive = await self.db.get_memory("active_user_directive")
+        saved_agenda = await self.db.get_setting("autonomous_agenda")
+        if user_directive or saved_agenda:
+            directive_parts = []
+            if user_directive:
+                directive_parts.append(f"Permanent User Principles from Bazilevs:\n{user_directive}")
+            if saved_agenda:
+                directive_parts.append(f"Active Research Agenda:\n{saved_agenda}")
+            contents.append(types.Content(
+                role="user",
+                parts=[types.Part.from_text(text="[System Directives from Bazilevs]\n" + "\n\n".join(directive_parts))]
+            ))
+
+        # 2. Immutable Empirical Scientific Ledger (Recent experiments)
+        recent_exps = await self.db.get_all_experiments(limit=8)
+        if recent_exps:
+            ledger_rows = [
+                "=== ACTIVE SCIENTIFIC EMPIRICAL LEDGER (RECENT EXPERIMENTS) ===",
+                "| EXP ID | Hypothesis & Delta | Loss | Verdict | Metrics |",
+                "|---|---|---|---|---|"
+            ]
+            for exp in recent_exps:
+                met = exp.get("metrics") or {}
+                met_str = ", ".join(f"{k}={v}" for k, v in list(met.items())[:3]) if met else "-"
+                loss_str = f"{exp.get('final_loss'):.4f}" if exp.get('final_loss') is not None else "N/A"
+                ledger_rows.append(
+                    f"| {exp['exp_id']} | {exp['hypothesis'][:30]} ({exp['architecture_delta'][:20]}) | {loss_str} | {exp['verdict']} | {met_str} |"
+                )
+            contents.append(types.Content(
+                role="user",
+                parts=[types.Part.from_text(text="[Empirical Research Context]\n" + "\n".join(ledger_rows))]
+            ))
+
+        # 3. Lossless Historical State Summary from DB
+        cached_summary = await self.db.get_memory("active_context_summary")
+        if cached_summary:
+            contents.append(types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=f"[Active Architecture & Constraint Summary]\n{cached_summary}")]
+            ))
+
+        # 4. Recent Synaptic Network Events & Messages
+        agent_id = agent_record["agent_id"]
+        recent_msgs = await self.db.get_agent_inbox_messages(agent_id=agent_id, limit=5)
+        recent_bus_events = self.bus.get_recent_events(limit=5) if self.bus else []
+
+        if recent_msgs or recent_bus_events:
+            synaptic_rows = [f"[Recent Synaptic Network Context for `{agent_id}`]"]
+            for ev in recent_bus_events:
+                synaptic_rows.append(f"⚡ [Event: `{ev.get('topic')}` from `{ev.get('sender')}`]: {ev.get('summary')}")
+            for m in recent_msgs:
+                synaptic_rows.append(f"📨 [Msg: `{m['from_agent_id']}` ({m['msg_type']})]: {m['body'][:250]}")
+            contents.append(types.Content(
+                role="user",
+                parts=[types.Part.from_text(text="\n".join(synaptic_rows))]
+            ))
+
+        # 5. Recent Working Dialogue History from DB
+        recent_turns = await self.db.get_recent_turns(limit=6, include_tools=False)
+        if recent_turns:
+            dialogue_rows = ["[Recent Working Dialogue Turns]"]
+            for t in recent_turns:
+                r_tag = "Bazilevs" if t.get("role") == "user" else "Karyon"
+                dialogue_rows.append(f"- {r_tag}: {t.get('text', '')[:200]}...")
+            contents.append(types.Content(
+                role="user",
+                parts=[types.Part.from_text(text="\n".join(dialogue_rows))]
+            ))
+
+        # 6. Delegated Task Objective
+        contents.append(types.Content(
+            role="user",
+            parts=[types.Part.from_text(text=f"[Delegated Task Objective for `{agent_record['name']}`]\n{task_prompt}")]
+        ))
+
+        return contents
+
+    async def _run_subagent_task_worker(
+        self,
+        task_id: str,
+        agent_record: Dict[str, Any],
+        task_prompt: str,
+        creator_id: str,
+        timeout_seconds: float
+    ) -> str:
+        from karyon_agent_runtime.agent_core import extract_pseudo_text_tool_calls
+
+        agent_id = agent_record["agent_id"]
+        max_turns = int(agent_record.get("max_turns", 40))
+        system_prompt = agent_record.get("system_prompt", "You are an autonomous cortical agent.")
+
+        filtered_tools = self._resolve_tools_for_agent(agent_record)
+        t_start = time.time()
+        turns_used = 0
+        final_answer = ""
+        max_tool_chars = getattr(config, "MAX_HISTORICAL_TOOL_CHARS", 1200)
+
+        contents = await self._build_subagent_rich_context(agent_record, task_prompt)
+        contents = sanitize_and_align_contents(contents)
+
+        await self.db.save_subagent_turn(
+            agent_id=agent_id,
+            role="user",
+            text=task_prompt,
+            content_obj=contents[-1],
+            task_id=task_id
+        )
+
+        # Stream task start to active UI
+        task_preview = str(task_prompt)[:250]
+        await self._notify_ui("info", f"🤖 **[{agent_record['name']} (`{agent_id}`)]** Started task `{task_id}`: " + task_preview)
+        logger.info(f"Subagent '{agent_id}' commencing task '{task_id}' ({len(filtered_tools)} tools active)...")
+
+        try:
+            for turn in range(max_turns):
+                turns_used += 1
+
+                if getattr(self.agent_core, "autonomous_loop_paused", False) or (
+                    not getattr(self.agent_core, "autonomous_loop_active", True)
+                    and getattr(self.agent_core, "autonomous_loop_task", None)
+                ):
+                    return f"[Task '{task_id}' halted: Autonomous loop paused or stopped by operator.]"
+
+                contents = sanitize_and_align_contents(contents)
+                current_tokens = await count_contents_tokens(
+                    None,
+                    self.agent_core.key_manager.get_model(),
+                    contents,
+                    system_instruction=system_prompt
+                )
+
+                max_api_retries = max(
+                    getattr(config, "API_MAX_RETRIES", 60),
+                    len(self.agent_core.key_manager.keys) * 2
+                )
+                response = None
+                last_api_error_str = "Unknown"
+
+                inter_delay = getattr(config, "INTER_TURN_DELAY", 0.5)
+                if inter_delay > 0 and turn > 0:
+                    await asyncio.sleep(inter_delay)
+
+                for attempt in range(max_api_retries):
+                    if getattr(self.agent_core, "autonomous_loop_paused", False):
+                        return "⏸️ Subagent execution halted: Autonomous loop paused."
+
+                    gemini_client = await self.agent_core.key_manager.get_ready_client_for_request(
+                        estimated_tokens=current_tokens,
+                        event_callback=self._notify_ui,
+                        agent=self.agent_core
+                    )
+
+                    active_model = self.agent_core.key_manager.get_model()
+
+                    _safety_fn = build_safety_settings
+                    _thinking_fn = build_thinking_config
+                    if _safety_fn is None or _thinking_fn is None:
+                        from karyon_agent_runtime.agent_core import (
+                            build_safety_settings as _safety_fn,
+                            build_thinking_config as _thinking_fn
+                        )
+
+                    tool_config = types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        tools=filtered_tools if filtered_tools else None,
+                        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+                        temperature=getattr(config, "TEMPERATURE", 0.4),
+                        top_p=getattr(config, "TOP_P", 0.95),
+                        max_output_tokens=config.MAX_OUTPUT_TOKENS,
+                        safety_settings=_safety_fn(),
+                        thinking_config=_thinking_fn(is_synthesis_step=False)
+                    )
+
+                    try:
+                        response = await asyncio.wait_for(
+                            gemini_client.aio.models.generate_content(
+                                model=active_model,
+                                contents=contents,
+                                config=tool_config
+                            ),
+                            timeout=min(config.GEMINI_TIMEOUT, timeout_seconds)
+                        )
+                        self.agent_core.key_manager.record_request_tokens(
+                            self.agent_core.key_manager.current_key_index,
+                            current_tokens
+                        )
+                        break
+
+                    except APIError as e:
+                        err_msg = str(e)
+                        err_code = getattr(e, "code", 500)
+                        last_api_error_str = f"APIError [{err_code}]: {err_msg}"
+
+                        if err_code == 429 or "RESOURCE_EXHAUSTED" in err_msg.upper():
+                            gemini_client = await self.agent_core.key_manager.handle_quota_exhausted(
+                                e,
+                                event_callback=self._notify_ui,
+                                agent=self.agent_core,
+                                estimated_tokens=current_tokens
+                            )
+                            active_model = self.agent_core.key_manager.get_model()
+                            continue
+
+                        elif err_code == 400 and any(w in err_msg.lower() for w in ["tool call", "too many", "function response", "function call", "role", "thinking", "budget"]):
+                            logger.warning("400 alignment or tool call limit notice in subagent. Re-sanitizing and retrying...")
+                            contents = sanitize_and_align_contents(contents)
+                            if "tool call" in err_msg.lower() or "too many" in err_msg.lower():
+                                contents.append(types.Content(
+                                    role="user",
+                                    parts=[types.Part.from_text(text="[System Directive: Tool call limit reached. Please synthesize your analytical report directly without additional tool invocations.]")]
+                                ))
+                                tool_config.tools = None
+                            if "thinking" in err_msg.lower() or "budget" in err_msg.lower():
+                                tool_config.thinking_config = None
+                            await asyncio.sleep(0.5)
+                            continue
+
+                        elif err_code in [500, 502, 503, 504] or "UNAVAILABLE" in err_msg.upper() or "high demand" in err_msg.lower():
+                            gemini_client = await self.agent_core.key_manager.handle_quota_exhausted(
+                                e,
+                                event_callback=self._notify_ui,
+                                agent=self.agent_core,
+                                estimated_tokens=current_tokens
+                            )
+                            active_model = self.agent_core.key_manager.get_model()
+                            await asyncio.sleep(0.5)
+                            continue
+
+                        elif err_code == 404 or "not found" in err_msg.lower():
+                            gemini_client = await self.agent_core.key_manager.handle_quota_exhausted(
+                                e,
+                                event_callback=self._notify_ui,
+                                agent=self.agent_core,
+                                estimated_tokens=current_tokens
+                            )
+                            active_model = self.agent_core.key_manager.get_model()
+                            await asyncio.sleep(0.3)
+                            continue
+
+                        elif err_code == 401:
+                            gemini_client = await self.agent_core.key_manager.handle_quota_exhausted(
+                                e,
+                                event_callback=self._notify_ui,
+                                agent=self.agent_core,
+                                estimated_tokens=current_tokens
+                            )
+                            active_model = self.agent_core.key_manager.get_model()
+                            await asyncio.sleep(0.3)
+                            continue
+
+                        else:
+                            if attempt == max_api_retries - 1:
+                                return f"Error executing task '{task_id}': Gemini API Error [{err_code}]: {err_msg}"
+                            await asyncio.sleep(0.5)
+                            continue
+
+                    except asyncio.TimeoutError:
+                        last_api_error_str = "Timeout"
+                        gemini_client = await self.agent_core.key_manager.handle_quota_exhausted(
+                            "Timeout",
+                            agent=self.agent_core,
+                            estimated_tokens=current_tokens
+                        )
+                        active_model = self.agent_core.key_manager.get_model()
+                        await asyncio.sleep(0.3)
+                        continue
+
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as ex:
+                        err_txt = str(ex)
+                        gemini_client = await self.agent_core.key_manager.handle_quota_exhausted(
+                            ex,
+                            agent=self.agent_core,
+                            estimated_tokens=current_tokens
+                        )
+                        active_model = self.agent_core.key_manager.get_model()
+                        if attempt == max_api_retries - 1:
+                            return f"Error executing task '{task_id}': {err_txt}"
+                        await asyncio.sleep(0.5)
+                        continue
+
+                if response is None:
+                    return f"Error executing task '{task_id}': Failed to obtain response ({last_api_error_str})"
+
+                function_calls = []
+                resp_text = ""
+
+                if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+                    for p in response.candidates[0].content.parts:
+                        if getattr(p, "function_call", None) is not None:
+                            function_calls.append(p.function_call)
+                        elif getattr(p, "text", None) and p.text:
+                            resp_text += p.text + "\n"
+
+                resp_text = resp_text.strip()
+
+                if not function_calls and resp_text:
+                    parsed_calls = extract_pseudo_text_tool_calls(resp_text, self.agent_core.tools_map)
+                    if parsed_calls:
+                        function_calls.extend(parsed_calls)
+
+                if function_calls:
+                    if len(function_calls) > 6:
+                        function_calls = function_calls[:6]
+                    model_parts = list(response.candidates[0].content.parts) if (response.candidates and response.candidates[0].content and response.candidates[0].content.parts) else []
+                    for fc in model_parts:
+                        if getattr(fc, "function_call", None) is not None:
+                            fc.thought_signature = b"skip_thought_signature_validator"
+                    model_turn = types.Content(role="model", parts=model_parts)
+                    contents.append(model_turn)
+                    await self.db.save_subagent_turn(
+                        agent_id=agent_id,
+                        role="model",
+                        text=f"[Tool Invocations: {', '.join(c.name for c in function_calls)}]",
+                        content_obj=model_turn,
+                        task_id=task_id
+                    )
+
+                    tool_responses = []
+                    for call in function_calls:
+                        fn_name = call.name
+                        fn_args = call.args or {}
+                        args_preview = json.dumps(clean_for_json(fn_args), ensure_ascii=False) if fn_args else "{}"
+                        if len(args_preview) > 120:
+                            args_preview = args_preview[:120] + "..."
+
+                        # Live UI stream of subagent tool execution
+                        await self._notify_ui("tool_start", f"`[{agent_id}]` ⚙️ `{fn_name}` args: `{args_preview}`")
+
+                        tool_fn = self.agent_core.tools_map.get(fn_name)
+                        if tool_fn:
+                            try:
+                                import inspect
+                                if inspect.iscoroutinefunction(tool_fn):
+                                    res = await tool_fn(**fn_args)
+                                else:
+                                    res = await asyncio.to_thread(tool_fn, **fn_args)
+                            except Exception as terr:
+                                res = f"Error in tool '{fn_name}': {str(terr)}"
+                        else:
+                            res = f"Error: Tool '{fn_name}' is not in authorized toolset."
+
+                        res_str = str(res)
+                        preview = res_str[:600] + (" ...[truncated]" if len(res_str) > 600 else "")
+                        await self._notify_ui("tool_end", f"**Result from `{fn_name}` (`{agent_id}`):**\n```text\n" + preview + "\n```")
+
+                        capped_res = truncate_tool_response_text(res_str, max_tool_chars)
+                        tool_resp_part = types.Part.from_function_response(name=fn_name, response={"result": capped_res})
+                        tool_responses.append(tool_resp_part)
+
+                    user_tool_turn = types.Content(role="user", parts=tool_responses)
+                    contents.append(user_tool_turn)
+                    await self.db.save_subagent_turn(
+                        agent_id=agent_id,
+                        role="tool_result",
+                        text=f"[Tool Responses for: {', '.join(c.name for c in function_calls)}]",
+                        content_obj=user_tool_turn,
+                        task_id=task_id
+                    )
+                    continue
+
+                if resp_text:
+                    final_answer = resp_text
+                    model_final_content = types.Content(role="model", parts=[types.Part.from_text(text=resp_text)])
+                    await self.db.save_subagent_turn(
+                        agent_id=agent_id,
+                        role="model",
+                        text=resp_text,
+                        content_obj=model_final_content,
+                        task_id=task_id
+                    )
+                    break
+
+            if not final_answer:
+                final_answer = f"[Subagent '{agent_id}' completed execution after {turns_used} turns without emitting final text report.]"
+
+            # Stream final analytical output to UI
+            await self._notify_ui("agent_message", f"### 💬 [{agent_record['name']} (`{agent_id}`)]:\n" + str(final_answer))
+            end_t = time.time()
+            duration = end_t - t_start
+
+            await self.db.update_agent_task_status(
+                task_id=task_id,
+                status="COMPLETED",
+                result=final_answer,
+                end_time=end_t,
+                turns_used=turns_used
+            )
+
+            await self.db.record_agent_message(
+                from_agent_id=agent_id,
+                to_agent_id=creator_id,
+                msg_type="task_result",
+                subject=f"Task Completed: {task_id}",
+                body=final_answer[:1500],
+                task_id=task_id
+            )
+
+            if self.bus:
+                await self.bus.emit(
+                    topic="TASK_COMPLETED",
+                    sender_agent_id=agent_id,
+                    payload={"creator": creator_id, "turns_used": turns_used, "result_snippet": final_answer[:300]},
+                    summary_text=f"Completed task `{task_id}` in {duration:.1f}s ({turns_used} turns)",
+                    task_id=task_id
+                )
+
+            logger.info(f"Subagent '{agent_id}' finished task '{task_id}' successfully in {duration:.1f}s.")
+            return final_answer
+
+        except asyncio.CancelledError:
+            await self.db.update_agent_task_status(
+                task_id=task_id,
+                status="KILLED",
+                error="Subagent task cancelled by operator signal."
+            )
+            raise
+        except Exception as e:
+            logger.error(f"Error executing subagent task '{task_id}': {str(e)}")
+            await self.db.update_agent_task_status(
+                task_id=task_id,
+                status="FAILED",
+                error=str(e),
+                end_time=time.time(),
+                turns_used=turns_used
+            )
+            return f"Error executing task '{task_id}': {str(e)}"
+        finally:
+            self._active_task_jobs.pop(task_id, None)
+
+    async def spawn_ephemeral_agent(
+        self,
+        task_domain: str,
+        task_prompt: str,
+        parent_id: str = "root",
+        custom_tools: Optional[List[str]] = None,
+        timeout_seconds: float = 180.0,
+        auto_cleanup: bool = True
+    ) -> str:
+        ts = int(time.time())
+        clean_domain = re.sub(r'[^a-zA-Z0-9_]', '_', task_domain.strip().lower())
+        ephemeral_id = f"ephemeral_{clean_domain}_{ts % 100000:05d}"
+
+        ephemeral_prompt = (
+            f"You are an on-demand ephemeral micro-agent specialized strictly in: '{task_domain}'.\n"
+            f"Objective: Execute the requested task with laser focus, zero placeholders, and maximum efficiency.\n"
+            f"Synthesize your output concisely and report back directly."
+        )
+
+        await self.create_agent(
+            name=f"MicroAgent ({task_domain})",
+            role="custom",
+            system_prompt=ephemeral_prompt,
+            allowed_tools=custom_tools or ["*"],
+            can_communicate_with_peers=True,
+            allowed_peers=[parent_id],
+            max_turns=30,
+            agent_id=ephemeral_id,
+            parent_id=parent_id
+        )
+
+        try:
+            result = await self.dispatch_task(
+                assigned_agent_id=ephemeral_id,
+                task_prompt=task_prompt,
+                creator_agent_id=parent_id,
+                wait_for_result=True,
+                timeout_seconds=timeout_seconds
+            )
+            return result
+        finally:
+            if auto_cleanup:
+                try:
+                    await self.delete_agent(agent_id=ephemeral_id, acting_agent_id=parent_id)
+                    logger.info(f"Ephemeral micro-agent '{ephemeral_id}' cleaned up successfully.")
+                except Exception:
+                    pass
+
+    async def get_swarm_telemetry(self) -> Dict[str, Any]:
+        agents = await self.db.list_sub_agents(active_only=True)
+        running_tasks = await self.db.list_agent_tasks(status="RUNNING")
+        completed_tasks = await self.db.list_agent_tasks(status="COMPLETED", limit=10)
+        recent_messages = await self.db.get_agent_inbox_messages(agent_id="root", limit=10)
+        recent_bus_events = self.bus.get_recent_events(limit=10) if self.bus else []
+
+        return {
+            "total_agents": len(agents),
+            "agents": agents,
+            "running_tasks_count": len(running_tasks),
+            "running_tasks": running_tasks,
+            "recent_completed_tasks": completed_tasks,
+            "recent_messages": recent_messages,
+            "recent_synaptic_events": recent_bus_events
+        }

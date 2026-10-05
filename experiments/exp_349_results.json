@@ -1,0 +1,152 @@
+{
+  "exp_id": "EXP-349",
+  "initial_loss": 0.01031205226336756,
+  "final_loss": 0.008370921706720706,
+  "delta_loss": 0.0019411305566468546,
+  "throughput_tok_per_sec": 55515.13110170947,
+  "vram_mb": 45.78515625,
+  "final_operator_count": 5,
+  "verdict": "\ud83d\udd34 REJECTED",
+  "history": [
+    {
+      "epoch": 1,
+      "loss": 0.01031205226336756,
+      "free_energy": 0.01141954802217022,
+      "num_operators": 2,
+      "chem_norm": 1.614440679550171
+    },
+    {
+      "epoch": 2,
+      "loss": 0.009439202836684642,
+      "free_energy": 0.010570234078313074,
+      "num_operators": 2,
+      "chem_norm": 1.6142765283584595
+    },
+    {
+      "epoch": 3,
+      "loss": 0.009004238392076185,
+      "free_energy": 0.010149308239981052,
+      "num_operators": 2,
+      "chem_norm": 1.6141777038574219
+    },
+    {
+      "epoch": 4,
+      "loss": 0.008812365843163382,
+      "free_energy": 0.00994849814883163,
+      "num_operators": 3,
+      "chem_norm": 1.614402413368225
+    },
+    {
+      "epoch": 5,
+      "loss": 0.008672925553494883,
+      "free_energy": 0.009851232531570619,
+      "num_operators": 3,
+      "chem_norm": 1.6142396926879883
+    },
+    {
+      "epoch": 6,
+      "loss": 0.008711809983416911,
+      "free_energy": 0.00992375026426969,
+      "num_operators": 3,
+      "chem_norm": 1.6144975423812866
+    },
+    {
+      "epoch": 7,
+      "loss": 0.008272606999643387,
+      "free_energy": 0.009495418518781662,
+      "num_operators": 3,
+      "chem_norm": 1.614380955696106
+    },
+    {
+      "epoch": 8,
+      "loss": 0.008749756751762282,
+      "free_energy": 0.009950678585277449,
+      "num_operators": 4,
+      "chem_norm": 1.6141633987426758
+    },
+    {
+      "epoch": 9,
+      "loss": 0.008660833681783369,
+      "free_energy": 0.009875212946245748,
+      "num_operators": 4,
+      "chem_norm": 1.6143580675125122
+    },
+    {
+      "epoch": 10,
+      "loss": 0.008698703781250984,
+      "free_energy": 0.009912887287716712,
+      "num_operators": 4,
+      "chem_norm": 1.6144322156906128
+    },
+    {
+      "epoch": 11,
+      "loss": 0.008343952437562327,
+      "free_energy": 0.009540781378746033,
+      "num_operators": 4,
+      "chem_norm": 1.6144615411758423
+    },
+    {
+      "epoch": 12,
+      "loss": 0.008504646619962107,
+      "free_energy": 0.00969935824433642,
+      "num_operators": 5,
+      "chem_norm": 1.6143838167190552
+    },
+    {
+      "epoch": 13,
+      "loss": 0.00885333619531124,
+      "free_energy": 0.010060383277314325,
+      "num_operators": 5,
+      "chem_norm": 1.6143144369125366
+    },
+    {
+      "epoch": 14,
+      "loss": 0.007963717434435122,
+      "free_energy": 0.009177351761008463,
+      "num_operators": 5,
+      "chem_norm": 1.6141120195388794
+    },
+    {
+      "epoch": 15,
+      "loss": 0.008994475758123783,
+      "free_energy": 0.010179765732778658,
+      "num_operators": 5,
+      "chem_norm": 1.614539384841919
+    },
+    {
+      "epoch": 16,
+      "loss": 0.008843357494521526,
+      "free_energy": 0.010078870300804415,
+      "num_operators": 5,
+      "chem_norm": 1.6144498586654663
+    },
+    {
+      "epoch": 17,
+      "loss": 0.008668396982454484,
+      "free_energy": 0.009855306917621244,
+      "num_operators": 5,
+      "chem_norm": 1.6140793561935425
+    },
+    {
+      "epoch": 18,
+      "loss": 0.008648883521316512,
+      "free_energy": 0.009873034762999704,
+      "num_operators": 5,
+      "chem_norm": 1.614328145980835
+    },
+    {
+      "epoch": 19,
+      "loss": 0.008466831408441067,
+      "free_energy": 0.009677698835730553,
+      "num_operators": 5,
+      "chem_norm": 1.6144444942474365
+    },
+    {
+      "epoch": 20,
+      "loss": 0.008370921706720706,
+      "free_energy": 0.009567330020569986,
+      "num_operators": 5,
+      "chem_norm": 1.6142371892929077
+    }
+  ]
+}
