@@ -81,31 +81,21 @@ class KaryonEntity:
         # Wrap states for serializer compatibility
         class MockHU:
             def __init__(self, hu_nexus, device):
-                if hu_nexus is not None and hasattr(hu_nexus, 'get_states'):
+                if hu_nexus is not None:
                     self.state = hu_nexus.get_states().unsqueeze(0)
-                elif hu_nexus is not None and hasattr(hu_nexus, 'state'):
-                    self.state = hu_nexus.state
                 else:
                     self.state = torch.tensor([[0.85, 1.0, 0.8, 1.0, 0.05, 0.05]], device=device)
 
-        class HopfieldMemoryStateAdapter:
+        class MockMem:
             def __init__(self, hopfield, device):
-                if hopfield is not None and hasattr(hopfield, 'context_keys'):
-                    self.keys = hopfield.context_keys.unsqueeze(0).to(device)
-                    self.values = hopfield.action_keys.unsqueeze(0).to(device)
-                    act_ep = getattr(hopfield, 'active_episodes', 0)
-                    self.pointer = torch.tensor([act_ep], dtype=torch.long, device=device)
-                    max_ep = getattr(hopfield, 'max_episodes', self.keys.size(1))
-                    self.size = torch.tensor([max_ep], dtype=torch.long, device=device)
-                else:
-                    self.keys = torch.zeros(1, 32, 256, device=device)
-                    self.values = torch.zeros(1, 32, 256, device=device)
-                    self.pointer = torch.zeros(1, dtype=torch.long, device=device)
-                    self.size = torch.tensor([32], dtype=torch.long, device=device)
+                self.keys = torch.zeros(1, 32, 256, device=device)
+                self.values = torch.zeros(1, 32, 256, device=device)
+                self.pointer = torch.zeros(1, dtype=torch.long, device=device)
+                self.size = torch.tensor([32], dtype=torch.long, device=device)
 
         save_karyon(
             agent=self.brain,
-            memory=HopfieldMemoryStateAdapter(self.memory, self.device),
+            memory=MockMem(self.memory, self.device),
             hu=MockHU(self.hu, self.device),
             h_fast=self.h_fast,
             h_slow=self.h_slow,
