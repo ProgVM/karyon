@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-353",
+  "verdict": "POSITIVE",
+  "initial_loss": 1.2564911842346191,
+  "final_loss": 0.2133287489414215,
+  "delta_loss": 1.0431624352931976,
+  "tok_per_sec": 426979.08301857125,
+  "val_free_energy": 0.2187677298784256,
+  "final_curvature": 0.09161065518856049,
+  "final_phase_dispersion": 0.15923960506916046,
+  "duration_sec": 2.8778927326202393
+}
