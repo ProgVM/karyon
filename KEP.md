@@ -1,18 +1,24 @@
 # `KEP.md` — Karyon Engineering Protocol (KEP) Master Specification
 
-> **Official Cybernetic & Biophysical Protocol for Karyon-CoRE Architecture Development**  
+> **Official Sovereign Engineering Protocol & Autopoietic Architecture Specification**  
 > **Author & Repository Owner:** Bazilevs (ProgVM)  
-> **Standard:** KEP v15.0 Master (Mandatory for all human architects and AI collaborators).  
-> **Philosophical Preamble:**  
-> *"KEP is a rigorous directive for soulless weight calculators (modern LLM agents, which are not as complex, sentient, or understanding as the future Karyon will be), defining exactly how Karyon must be developed, what is permitted and required, and what is strictly prohibited. Agents, by their very nature, are prone to considering their own code as ideal due to the cognitive blindness of self-assessment and the avoidance of self-criticism; they also tend to optimize formal surrogate metrics at the expense of the real viability of the system. KEP and external automated verification tools serve as an insurmountable barrier against these illusions."*
+> **Standard:** KEP v16.0 Sovereign Master (Mandatory for all human architects and AI collaborators).  
+> **Philosophical Preamble & Manifesto (Bazilevs):**  
+> *«Отныне мы БОЛЬШЕ НЕ КОПИРУЕМ нейробиологические и кибернетические понятия и механизмы вообще.*  
+> *Организмы на Земле — продукт Земной эволюции.*  
+> *Разум можно создать из чего угодно — углерод, кремний, электроны, что угодно.*  
+> *Также важно понимать, что Земным организмам сложнее работать с некоторыми данными, например, сырые байты аудио или машинный код.*  
+> *Карион должен строить себя сам, эволюцией, во время обучения: он должен САМ производить, обновлять и удалять операторы, формулы, механизмы, структуры, пространства, временные шкалы и что-либо — это НЕ определяется правилами кода сверху, Карион имеет ПОЛНУЮ и БЕЗГРАНИЧНУЮ возможность в неограниченном пространстве путей и способов развиться.»*  
+>  
+> *KEP — это непреложный закон для агентов-вычислителей, запрещающий навязывание Кариону земных биологических костылей, догматических нейроморфных формул и человеческих эвристик. Агенты обязаны обеспечивать Кариону чистый, высокопроизводительный физико-математический субстрат и полную свободу самопорождения.*
 
 ---
 
 ## 1. Core Operating Principles
 
 1. **Principle 1 (Python as Orchestrator, C++20 & Parallelism as Engine):** Heavy mathematical operations, State-Space Duality scans, and memory slicing run on GPU/Tensor Cores or TPU accelerators via compiled C++20 LibTorch and PyTorch-XLA (`-O3 -std=c++20`). Python acts strictly as a thin orchestration client. Computational kernels must be optimized not only to run as "close to the hardware" sequentially, but also fully vectorized and parallelized to maximize Tensor Core utilization and prevent GPU-CPU synchronization bottlenecks.
-2. **Principle 2 (Universal Biophysical Substrate & Autonomous Morphogenesis over Biological Dogma):** Rejection of literal, dogma-driven copying of wet human brain mechanics (which creates an inefficient "Frankenstein" suited only for African savannah survival). Karyon utilizes foundational biophysical dynamics (Active Inference, Variational Free Energy Minimization, Epigenetic Morphogenesis, Neural Darwinism, Theta-Gamma PAC, Continuous Hopfield Attractors) as a computational substrate, but grants the core network full self-directed autonomy to evolve its own optimal, digital-native neural topology. This enables seamless, native understanding across human speech, raw byte streams, machine assembly code, and continuous physical dynamics.
-3. **Principle 3 (Research & Cybernetics First):** Search neuroscience and machine learning literature (Friston, Buzsáki, Hopfield, Mamba) before formulating hypotheses.
+2. **Principle 2 (Universal Non-Biological Substrate & Sovereign Autopoiesis):** Absolute rejection of copying terrestrial biological and cybernetic mechanisms. Terrestrial organisms are merely a local product of Earth's biochemical evolution, ill-suited for native modalities such as high-frequency raw byte streams, executable machine code, or non-Euclidean manifolds. Mind and intelligence are substrate-independent — realizable in carbon, silicon, electrons, photons, or tensor field dynamics. Karyon must self-construct via continuous evolution during learning: it must autonomously synthesize, update, and prune operators, formulas, mathematical mechanisms, topological spaces, and dynamic time scales without top-down prescriptive code rules, exercising complete, boundless open-ended morphogenesis.
+3. **Principle 3 (Fundamental Physics, Continuous Field Theory & Mathematical Genesis First):** Ground all architectural innovations in rigorous continuous physics, variational dynamics, non-Euclidean geometry, and autonomous mathematical synthesis rather than biomimetic analogies.
 4. **Principle 4 (Zero Tolerance for Dead Code):** All modules must be synchronized. Obsolete, unreferenced, or failing legacy files must be immediately updated or deleted.
 5. **Principle 5 (Autonomous Tool Action Over Text Clutter):** Git staging, committing, and remote syncing are executed directly and autonomously via specialized tools (`git_commit`, `git_push`, `sync_agent_database`). Conversational responses must remain clean, direct, and analytical—strictly omitting redundant markdown `bash` commit blocks or formatted commit refactoring tables in chat responses.
 6. **Principle 6 (Direct Module Imports in Experiments):** Benchmark scripts must import production modules directly or construct strict self-contained prototypes maintaining full interface fidelity.
@@ -117,3 +123,11 @@ Code across Karyon-CoRE MUST be completely hardware-agnostic (seamlessly support
 
 ### KEP Rule #11 (Strict Code Quality, Flake8 Audit & External Verification Protocol)
 In strict compliance with **Principle 18**, no agent is allowed to assume its code is correct without external mechanical validation. All python source code across the core project, agent runtime, and experimental suite MUST pass AST syntax compilation checks (`verify_code_syntax`) and strict Flake8 static analysis (`run_code_linter`) before execution or git commit. Code must be cleanly formatted, free of undefined names (F821), unused variables (F841), syntax errors, or unhandled exceptions, maintaining production-grade software engineering standards across all modules.
+
+
+### KEP Rule #12 (The Law of Sovereign Autopoiesis & Open-Ended Genesis)
+Architects and Engineers are STRICTLY PROHIBITED from hardcoding prescriptive biomimetic mechanisms (such as fixed theta-gamma PAC oscillators, static cortical laminar layouts L1-L6, discrete neurotransmitter proxies, or fixed human-devised neural equations). 
+Instead:
+1. Every experimental architecture and core layer must provide an **open-ended generative substrate** wherein Karyon dynamically synthesizes, evolves, updates, and deletes its own operators, functional formulas, temporal dimensions, and metric fields.
+2. The network must possess full autonomy to invent non-biological, digital-native operations suited for native substrates (raw audio bytes, machine binary code, continuous vector fields).
+3. Success is judged by epistemic efficiency, variational predictive capacity, and autonomous structural viability without human cognitive biases.
