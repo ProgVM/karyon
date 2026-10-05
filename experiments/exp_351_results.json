@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-351",
+  "final_loss": 0.0036528664641082287,
+  "free_energy": 0.006582142206752906,
+  "branching_ratio_sigma": 0.969200074672699,
+  "gas_dispersion": 0.0002175006811739877,
+  "soliton_coherence": 0.041059743613004684,
+  "excitability_gain": 1.0963313579559326,
+  "throughput_tok_per_sec": 6090.408521906295,
+  "duration_sec": 25.219983100891113
+}
