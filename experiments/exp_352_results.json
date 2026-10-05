@@ -1,0 +1,24 @@
+{
+  "exp_id": "EXP-352",
+  "verdict": "POSITIVE",
+  "initial_loss": 0.30428212881088257,
+  "final_loss": 0.057584136724472046,
+  "delta_loss": 0.24669799208641052,
+  "tok_per_sec": 41740.142958600016,
+  "active_variables_count": 6,
+  "variable_names": [
+    "v1",
+    "v2",
+    "v3",
+    "v4",
+    "v5",
+    "v6"
+  ],
+  "synthesized_formulas": [
+    "0.55 * (neg(v2) - sin(v6)) + 0.13",
+    "0.73 * (neg(v3) - v3) + 0.13",
+    "0.16 * (neg(v3) - cos(v3)) + 0.13",
+    "0.47 * (neg(v1) - neg(v5)) + 0.13"
+  ],
+  "duration_sec": 24.532738208770752
+}
