@@ -8,7 +8,7 @@ Autopoietic Non-Linear Field Architecture:
 - Differential Riemannian Laplace-Beltrami Operator on Learned Metric g_uv
 - Soliton Field Propagation via Nonlinear Gross-Pitaevskii Equation
 - Dynamic Epigenetic Methylation (mu_k) and Gene Expression Gating
-- Pure Tensor Implementation without PCIe Sync Stalls or .item() in Loops
+- Pure Tensor Implementation without PCIe Sync Stalls or Inplace Gradient Errors
 ===============================================================================
 """
 
@@ -37,12 +37,16 @@ class SolitonResonator(nn.Module):
         self.w_real = nn.Linear(dim, dim)
         self.w_imag = nn.Linear(dim, dim)
 
-        # Epigenetic gene parameters
-        self.register_buffer("methylation", torch.tensor(0.1))  # mu_k methylation lock
         self.gene_expression = nn.Parameter(torch.randn(1, dim) * 0.02)
         self.self_interaction = nn.Parameter(torch.tensor(0.5))  # lambda coupling
 
-    def forward(self, psi_real: torch.Tensor, psi_imag: torch.Tensor, ext_force: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(
+        self,
+        psi_real: torch.Tensor,
+        psi_imag: torch.Tensor,
+        ext_force: torch.Tensor,
+        methylation: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         # Compute Riemannian metric deformation
         g_deform = self.metric_proj(ext_force)
         g_factor = torch.sigmoid(g_deform) + 0.1
@@ -53,7 +57,7 @@ class SolitonResonator(nn.Module):
 
         # Non-linear self-interaction term: lambda * |psi|^2 * psi
         psi_sq = psi_real ** 2 + psi_imag ** 2
-        nonlin_factor = self.self_interaction * psi_sq * (1.0 - self.methylation)
+        nonlin_factor = self.self_interaction * psi_sq * (1.0 - methylation.unsqueeze(-1))
 
         # Gross-Pitaevskii d_psi / dt field update
         d_psi_real = -laplace_imag + nonlin_factor * psi_imag + ext_force
@@ -104,12 +108,11 @@ class GRNQTMSModel(nn.Module):
         batch_size, seq_len = x.shape
         emb = self.embedding(x)  # [B, S, D]
 
-        # Initial wave fields
-        psi_real = torch.zeros_like(emb)
-        psi_imag = torch.zeros_like(emb)
+        curr_psi_real = torch.zeros(batch_size, self.dim, device=x.device)
+        curr_psi_imag = torch.zeros(batch_size, self.dim, device=x.device)
 
         field_outputs = []
-        total_kl_reg = torch.tensor(0.0, device=x.device)
+        kl_penalties = []
 
         for t in range(seq_len):
             ext_force = emb[:, t, :]  # [B, D]
@@ -120,28 +123,24 @@ class GRNQTMSModel(nn.Module):
 
             for k in range(self.num_resonators):
                 res = self.resonators[k]
-                # Update methylation lock dynamically
-                res.methylation = meth[:, k].mean().detach()
-
-                pr, pi, amp = res(psi_real[:, t, :], psi_imag[:, t, :], ext_force)
+                pr, pi, _ = res(curr_psi_real, curr_psi_imag, ext_force, meth[:, k])
                 weight = expr[:, k:k + 1]
 
                 step_real = step_real + weight * pr
                 step_imag = step_imag + weight * pi
 
-            psi_real[:, t, :] = step_real
-            psi_imag[:, t, :] = step_imag
+            curr_psi_real = step_real
+            curr_psi_imag = step_imag
 
-            # Wave amplitude field representation
-            amp_field = torch.sqrt(step_real ** 2 + step_imag ** 2 + 1e-8)
+            amp_field = torch.sqrt(curr_psi_real ** 2 + curr_psi_imag ** 2 + 1e-8)
             field_outputs.append(amp_field)
 
-            # Epigenetic complexity KL penalty
-            kl_penalty = (expr * torch.log(expr + 1e-8)).sum(dim=-1).mean()
-            total_kl_reg = total_kl_reg + kl_penalty
+            kl_pen = (expr * torch.log(expr + 1e-8)).sum(dim=-1).mean()
+            kl_penalties.append(kl_pen)
 
         out_field = torch.stack(field_outputs, dim=1)  # [B, S, D]
         logits = self.head(out_field)  # [B, S, V]
+        total_kl_reg = torch.stack(kl_penalties).mean()
 
         return logits, total_kl_reg, out_field
 

@@ -1,0 +1,8 @@
+{
+  "exp_id": "EXP-355",
+  "initial_loss": NaN,
+  "final_loss": NaN,
+  "delta_loss": NaN,
+  "tok_per_sec": 4396.098695174488,
+  "verdict": "\u26aa NEUTRAL / INCONCLUSIVE"
+}
