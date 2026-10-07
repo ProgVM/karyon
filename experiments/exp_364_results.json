@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-364",
+  "final_det_bit_errors": 4.0299625468164795,
+  "final_det_strain": 8.059295487339625,
+  "final_stoch_strain": 8.19784945316529,
+  "final_det_energy": 0.0,
+  "melting_events": 2047,
+  "crystallization_events": 0,
+  "tok_per_sec": 298.1938925607208,
+  "verdict": "\ud83d\udd34 REJECTED"
+}
