@@ -1,0 +1,27 @@
+{
+  "exp_id": "EXP-358",
+  "case_1_rigid": {
+    "name": "Case 1: Rigid Preset Lego Operators",
+    "initial_total_loss": 9.870998620986938,
+    "final_total_loss": 4.906118606682867,
+    "final_det_loss": 0.05881348764523864,
+    "final_stoch_loss": 4.847305119037628,
+    "delta_total_loss": 4.964880014304072,
+    "tok_per_sec": 16792.434351870896,
+    "sprouts": 0,
+    "elapsed_sec": 19.20865035057068
+  },
+  "case_2_sovereign": {
+    "name": "Case 2: True Sovereign Autopoietic Synthesis",
+    "initial_total_loss": 13.310800671577454,
+    "final_total_loss": 7.514998257160187,
+    "final_det_loss": 1.5243984460830688,
+    "final_stoch_loss": 5.990599811077118,
+    "delta_total_loss": 5.795802414417267,
+    "tok_per_sec": 4931.749086049725,
+    "sprouts": 3,
+    "elapsed_sec": 65.40478730201721
+  },
+  "sovereign_superiority": -2.60887965047732,
+  "verdict": "\u26aa NEUTRAL"
+}
