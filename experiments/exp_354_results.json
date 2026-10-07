@@ -1,0 +1,118 @@
+{
+  "exp_id": "EXP-354",
+  "initial_loss": 5.892412233352661,
+  "final_loss": 5.606853914260864,
+  "delta_loss": 0.2855583190917965,
+  "tok_per_sec": 247617.8672401157,
+  "final_operator_count": 5,
+  "total_sprouted": 5,
+  "total_pruned": 0,
+  "elapsed_seconds": 9.924970388412476,
+  "history": [
+    {
+      "epoch": 1,
+      "train_ce": 5.834448993206024,
+      "val_ce": 5.892412233352661,
+      "free_energy": 2280.2898558497427,
+      "operator_count": 3
+    },
+    {
+      "epoch": 2,
+      "train_ce": 5.9086895942687985,
+      "val_ce": 5.956039762496948,
+      "free_energy": 9037.761010742188,
+      "operator_count": 3
+    },
+    {
+      "epoch": 3,
+      "train_ce": 5.989505088329315,
+      "val_ce": 5.914200639724731,
+      "free_energy": 10911.575366210938,
+      "operator_count": 3
+    },
+    {
+      "epoch": 4,
+      "train_ce": 5.815348267555237,
+      "val_ce": 5.702529001235962,
+      "free_energy": 11613.710034179687,
+      "operator_count": 4
+    },
+    {
+      "epoch": 5,
+      "train_ce": 5.720381677150726,
+      "val_ce": 5.676581478118896,
+      "free_energy": 11428.820825195313,
+      "operator_count": 4
+    },
+    {
+      "epoch": 6,
+      "train_ce": 5.745445883274078,
+      "val_ce": 5.837161302566528,
+      "free_energy": 14668.71875,
+      "operator_count": 4
+    },
+    {
+      "epoch": 7,
+      "train_ce": 5.875170862674713,
+      "val_ce": 5.919750213623047,
+      "free_energy": 31877.70002441406,
+      "operator_count": 5
+    },
+    {
+      "epoch": 8,
+      "train_ce": 5.946699571609497,
+      "val_ce": 5.870253038406372,
+      "free_energy": 62073.8904296875,
+      "operator_count": 5
+    },
+    {
+      "epoch": 9,
+      "train_ce": 5.949431478977203,
+      "val_ce": 5.796765851974487,
+      "free_energy": 46789.93994140625,
+      "operator_count": 5
+    },
+    {
+      "epoch": 10,
+      "train_ce": 5.663314080238342,
+      "val_ce": 5.689810132980346,
+      "free_energy": 36812.36411132813,
+      "operator_count": 5
+    },
+    {
+      "epoch": 11,
+      "train_ce": 5.711871767044068,
+      "val_ce": 5.719621753692627,
+      "free_energy": 120280.12705078124,
+      "operator_count": 5
+    },
+    {
+      "epoch": 12,
+      "train_ce": 5.661729395389557,
+      "val_ce": 5.648739862442016,
+      "free_energy": 146471.5259765625,
+      "operator_count": 5
+    },
+    {
+      "epoch": 13,
+      "train_ce": 5.626944732666016,
+      "val_ce": 5.656179475784302,
+      "free_energy": 174852.8439453125,
+      "operator_count": 5
+    },
+    {
+      "epoch": 14,
+      "train_ce": 5.633694458007812,
+      "val_ce": 5.607030010223388,
+      "free_energy": 342680.261328125,
+      "operator_count": 5
+    },
+    {
+      "epoch": 15,
+      "train_ce": 5.603101241588592,
+      "val_ce": 5.606853914260864,
+      "free_energy": 427741.04296875,
+      "operator_count": 5
+    }
+  ]
+}

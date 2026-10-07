@@ -404,6 +404,7 @@ def run_exp_354():
         if epoch == 4:
             sprouted = model.operator_pool.sprout_operator("polynomial_harmonic")
             print(f"🌱 [Epoch {epoch} Autopoiesis] SPROUTED new operator: polynomial_harmonic | Total: {len(model.operator_pool.operators)}")
+            # Re-register optimizer params to include new parameters
             optimizer = torch.optim.AdamW(model.parameters(), lr=optimizer.param_groups[0]['lr'], weight_decay=1e-4)
 
         if epoch == 7:
@@ -427,7 +428,7 @@ def run_exp_354():
             logits, routing_mass, vitalities, metric_penalty = model(x)
 
             # Cross entropy loss for next-byte prediction (out of 256 byte classes)
-            ce_loss = F.cross_entropy(logits.reshape(-1, 256), y.reshape(-1))
+            ce_loss = F.cross_entropy(logits.view(-1, 256), y.view(-1))
             
             # Active Inference Variational Free Energy:
             # F = Accuracy (CE) + 0.005 * RiemannianCurvature + 0.001 * VitalityDisparity
@@ -459,7 +460,7 @@ def run_exp_354():
                 v_x = v_batch[:, :-1]
                 v_y = v_batch[:, 1:]
                 v_logits, v_mass, v_vit, v_metric = model(v_x)
-                v_loss = F.cross_entropy(v_logits.reshape(-1, 256), v_y.reshape(-1)).item()
+                v_loss = F.cross_entropy(v_logits.view(-1, 256), v_y.view(-1)).item()
                 val_ce_loss += v_loss
         val_ce_loss /= max(1, val_steps)
 
