@@ -98,7 +98,7 @@ class PrimitiveOp(nn.Module):
             out = new_state
 
         elif self.op_code == "state_space_decay":
-            decay_rate = torch.exp(-torch.softplus(self.log_decay))
+            decay_rate = torch.exp(-F.softplus(self.log_decay))
             p_s = prev_state if prev_state is not None else torch.zeros_like(x)
             new_state = decay_rate * p_s + (1.0 - decay_rate) * self.W_in(x)
             out = new_state

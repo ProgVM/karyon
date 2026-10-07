@@ -1,0 +1,16 @@
+{
+  "exp_id": "EXP-356",
+  "initial_loss": 5.824872374534607,
+  "final_loss": 4.650819778442383,
+  "delta_loss": 1.1740525960922241,
+  "tok_per_sec": 8548.884116971652,
+  "sprout_events": 3,
+  "final_node_types": [
+    "linear_leaky",
+    "bilinear_coupling",
+    "linear_leaky",
+    "linear_leaky",
+    "state_space_decay"
+  ],
+  "verdict": "\ud83d\udfe2 POSITIVE"
+}
