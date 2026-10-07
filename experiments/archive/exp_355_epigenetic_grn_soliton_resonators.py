@@ -6,9 +6,9 @@ EXP-355: Epigenetic Gene Regulatory Network for Dynamic Tensor Manifold Synthesi
 ===============================================================================
 Autopoietic Non-Linear Field Architecture:
 - Differential Riemannian Laplace-Beltrami Operator on Learned Metric g_uv
-- Soliton Field Propagation via Nonlinear Gross-Pitaevskii Equation
+- Soliton Field Propagation via Bounded Gross-Pitaevskii Equation
 - Dynamic Epigenetic Methylation (mu_k) and Gene Expression Gating
-- Pure Tensor Implementation without PCIe Sync Stalls or Inplace Gradient Errors
+- Epsilon-stabilized Numerics & LayerNorm Field Stabilization
 ===============================================================================
 """
 
@@ -37,8 +37,11 @@ class SolitonResonator(nn.Module):
         self.w_real = nn.Linear(dim, dim)
         self.w_imag = nn.Linear(dim, dim)
 
+        self.norm_real = nn.LayerNorm(dim)
+        self.norm_imag = nn.LayerNorm(dim)
+
         self.gene_expression = nn.Parameter(torch.randn(1, dim) * 0.02)
-        self.self_interaction = nn.Parameter(torch.tensor(0.5))  # lambda coupling
+        self.self_interaction = nn.Parameter(torch.tensor(0.1))  # lambda coupling
 
     def forward(
         self,
@@ -56,16 +59,16 @@ class SolitonResonator(nn.Module):
         laplace_imag = self.w_imag(psi_imag * g_factor)
 
         # Non-linear self-interaction term: lambda * |psi|^2 * psi
-        psi_sq = psi_real ** 2 + psi_imag ** 2
-        nonlin_factor = self.self_interaction * psi_sq * (1.0 - methylation.unsqueeze(-1))
+        psi_sq = torch.clamp(psi_real ** 2 + psi_imag ** 2, max=10.0)
+        nonlin_factor = torch.clamp(self.self_interaction, -1.0, 1.0) * psi_sq * (1.0 - methylation.unsqueeze(-1))
 
         # Gross-Pitaevskii d_psi / dt field update
         d_psi_real = -laplace_imag + nonlin_factor * psi_imag + ext_force
         d_psi_imag = laplace_real - nonlin_factor * psi_real
 
-        # Step integration (dt = 0.1)
-        psi_real_next = psi_real + 0.1 * d_psi_real
-        psi_imag_next = psi_imag + 0.1 * d_psi_imag
+        # Step integration with LayerNorm stabilization
+        psi_real_next = self.norm_real(torch.tanh(psi_real + 0.05 * d_psi_real))
+        psi_imag_next = self.norm_imag(torch.tanh(psi_imag + 0.05 * d_psi_imag))
 
         # Energy density / wave amplitude
         amplitude = torch.sqrt(psi_real_next ** 2 + psi_imag_next ** 2 + 1e-8)
@@ -162,7 +165,7 @@ def run_exp_355_benchmark():
     num_epochs = 10
 
     model = GRNQTMSModel(vocab_size=vocab_size, dim=dim, num_resonators=4).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
 
     data = generate_synthetic_bytecode_stream(num_samples=256, seq_len=seq_len).to(device)
 
@@ -185,7 +188,7 @@ def run_exp_355_benchmark():
             logits, kl_reg, _ = model(inputs)
 
             loss_rec = F.cross_entropy(logits.reshape(-1, vocab_size), targets.reshape(-1))
-            total_loss = loss_rec + 0.01 * kl_reg
+            total_loss = loss_rec + 0.001 * kl_reg
 
             total_loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
