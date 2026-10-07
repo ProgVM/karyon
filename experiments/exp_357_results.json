@@ -1,0 +1,30 @@
+{
+  "exp_id": "EXP-357",
+  "case_1_preset": {
+    "case_name": "Case 1: Preset Operator Bank (Hardcoded)",
+    "initial_loss": 5.594779014587402,
+    "final_loss": 4.805221140384674,
+    "delta_loss": 0.7895578742027283,
+    "tok_per_sec": 7232.361100434187,
+    "sprout_count": 0,
+    "elapsed_sec": 26.75972580909729
+  },
+  "case_2_sovereign": {
+    "case_name": "Case 2: Sovereign Formula Synthesizer (No Presets)",
+    "initial_loss": 5.837890326976776,
+    "final_loss": 4.4585703909397125,
+    "delta_loss": 1.3793199360370636,
+    "tok_per_sec": 3504.6933598202045,
+    "sprout_count": 3,
+    "elapsed_sec": 55.22194957733154,
+    "synthesized_formulas": [
+      "dState/dt = tau(0.35) * [-1.00*tanh(W*x) + 0.17*tanh(W*x) + -0.28*tanh(W*x)*sig(s) + 0.24*sin(W*x)] + diff(x)",
+      "dState/dt = tau(0.29) * [-0.48*tanh(W*x) + -0.01*tanh(W*x) + 1.14*gelu(W*x)*cos(W*x) + 0.55*tanh(W*x)] + diff(x)",
+      "dState/dt = tau(0.53) * [-1.17*sin(W*x) + 0.46*tanh(W*x)] + diff(x)",
+      "dState/dt = tau(0.63) * [0.12*gelu(W*x)*cos(W*x) + -0.30*sin(W*x) + -0.17*gelu(W*x)*cos(W*x) + -0.43*tanh(W*x)*sig(s)] + diff(x)",
+      "dState/dt = tau(0.43) * [0.50*sin(W*x) + -0.05*gelu(W*x)*cos(W*x)] + diff(x)"
+    ]
+  },
+  "superiority_delta": 0.34665074944496155,
+  "verdict": "\ud83d\udfe2 POSITIVE"
+}
