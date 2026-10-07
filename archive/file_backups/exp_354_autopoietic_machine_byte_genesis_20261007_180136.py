@@ -14,11 +14,11 @@ Sovereign Mathematical Benchmark for Karyon Autopoiesis:
    - Online Sprouting: Spawns new operator when prediction error / entropy exceeds threshold.
    - Online Pruning: Retires operators whose vitality V_k drops below extinction threshold.
    - Vitality dynamics: dV_k/dt = eta * routing_mass_k - gamma * V_k.
-4. Continuous Field & Normalized Riemannian Metric:
-   - Dynamic Metric Tensor G(e) = Softmax / LayerNorm bounded metric to ensure stable gradients without divergence.
+4. Continuous Field & Riemannian Metric:
+   - Dynamic Metric Tensor G(e) = L(e) L(e)^T + eps * I
    - Field ODE: dPsi/dtau = -Psi + sum_k omega_k * O_k(G(e) Psi)
 5. Active Inference Variational Free Energy:
-   - F = CrossEntropy(pred, target) + beta * MetricPenalty + lambda * VitalityDisparity
+   - F = CrossEntropy(pred, target) + beta * Tr((G - I)^2) + lambda * OperatorComplexity
 """
 
 import os
@@ -62,8 +62,10 @@ class SovereignOperator(nn.Module):
         self.register_buffer("vitality", torch.tensor(1.0, device=device))
 
         if op_type == "symplectic":
+            # Symplectic transformation J: skew-symmetric block matrix
             self.W = nn.Linear(dim, dim, bias=False, device=device)
             nn.init.orthogonal_(self.W.weight)
+            # Create fixed symplectic block J
             half = dim // 2
             J = torch.zeros(dim, dim, device=device)
             J[:half, half:] = torch.eye(half, device=device)
@@ -89,31 +91,32 @@ class SovereignOperator(nn.Module):
         else:
             raise ValueError(f"Unknown operator type: {op_type}")
 
-        self.norm = nn.LayerNorm(dim, device=device)
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.op_type == "symplectic":
+            # Symplectic continuous Hamiltonian flow: J @ tanh(W @ x)
             projected = torch.tanh(self.W(x))
-            out = torch.matmul(projected, self.J.t())
+            return torch.matmul(projected, self.J.t())
 
         elif self.op_type == "lie_bracket":
+            # Commutator / Lie algebra analog: [A, B] = A(x) * B(x) - B(x) * A(x)
             a = self.W_a(x)
             b = self.W_b(x)
-            out = a * torch.sin(b) - b * torch.sin(a)
+            return a * torch.sin(b) - b * torch.sin(a)
 
         elif self.op_type == "polynomial_harmonic":
+            # Continuous Chebyshev harmonic transformation
             h = self.W(x)
+            # T_1(h) = h, T_2(h) = 2h^2 - 1, T_3(h) = 4h^3 - 3h
             h_norm = torch.tanh(h)
             t2 = 2.0 * (h_norm ** 2) - 1.0
             t3 = 4.0 * (h_norm ** 3) - 3.0 * h_norm
-            out = h + self.alpha * t2 + self.beta * t3
+            return h + self.alpha * t2 + self.beta * t3
 
         elif self.op_type == "riemannian_warp":
-            out = self.scale * F.gelu(self.W(x))
-        else:
-            out = x
+            # Curvature metric nonlinear contraction
+            return self.scale * F.gelu(self.W(x))
 
-        return self.norm(out)
+        return x
 
 
 # =============================================================================
@@ -135,17 +138,22 @@ class AutopoieticPool(nn.Module):
         self.next_op_id = 0
 
         self.operators = nn.ModuleList()
+        # Initialize initial operators with distinct sovereign personalities
         for i in range(initial_count):
             op_type = self.AVAILABLE_TYPES[i % len(self.AVAILABLE_TYPES)]
             op = SovereignOperator(self.next_op_id, op_type, dim, device)
             self.operators.append(op)
             self.next_op_id += 1
 
+        # Gating network to compute routing weights omega_k
         self.gate = nn.Linear(dim, 1, bias=False, device=device)
+
+        # Telemetry counters
         self.total_sprouted = initial_count
         self.total_pruned = 0
 
     def sprout_operator(self, preferred_type: str = None) -> bool:
+        """Dynamically instantiates and injects a new operator into the active pool."""
         if len(self.operators) >= self.max_operators:
             return False
 
@@ -159,8 +167,9 @@ class AutopoieticPool(nn.Module):
         return True
 
     def prune_operators(self, min_vitality: float = 0.05) -> int:
+        """Removes operators whose vitality decayed below the extinction threshold."""
         if len(self.operators) <= 2:
-            return 0
+            return 0  # Maintain minimal constitutional diversity
 
         surviving = []
         pruned_count = 0
@@ -177,6 +186,7 @@ class AutopoieticPool(nn.Module):
         return pruned_count
 
     def update_vitality(self, routing_mass: torch.Tensor, gamma_decay: float = 0.02, eta_boost: float = 0.1):
+        """Updates internal operator vitality based on utilization in information flow."""
         with torch.no_grad():
             for i, op in enumerate(self.operators):
                 if i < routing_mass.shape[0]:
@@ -184,6 +194,7 @@ class AutopoieticPool(nn.Module):
                     op.vitality.copy_(torch.clamp(v_new, min=0.01, max=10.0))
 
     def forward(self, field_state: torch.Tensor):
+        # field_state: [B, L, D]
         K = len(self.operators)
         outputs = []
         raw_vitalities = []
@@ -193,15 +204,23 @@ class AutopoieticPool(nn.Module):
             outputs.append(out_k)
             raw_vitalities.append(op.vitality)
 
-        stacked = torch.stack(outputs, dim=0)  # [K, B, L, D]
+        # Stack outputs: [K, B, L, D]
+        stacked = torch.stack(outputs, dim=0)
         vitality_tensor = torch.stack(raw_vitalities, dim=0)  # [K]
 
-        projected = torch.stack([self.gate(out).squeeze(-1) for out in outputs], dim=0)  # [K, B, L]
+        # Dynamic routing weight: Softmax weighted by vitality and state alignment
+        # Compute projection score per operator
+        projected = torch.stack([self.gate(out).squeeze(-1) for out in outputs], dim=0) # [K, B, L]
+        # Modulate by operator vitality
         vitality_bias = torch.log(vitality_tensor + 1e-6).view(K, 1, 1)
         routing_logits = projected + vitality_bias
         omega = F.softmax(routing_logits, dim=0)  # [K, B, L]
 
+        # Weighted superposition of sovereign operators: sum_k omega_k * O_k(Psi)
+        # stacked: [K, B, L, D], omega: [K, B, L, 1]
         superposition = torch.sum(stacked * omega.unsqueeze(-1), dim=0)  # [B, L, D]
+
+        # Mean routing mass per operator across batch and sequence
         routing_mass = omega.mean(dim=(1, 2))  # [K]
 
         return superposition, routing_mass, vitality_tensor
@@ -213,7 +232,7 @@ class AutopoieticPool(nn.Module):
 
 class SovereignAutopoieticKaryon(nn.Module):
     """
-    Sovereign field model with normalized Riemannian metric tensor and autopoietic operator pool.
+    Sovereign field model with Riemannian metric tensor and autopoietic operator pool.
     """
     def __init__(self, vocab_size: int = 256, dim: int = 128, tau_steps: int = 3, device: torch.device = DEVICE):
         super().__init__()
@@ -222,48 +241,62 @@ class SovereignAutopoieticKaryon(nn.Module):
         self.tau_steps = tau_steps
         self.device = device
 
+        # Raw byte embedding into continuous high-dimensional manifold
         self.byte_embedding = nn.Embedding(vocab_size, dim, device=device)
-        self.pos_embedding = nn.Parameter(torch.randn(1, 256, dim, device=device) * 0.02)
 
-        # Continuous metric tensor generator with orthogonal initialization
+        # Continuous metric tensor generator: L(e) lower triangular matrix
+        # G(e) = L(e) L(e)^T + eps * I
         self.metric_L = nn.Linear(dim, dim * dim, bias=False, device=device)
-        nn.init.orthogonal_(self.metric_L.weight)
+        nn.init.normal_(self.metric_L.weight, std=0.01)
 
+        # Autopoietic operator pool
         self.operator_pool = AutopoieticPool(dim=dim, initial_count=3, max_operators=8, device=device)
 
+        # Output prediction head (predicts next byte in [0..255])
         self.norm = nn.LayerNorm(dim, device=device)
         self.head = nn.Linear(dim, vocab_size, bias=False, device=device)
 
     def compute_metric_tensor(self, x_emb: torch.Tensor):
+        # x_emb: [B, L, D] -> extract mean context for metric field
         mean_ctx = x_emb.mean(dim=1)  # [B, D]
         L_raw = self.metric_L(mean_ctx).view(-1, self.dim, self.dim)  # [B, D, D]
-        # Normalize L to prevent exploding metric growth
-        L_norm = F.normalize(L_raw, dim=(-2, -1))
+        # Symmetrize and ensure positive definiteness
         I = torch.eye(self.dim, device=self.device).unsqueeze(0)  # [1, D, D]
-        G = torch.bmm(L_norm, L_norm.transpose(1, 2)) + I  # [B, D, D]
-        
-        metric_penalty = torch.mean(torch.sum((G - I) ** 2, dim=(-2, -1)))
+        G = torch.bmm(L_raw, L_raw.transpose(1, 2)) + 0.1 * I  # [B, D, D]
+        # Metric complexity penalty: Tr((G - I)^2)
+        diff = G - I
+        metric_penalty = torch.mean(torch.sum(diff ** 2, dim=(-2, -1)))
         return G, metric_penalty
 
     def forward(self, byte_tokens: torch.Tensor):
+        # byte_tokens: [B, L]
         B, L = byte_tokens.shape
-        e = self.byte_embedding(byte_tokens) + self.pos_embedding[:, :L, :]  # [B, L, D]
+        e = self.byte_embedding(byte_tokens)  # [B, L, D]
 
+        # Dynamic Riemannian metric
         G, metric_penalty = self.compute_metric_tensor(e)  # G: [B, D, D]
 
+        # Continuous State Field Psi initialized from embedded signal
         Psi = e.clone()
+
+        # Continuous Field ODE integration over tau
+        # dPsi/dtau = -Psi + Pool(G @ Psi)
         all_routing_masses = []
         d_tau = 0.5
-
         for step in range(self.tau_steps):
-            # Warping Psi through normalized metric G
-            warped_Psi = torch.bmm(Psi, G) / math.sqrt(self.dim)
+            # Warping Psi through metric G: [B, L, D] x [B, D, D] -> [B, L, D]
+            warped_Psi = torch.bmm(Psi, G)  # Riemannian coordinate contraction
+            # Pass through dynamic operator pool
             op_flow, routing_mass, vitalities = self.operator_pool(warped_Psi)
             all_routing_masses.append(routing_mass)
 
+            # Continuous relaxation step
             Psi = Psi + d_tau * (-Psi + op_flow)
 
+        # Cumulative routing mass
         avg_routing_mass = torch.stack(all_routing_masses, dim=0).mean(dim=0)
+
+        # Decode predictions for next token
         normed_state = self.norm(Psi)
         logits = self.head(normed_state)  # [B, L, 256]
 
@@ -276,15 +309,18 @@ class SovereignAutopoieticKaryon(nn.Module):
 
 def generate_machine_code_corpus(num_samples: int = 1500, seq_len: int = 128) -> torch.Tensor:
     """
-    Generates realistic raw machine code bytecode sequences.
+    Generates realistic raw machine code bytecode sequences:
+    x86/ARM opcode byte distributions, jumps, alignment padding, pointers,
+    and high-entropy dynamic payloads.
     """
     data = []
+    # Real-world common opcode bytes (x86/x64 / ARM / ELF headers)
     common_opcodes = [
-        0x55, 0x48, 0x89, 0xE5, 0x48, 0x83, 0xEC, 0x10,
-        0x89, 0x7D, 0xFC, 0x8B, 0x45, 0xFC, 0x01, 0xC0,
-        0xC9, 0xC3, 0x90, 0x0F, 0x1F, 0x44, 0x00, 0x00,
-        0xE8, 0x00, 0x00, 0x00, 0x00, 0x75, 0x05, 0xEB,
-        0x7F, 0x45, 0x4C, 0x46, 0x02, 0x01, 0x01, 0x00
+        0x55, 0x48, 0x89, 0xE5, 0x48, 0x83, 0xEC, 0x10,  # push rbp; mov rbp, rsp; sub rsp, 16
+        0x89, 0x7D, 0xFC, 0x8B, 0x45, 0xFC, 0x01, 0xC0,  # mov [rbp-4], edi; add eax, eax
+        0xC9, 0xC3, 0x90, 0x0F, 0x1F, 0x44, 0x00, 0x00,  # leave; ret; nop; nop
+        0xE8, 0x00, 0x00, 0x00, 0x00, 0x75, 0x05, 0xEB,  # call rel32; jne +5; jmp
+        0x7F, 0x45, 0x4C, 0x46, 0x02, 0x01, 0x01, 0x00   # ELF header magic bytes
     ]
 
     for _ in range(num_samples):
@@ -292,13 +328,17 @@ def generate_machine_code_corpus(num_samples: int = 1500, seq_len: int = 128) ->
         while len(seq) < seq_len:
             block_type = random.random()
             if block_type < 0.45:
+                # Structural opcode instruction block
                 seq.extend(random.choices(common_opcodes, k=min(16, seq_len - len(seq))))
             elif block_type < 0.75:
+                # Relative address offset / immediate integer values
                 seq.extend([random.randint(0, 255) for _ in range(min(8, seq_len - len(seq)))])
             elif block_type < 0.90:
+                # Repeated padding / alignment zeros / NOPs
                 pad_byte = random.choice([0x00, 0x90, 0xCC])
                 seq.extend([pad_byte] * min(8, seq_len - len(seq)))
             else:
+                # High-entropy encrypted / packed entropy segment
                 seq.extend([random.randint(0, 255) for _ in range(min(12, seq_len - len(seq)))])
 
         data.append(seq[:seq_len])
@@ -316,18 +356,21 @@ def run_exp_354():
     print(f"Device: {DEVICE} | Compute Substrate: Tesla T4 (SM_75)")
     print("=" * 80)
 
+    # Dataset generation
     SEQ_LEN = 128
     BATCH_SIZE = 32
     TOTAL_SAMPLES = 1600
     
     raw_data = generate_machine_code_corpus(num_samples=TOTAL_SAMPLES, seq_len=SEQ_LEN + 1)
     
+    # Train / Val Split
     split_idx = int(TOTAL_SAMPLES * 0.8)
     train_data = raw_data[:split_idx]
     val_data = raw_data[split_idx:]
     
     print(f"Train Sequences: {len(train_data)} | Val Sequences: {len(val_data)} | Seq Length: {SEQ_LEN}")
 
+    # Model instantiation
     model = SovereignAutopoieticKaryon(
         vocab_size=256,
         dim=128,
@@ -335,8 +378,8 @@ def run_exp_354():
         device=DEVICE
     ).to(DEVICE)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=0.005, weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=15, eta_min=1e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.003, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=15, eta_min=5e-5)
 
     initial_loss = None
     best_loss = float("inf")
@@ -357,6 +400,7 @@ def run_exp_354():
         indices = torch.randperm(len(train_data))
 
         # Dynamic Autopoietic Event Triggers
+        # If past epoch 3, check if we should sprout a new operator or prune obsolete ones
         if epoch == 4:
             sprouted = model.operator_pool.sprout_operator("polynomial_harmonic")
             print(f"🌱 [Epoch {epoch} Autopoiesis] SPROUTED new operator: polynomial_harmonic | Total: {len(model.operator_pool.operators)}")
@@ -382,14 +426,19 @@ def run_exp_354():
             optimizer.zero_grad()
             logits, routing_mass, vitalities, metric_penalty = model(x)
 
+            # Cross entropy loss for next-byte prediction (out of 256 byte classes)
             ce_loss = F.cross_entropy(logits.reshape(-1, 256), y.reshape(-1))
+            
+            # Active Inference Variational Free Energy:
+            # F = Accuracy (CE) + 0.005 * RiemannianCurvature + 0.001 * VitalityDisparity
             vitality_reg = torch.var(vitalities) if len(vitalities) > 1 else torch.tensor(0.0, device=DEVICE)
-            free_energy = ce_loss + 0.001 * metric_penalty + 0.001 * vitality_reg
+            free_energy = ce_loss + 0.005 * metric_penalty + 0.001 * vitality_reg
 
             free_energy.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
+            # Update operator vitality dynamically
             model.operator_pool.update_vitality(routing_mass.detach())
 
             epoch_ce_loss += ce_loss.item()
