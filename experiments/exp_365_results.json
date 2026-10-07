@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-365",
+  "final_dim": 128,
+  "sprout_events": 12,
+  "final_det_bit_errors": 1.99625468164794,
+  "final_det_strain": 2.9369743512594577,
+  "final_stoch_strain": 3.966670867545283,
+  "final_det_energy": 3.955443620235286,
+  "evolution_steps": 2047,
+  "tok_per_sec": 333.04086741096245,
+  "verdict": "\u26aa NEUTRAL"
+}
