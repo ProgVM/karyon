@@ -1,0 +1,42 @@
+{
+  "exp_id": "EXP-362",
+  "results": [
+    {
+      "paradigm": "Paradigm 1: Topological Morphogenesis (Sprouting Subspace)",
+      "type": "P1",
+      "final_det_strain": 3.6464085635329746,
+      "final_det_bit_errors": 2.1198501872659175,
+      "final_stoch_strain": 4.850683084649787,
+      "final_stoch_energy": 5.695967656403278,
+      "sprout_events": 14,
+      "tok_per_sec": 396.8864364806375,
+      "elapsed_sec": 5.160166263580322
+    },
+    {
+      "paradigm": "Paradigm 2: Meta-Plastic Differential Evolution",
+      "type": "P2",
+      "final_det_strain": 2.1051379870832636,
+      "final_det_bit_errors": 1.7340823970037453,
+      "final_stoch_strain": 3.349355322954137,
+      "final_stoch_energy": 4.053170388571444,
+      "sprout_events": 2047,
+      "tok_per_sec": 480.13227113180784,
+      "elapsed_sec": 4.265491247177124
+    },
+    {
+      "paradigm": "Paradigm 3: Holographic Interference Wavefield",
+      "type": "P3",
+      "final_det_strain": 4.0,
+      "final_det_bit_errors": 4.082397003745318,
+      "final_stoch_strain": 4.0,
+      "final_stoch_energy": 0.0,
+      "sprout_events": 0,
+      "tok_per_sec": 376.5626908226239,
+      "elapsed_sec": 5.438669443130493
+    }
+  ],
+  "winner": "Paradigm 2: Meta-Plastic Differential Evolution",
+  "winner_det_strain": 2.1051379870832636,
+  "winner_bit_errors": 1.7340823970037453,
+  "verdict": "\ud83d\udfe2 POSITIVE"
+}
