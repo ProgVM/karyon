@@ -1,0 +1,48 @@
+{
+  "exp_id": "EXP-360",
+  "results": [
+    {
+      "paradigm": "Paradigm A: Topological Morphogenetic Graph",
+      "type": "A",
+      "final_det_error_rate": 0.797752808988764,
+      "final_det_energy": 91.41978773552827,
+      "final_stoch_error_rate": 0.9737827715355806,
+      "final_stoch_energy": 72.14253376664294,
+      "final_rolling_loss": 5.057932763789018,
+      "sprout_events": 7,
+      "prune_events": 0,
+      "tok_per_sec": 90.93950425206293,
+      "elapsed_sec": 22.520465850830078
+    },
+    {
+      "paradigm": "Paradigm B: Dynamic Dimensionality Blooming",
+      "type": "B",
+      "final_det_error_rate": 1.0,
+      "final_det_energy": NaN,
+      "final_stoch_error_rate": 1.0,
+      "final_stoch_energy": NaN,
+      "final_rolling_loss": NaN,
+      "sprout_events": 6,
+      "prune_events": 0,
+      "tok_per_sec": 291.1175230054917,
+      "elapsed_sec": 7.034959554672241
+    },
+    {
+      "paradigm": "Paradigm C: Self-Modifying Continuous Operator Field",
+      "type": "C",
+      "final_det_error_rate": 1.0,
+      "final_det_energy": NaN,
+      "final_stoch_error_rate": 1.0,
+      "final_stoch_energy": NaN,
+      "final_rolling_loss": NaN,
+      "sprout_events": 0,
+      "prune_events": 0,
+      "tok_per_sec": 391.65720004096244,
+      "elapsed_sec": 5.229062557220459
+    }
+  ],
+  "winner": "Paradigm A: Topological Morphogenetic Graph",
+  "winner_det_error_rate": 0.797752808988764,
+  "winner_det_energy": 91.41978773552827,
+  "verdict": "\u26aa NEUTRAL"
+}
