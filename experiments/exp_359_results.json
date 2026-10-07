@@ -1,0 +1,53 @@
+{
+  "exp_id": "EXP-359",
+  "results": [
+    {
+      "paradigm": "Paradigm 1: Symplectic Port-Hamiltonian",
+      "initial_det_loss": 4.344069927930832,
+      "final_det_loss": 0.13524050638079643,
+      "det_loss_delta": 4.2088294215500355,
+      "final_det_fe": 98.58342170715332,
+      "initial_stoch_loss": 5.766449332237244,
+      "final_stoch_loss": 4.06116983294487,
+      "stoch_loss_delta": 1.7052794992923737,
+      "final_stoch_fe": 121.52143478393555,
+      "total_final_loss": 4.196410339325666,
+      "total_delta": 5.914108920842409,
+      "tok_per_sec": 10961.690883067742,
+      "elapsed_sec": 35.31134057044983
+    },
+    {
+      "paradigm": "Paradigm 2: Energy Potential Field",
+      "initial_det_loss": 4.426397651433945,
+      "final_det_loss": NaN,
+      "det_loss_delta": NaN,
+      "final_det_fe": NaN,
+      "initial_stoch_loss": NaN,
+      "final_stoch_loss": NaN,
+      "stoch_loss_delta": NaN,
+      "final_stoch_fe": NaN,
+      "total_final_loss": NaN,
+      "total_delta": NaN,
+      "tok_per_sec": 21615.604962188547,
+      "elapsed_sec": 17.907063007354736
+    },
+    {
+      "paradigm": "Paradigm 3: Multilinear Circuit & Adaptive Temperature",
+      "initial_det_loss": 5.555684030056,
+      "final_det_loss": 5.5484684109687805,
+      "det_loss_delta": 0.007215619087219238,
+      "final_det_fe": 0.2864263094961643,
+      "initial_stoch_loss": 5.671254277229309,
+      "final_stoch_loss": 5.544542133808136,
+      "stoch_loss_delta": 0.1267121434211731,
+      "final_stoch_fe": 1.519388496875763,
+      "total_final_loss": 11.093010544776917,
+      "total_delta": 0.13392776250839233,
+      "tok_per_sec": 16447.138711763197,
+      "elapsed_sec": 23.534306287765503
+    }
+  ],
+  "winner": "Paradigm 1: Symplectic Port-Hamiltonian",
+  "winner_total_loss": 4.196410339325666,
+  "verdict": "\ud83d\udfe2 POSITIVE"
+}
