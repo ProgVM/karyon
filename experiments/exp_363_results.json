@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-363",
+  "final_det_bit_errors": 4.007490636704119,
+  "final_det_strain": 8.014981273408239,
+  "final_stoch_strain": 8.314606741573034,
+  "final_det_energy": 0.1062081577081917,
+  "evolution_steps": 2047,
+  "tok_per_sec": 257.9509896594799,
+  "verdict": "\ud83d\udd34 REJECTED"
+}
