@@ -1,0 +1,48 @@
+{
+  "exp_id": "EXP-361",
+  "results": [
+    {
+      "paradigm": "Evolution Paradigm 1: Symplectic Morphogenetic Topology",
+      "type": "P1",
+      "final_det_error_rate": 0.9962546816479401,
+      "final_det_energy": 16.14805368805646,
+      "final_stoch_error_rate": 1.0,
+      "final_stoch_energy": 7.785465534260211,
+      "final_rolling_loss": 5.623677460737738,
+      "sprout_events": 7,
+      "prune_events": 0,
+      "tok_per_sec": 57.993480065426596,
+      "elapsed_sec": 35.31431460380554
+    },
+    {
+      "paradigm": "Evolution Paradigm 2: Autopoietic Operator Synthesizer",
+      "type": "P2",
+      "final_det_error_rate": 1.0,
+      "final_det_energy": 0.0,
+      "final_stoch_error_rate": 1.0,
+      "final_stoch_energy": 0.0,
+      "final_rolling_loss": 5.552959442138672,
+      "sprout_events": 7,
+      "prune_events": 0,
+      "tok_per_sec": 82.8747674676955,
+      "elapsed_sec": 24.711984872817993
+    },
+    {
+      "paradigm": "Evolution Paradigm 3: Dynamic Dimensionality Blooming",
+      "type": "P3",
+      "final_det_error_rate": 0.9962546816479401,
+      "final_det_energy": 667064.1690074906,
+      "final_stoch_error_rate": 0.9925093632958801,
+      "final_stoch_energy": 662491.1218398877,
+      "final_rolling_loss": 502.6656695015346,
+      "sprout_events": 6,
+      "prune_events": 0,
+      "tok_per_sec": 308.46501940543436,
+      "elapsed_sec": 6.639326572418213
+    }
+  ],
+  "winner": "Evolution Paradigm 1: Symplectic Morphogenetic Topology",
+  "winner_det_error_rate": 0.9962546816479401,
+  "winner_det_energy": 16.14805368805646,
+  "verdict": "\u26aa NEUTRAL"
+}
