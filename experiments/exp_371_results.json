@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-371",
+  "active_atoms": 12,
+  "sprout_events": 10,
+  "final_det_bit_errors": 2.1647940074906367,
+  "final_det_strain": 2.908439721284288,
+  "final_stoch_strain": 3.60355568922879,
+  "tok_per_sec": 13.772923778382303,
+  "discovered_formulas": "=== KARYON PERIODIC TABLE & MOLECULAR SPECIFICATION ===\n  [Atom 0]: Config = (1 Protons, 1 Neutrons, 1 Electrons) | Epigenetic Gate = -0.0984\n  [Atom 1]: Config = (2 Protons, 0 Neutrons, 2 Electrons) | Epigenetic Gate = -0.1022\n  [Atom 2]: Config = (6 Protons, 2 Neutrons, 6 Electrons) | Epigenetic Gate = -0.0695\n  [Atom 3]: Config = (8 Protons, 2 Neutrons, 8 Electrons) | Epigenetic Gate = -0.0003\n  [Atom 4]: Config = (10 Protons, 3 Neutrons, 10 Electrons) | Epigenetic Gate = -0.0077\n  [Atom 5]: Config = (12 Protons, 3 Neutrons, 12 Electrons) | Epigenetic Gate = -0.0053\n  [Atom 6]: Config = (14 Protons, 4 Neutrons, 14 Electrons) | Epigenetic Gate = 0.0915\n  [Atom 7]: Config = (16 Protons, 4 Neutrons, 16 Electrons) | Epigenetic Gate = 0.1407\n  [Atom 8]: Config = (18 Protons, 5 Neutrons, 18 Electrons) | Epigenetic Gate = 0.0189\n  [Atom 9]: Config = (20 Protons, 5 Neutrons, 20 Electrons) | Epigenetic Gate = 0.0132\n  [Atom 10]: Config = (22 Protons, 6 Neutrons, 22 Electrons) | Epigenetic Gate = 0.0139\n  [Atom 11]: Config = (24 Protons, 6 Neutrons, 24 Electrons) | Epigenetic Gate = -0.0071\n  Molecular Readout: y_pred = tanh( sum_{i=0}^{11} W_readout_i * (Gate_i * Atom_i(h_in)) )",
+  "verdict": "\ud83d\udd34 REJECTED"
+}
