@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-375",
+  "active_atoms": 16,
+  "sprout_events": 12,
+  "final_det_bit_errors": 1.5205992509363295,
+  "final_det_strain": 2.198262373606364,
+  "final_stoch_strain": 4.074019097931508,
+  "tok_per_sec": 165.96947220455817,
+  "final_omega": 0.007919727824628353,
+  "discovered_formulas": "=== KARYON QUANTUM OBSERVER EFFECT & WAVE COLLAPSE SPECIFICATION ===\n  Active Units in Substrate : 16 (Started at 4)\n  Observation Intensity (Omega_t) : 0.0079 (0=Fluid Wave, 1=Sharp Collapse)\n  Collapsed Global Law Distribution:\n    - Force 0 (Inertial Memory)     : 38.2%\n    - Force 1 (Bilinear Resonance)  : 12.7%\n    - Force 2 (Harmonic Vibration)   : 25.2%\n    - Force 3 (Attractor Snapping)  : 23.9%\n\n  Individual Unit Collapsed Preferences:\n    Unit_00 | Epigenetic Gate: 0.0525 | Collapsed Laws: [M:0.33, R:0.04, V:0.55, A:0.08]\n    Unit_01 | Epigenetic Gate: 0.0193 | Collapsed Laws: [M:0.56, R:0.08, V:0.04, A:0.33]\n    Unit_02 | Epigenetic Gate: -0.0352 | Collapsed Laws: [M:0.75, R:0.00, V:0.15, A:0.10]\n    Unit_03 | Epigenetic Gate: 0.2224 | Collapsed Laws: [M:0.09, R:0.00, V:0.12, A:0.79]\n    Unit_04 | Epigenetic Gate: 0.1662 | Collapsed Laws: [M:0.00, R:0.42, V:0.49, A:0.09]\n    Unit_05 | Epigenetic Gate: -0.0283 | Collapsed Laws: [M:0.67, R:0.10, V:0.04, A:0.20]\n    Unit_06 | Epigenetic Gate: 0.0359 | Collapsed Laws: [M:0.04, R:0.08, V:0.27, A:0.60]\n    Unit_07 | Epigenetic Gate: 0.0581 | Collapsed Laws: [M:0.18, R:0.17, V:0.48, A:0.16]\n    Unit_08 | Epigenetic Gate: 0.0353 | Collapsed Laws: [M:0.41, R:0.15, V:0.12, A:0.32]\n    Unit_09 | Epigenetic Gate: 0.1006 | Collapsed Laws: [M:0.38, R:0.13, V:0.22, A:0.27]\n    Unit_10 | Epigenetic Gate: 0.0044 | Collapsed Laws: [M:0.46, R:0.21, V:0.14, A:0.19]\n    Unit_11 | Epigenetic Gate: -0.0991 | Collapsed Laws: [M:0.46, R:0.04, V:0.17, A:0.33]\n    Unit_12 | Epigenetic Gate: -0.0742 | Collapsed Laws: [M:0.86, R:0.07, V:0.04, A:0.04]\n    Unit_13 | Epigenetic Gate: 0.1642 | Collapsed Laws: [M:0.16, R:0.00, V:0.80, A:0.04]\n    Unit_14 | Epigenetic Gate: 0.0748 | Collapsed Laws: [M:0.31, R:0.36, V:0.19, A:0.13]\n    Unit_15 | Epigenetic Gate: -0.1450 | Collapsed Laws: [M:0.45, R:0.17, V:0.22, A:0.16]",
+  "verdict": "\u26aa NEUTRAL"
+}
