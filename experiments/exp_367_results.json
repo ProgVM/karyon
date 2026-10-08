@@ -5,7 +5,7 @@
   "final_det_bit_errors": 1.4119850187265917,
   "final_det_strain": 2.267297294530089,
   "final_stoch_strain": 4.381760999376264,
-  "tok_per_sec": 20.67185038960923,
+  "tok_per_sec": 18.067169371779652,
   "discovered_formulas": "=== KARYON AUTONOMOUS SYNTHESIZED DIFFERENTIAL SYSTEM (8 Variables) ===\n  [Variable v_0]: d(v_0)/dt = (1/0.899) * [ -v_0 + tanh( (id(W_in_0 * x) /_safe sum_j(W_var_0,j * v_j)) ) ] (Confidence: U=0.69, B=0.31)\n  [Variable v_1]: d(v_1)/dt = (1/0.475) * [ -v_1 + tanh( (id(W_in_1 * x) /_safe sum_j(W_var_1,j * v_j)) ) ] (Confidence: U=0.61, B=0.33)\n  [Variable v_2]: d(v_2)/dt = (1/0.641) * [ -v_2 + tanh( (tanh(W_in_2 * x) * sum_j(W_var_2,j * v_j)) ) ] (Confidence: U=0.31, B=0.39)\n  [Variable v_3]: d(v_3)/dt = (1/0.605) * [ -v_3 + tanh( (recip(W_in_3 * x) * sum_j(W_var_3,j * v_j)) ) ] (Confidence: U=0.40, B=0.45)\n  [Variable v_4]: d(v_4)/dt = (1/0.707) * [ -v_4 + tanh( (id(W_in_4 * x) * sum_j(W_var_4,j * v_j)) ) ] (Confidence: U=0.66, B=0.43)\n  [Variable v_5]: d(v_5)/dt = (1/0.471) * [ -v_5 + tanh( (id(W_in_5 * x) * sum_j(W_var_5,j * v_j)) ) ] (Confidence: U=0.64, B=0.49)\n  [Variable v_6]: d(v_6)/dt = (1/0.634) * [ -v_6 + tanh( (id(W_in_6 * x) * sum_j(W_var_6,j * v_j)) ) ] (Confidence: U=0.48, B=0.64)\n  [Variable v_7]: d(v_7)/dt = (1/0.505) * [ -v_7 + tanh( (id(W_in_7 * x) * sum_j(W_var_7,j * v_j)) ) ] (Confidence: U=0.74, B=0.72)\n  [Readout Equation]: y_pred = tanh( sum_{k=1}^8 W_out_k * v_k )",
   "verdict": "\u26aa NEUTRAL"
 }
