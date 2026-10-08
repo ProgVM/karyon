@@ -18,10 +18,12 @@ Sovereign Mathematical & Biophysical Blueprint:
    - To prevent structural shock and catastrophic forgetting, the newly sprouted node is
      wrapped in an Epigenetic Gating coefficient (alpha_epi), initialized at exactly 0.0.
      This guarantees STRICT ZERO-SHOCK FUNCTION IDENTITY f_new(x) === f_old(x) at birth.
-4. Forced Vector Routing (Anti-Shortcut Mandate):
+4. Clean Out-of-Place Recurrent State Passing (KEP Rule #1.1 Compliance):
+   - Clean functional state updates (prev_states -> next_states) avoiding in-place autograd corruption.
+5. Forced Vector Routing (Anti-Shortcut Mandate):
    - Readout MUST combine representations strictly from the active vector operators,
      preventing the shortcut learning of raw inputs.
-5. Continuous Reality Stream (t -> t+1, N=1, Single Pass):
+6. Continuous Reality Stream (t -> t+1, N=1, Single Pass):
    - Zero epochs, zero batching, zero Softmax.
    - Evaluated on a continuous physical 8-bit bipolar vector stream.
 ======================================================================================
@@ -107,7 +109,6 @@ class LeakyIntegratorOp(nn.Module):
         self.log_tau = nn.Parameter(torch.full((dim,), -1.0, device=device))
 
     def forward(self, x: torch.Tensor, state: torch.Tensor) -> torch.Tensor:
-        # x: [dim], state: [dim]
         tau = torch.sigmoid(self.log_tau)
         drive = torch.tanh(torch.matmul(self.W, x) + self.b)
         return (1.0 - tau) * state + tau * drive
@@ -131,7 +132,6 @@ class AttractorSnappingOp(nn.Module):
         self.W = nn.Parameter(torch.randn(dim, dim, device=device) * (0.5 / math.sqrt(dim)))
 
     def forward(self, x: torch.Tensor, state: torch.Tensor) -> torch.Tensor:
-        # Saturated attractor dynamics
         u = x + state
         u_norm = u / (torch.norm(u, p=2, dim=-1, keepdim=True) + 1e-5)
         snapped = torch.tanh(torch.matmul(self.W, u_norm))
@@ -141,7 +141,6 @@ class AttractorSnappingOp(nn.Module):
 class SymplecticRotationOp(nn.Module):
     def __init__(self, dim: int, device: torch.device):
         super().__init__()
-        # Skew-symmetric matrix parameter to guarantee energy-preserving rotation
         self.A = nn.Parameter(torch.randn(dim, dim, device=device) * (0.2 / math.sqrt(dim)))
 
     def forward(self, x: torch.Tensor, state: torch.Tensor) -> torch.Tensor:
@@ -162,26 +161,17 @@ class VectorAutopoieticGenesisEngine(nn.Module):
         self.max_ops = max_operators
         self.device = device
 
-        # Input projection to high-dimensional state space
         self.W_in = nn.Parameter(torch.randn(dim, in_dim, device=device) * (1.0 / math.sqrt(in_dim)))
         self.b_in = nn.Parameter(torch.zeros(dim, device=device))
 
-        # Operators pool
         self.operators = nn.ModuleList()
         self.op_types = []
-
-        # Epigenetic gating coefficients for smooth, zero-shock Net2Net birth
         self.alpha_epi = nn.ParameterList()
 
-        # Persistent state registers for each operator
-        self.states = nn.ParameterList()
-
-        # Start with 2 base operators
         self.active_ops = 0
         self._add_operator("leaky")
         self._add_operator("bilinear")
 
-        # Readout: combines operator outputs to predict next stream vector
         self.readout_weights = nn.Parameter(torch.randn(in_dim, max_operators, dim, device=device) * (1.0 / math.sqrt(dim)))
         self.readout_bias = nn.Parameter(torch.zeros(in_dim, device=device))
 
@@ -202,13 +192,7 @@ class VectorAutopoieticGenesisEngine(nn.Module):
 
         self.operators.append(op)
         self.op_types.append(op_type)
-
-        # Initialize epigenetic gating at exactly 0.0 for zero-shock birth
-        # We use a parameter containing 0.0, wrapped in tanh during forward pass
         self.alpha_epi.append(nn.Parameter(torch.tensor(0.0, device=self.device)))
-
-        # Initialize persistent register state
-        self.states.append(nn.Parameter(torch.zeros(self.dim, device=self.device), requires_grad=False))
 
         self.active_ops += 1
         return True
@@ -222,33 +206,27 @@ class VectorAutopoieticGenesisEngine(nn.Module):
                 return True
         return False
 
-    def forward(self, x_t: torch.Tensor):
-        # x_t: [8]
-        # Project raw input into D-dimensional vector space
+    def forward(self, x_t: torch.Tensor, prev_states: list):
+        # x_t: [8], prev_states: list of [64]
         h_in = torch.tanh(torch.matmul(self.W_in, x_t) + self.b_in)
 
-        # Evaluate all active operators
         op_outputs = []
+        next_states = []
+
         for i in range(self.active_ops):
             op = self.operators[i]
-            prev_state = self.states[i]
-            
-            # Compute raw operator transformation
-            raw_out = op(h_in, prev_state)
+            st = prev_states[i]
 
-            # Apply Epigenetic Gating (Net2Net Smooth Grafting)
-            # Newly sprouted nodes (initialized at alpha_epi=0.0) contribute exactly 0.0 at birth
+            raw_out = op(h_in, st)
+
+            # Epigenetic gate
             gate = torch.tanh(self.alpha_epi[i])
             gated_out = gate * raw_out
 
             op_outputs.append(gated_out)
+            next_states.append(raw_out)
 
-            # Update persistent register state
-            with torch.no_grad():
-                self.states[i].copy_(raw_out)
-
-        # Forced Vector Routing Readout: predict 8-bit vector strictly from active operators
-        # y_pred = Readout(sum_i gated_out_i)
+        # Forced Vector Routing Readout
         y_pred = torch.zeros(self.in_dim, device=self.device)
         for i in range(self.in_dim):
             val = 0.0
@@ -256,12 +234,11 @@ class VectorAutopoieticGenesisEngine(nn.Module):
                 val = val + torch.sum(self.readout_weights[i, j] * op_outputs[j])
             y_pred[i] = torch.tanh(val + self.readout_bias[i])
 
-        # Complexity penalty: sum of active operators and magnitude of epigenetic gates
         complexity = 0.0
         for i in range(self.active_ops):
             complexity = complexity + torch.abs(torch.tanh(self.alpha_epi[i]))
 
-        return y_pred, complexity
+        return y_pred, next_states, complexity
 
     def extract_symbolic_formulas(self) -> str:
         report = []
@@ -289,6 +266,8 @@ def run_exp_370():
     model = VectorAutopoieticGenesisEngine(in_dim=8, dim=64, max_operators=8, device=DEVICE)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1.5e-2, weight_decay=1e-5)
 
+    states = [torch.zeros(model.dim, device=DEVICE) for _ in range(model.active_ops)]
+
     det_errors = []
     stoch_errors = []
     bit_mismatches_det = []
@@ -304,7 +283,10 @@ def run_exp_370():
         optimizer.zero_grad()
 
         # Step vector autopoietic engine
-        y_pred, complexity = model(cur_vec)
+        y_pred, next_states, complexity = model(cur_vec, states)
+
+        # Detach states for next step
+        states = [s.detach() for s in next_states]
 
         # Physical quadratic strain + Epigenetic complexity penalty
         prediction_strain = 0.5 * torch.sum((y_pred - tgt_vec)**2)
@@ -321,6 +303,7 @@ def run_exp_370():
         if t > 40 and t % 32 == 0:
             if rolling_strain > 0.8:
                 if model.sprout_operator():
+                    states.append(torch.zeros(model.dim, device=DEVICE))
                     print(f"  [MORPHOGENESIS] Sprouted new vector operator at step {t+1}. Active: {model.active_ops}")
                     optimizer = torch.optim.AdamW(model.parameters(), lr=1.5e-2, weight_decay=1e-5)
 

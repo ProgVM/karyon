@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-370",
+  "active_ops": 8,
+  "sprout_events": 6,
+  "final_det_bit_errors": 0.8352059925093633,
+  "final_det_strain": 1.3317090120070523,
+  "final_stoch_strain": 4.1362778363586346,
+  "tok_per_sec": 52.17213120150673,
+  "discovered_formulas": "=== KARYON VECTOR AUTOPOIETIC GENESIS SYSTEM ===\n  [Operator Node 0]: Type = leaky | Epigenetic Gate = -0.0871\n  [Operator Node 1]: Type = bilinear | Epigenetic Gate = -0.3458\n  [Operator Node 2]: Type = attractor | Epigenetic Gate = -0.0941\n  [Operator Node 3]: Type = symplectic | Epigenetic Gate = -0.0294\n  [Operator Node 4]: Type = leaky | Epigenetic Gate = -0.0711\n  [Operator Node 5]: Type = bilinear | Epigenetic Gate = 0.0556\n  [Operator Node 6]: Type = attractor | Epigenetic Gate = -0.0536\n  [Operator Node 7]: Type = symplectic | Epigenetic Gate = -0.0608\n  Readout: y_pred = tanh( sum_{i=0}^{7} W_readout_i * (Gate_i * Op_i(h_in)) )",
+  "verdict": "\ud83d\udfe2 POSITIVE"
+}
