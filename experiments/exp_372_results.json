@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-372",
+  "active_atoms": 12,
+  "sprout_events": 10,
+  "final_det_bit_errors": 0.7902621722846442,
+  "final_det_strain": 1.238672635413907,
+  "final_stoch_strain": 4.427013746160418,
+  "tok_per_sec": 85.87193388126643,
+  "discovered_formulas": "=== KARYON COVALENT MOLECULAR CHAIN SPECIFICATION ===\n  h_in = tanh(W_in * x_t + b_in)\n  Atom_0 (hydrogen): Gate = 0.1587 | Output = (1 - Gate)*Out_-1 + Gate*Atom_0(Out_-1)\n  Atom_1 (helium): Gate = 0.7022 | Output = (1 - Gate)*Out_0 + Gate*Atom_1(Out_0)\n  Atom_2 (lithium): Gate = 0.1791 | Output = (1 - Gate)*Out_1 + Gate*Atom_2(Out_1)\n  Atom_3 (hydrogen): Gate = 0.0295 | Output = (1 - Gate)*Out_2 + Gate*Atom_3(Out_2)\n  Atom_4 (helium): Gate = 0.1876 | Output = (1 - Gate)*Out_3 + Gate*Atom_4(Out_3)\n  Atom_5 (lithium): Gate = 0.3526 | Output = (1 - Gate)*Out_4 + Gate*Atom_5(Out_4)\n  Atom_6 (hydrogen): Gate = 0.1313 | Output = (1 - Gate)*Out_5 + Gate*Atom_6(Out_5)\n  Atom_7 (helium): Gate = 0.1051 | Output = (1 - Gate)*Out_6 + Gate*Atom_7(Out_6)\n  Atom_8 (lithium): Gate = 0.1222 | Output = (1 - Gate)*Out_7 + Gate*Atom_8(Out_7)\n  Atom_9 (hydrogen): Gate = 0.0853 | Output = (1 - Gate)*Out_8 + Gate*Atom_9(Out_8)\n  Atom_10 (helium): Gate = 0.0370 | Output = (1 - Gate)*Out_9 + Gate*Atom_10(Out_9)\n  Atom_11 (lithium): Gate = 0.0697 | Output = (1 - Gate)*Out_10 + Gate*Atom_11(Out_10)\n  Readout: y_pred = tanh(W_out * Out_terminal + b_out)",
+  "verdict": "\ud83d\udfe2 POSITIVE"
+}
