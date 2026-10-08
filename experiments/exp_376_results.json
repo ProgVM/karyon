@@ -1,0 +1,18 @@
+{
+  "exp_id": "EXP-376",
+  "active_atoms": 16,
+  "sprout_events": 12,
+  "final_det_bit_errors": 1.205992509363296,
+  "final_det_strain": 1.7793762187607767,
+  "final_stoch_strain": 4.3976098985721555,
+  "tok_per_sec": 85.19950694600469,
+  "final_omega": 0.008924946188926697,
+  "final_melt_rate": 0.9999990463256836,
+  "world_weights": [
+    0.3333333432674408,
+    0.3333333432674408,
+    0.3333333432674408
+  ],
+  "discovered_formulas": "=== KARYON UNIFIED QUANTUM MULTIVERSE & PHASE LOCK SPECIFICATION ===\n  Active Units in Substrate : 16 (Started at 4)\n  Observation Intensity (Omega_t) : 0.0089 (0=Fluid Wave, 1=Sharp Collapse)\n  Phase Lock Melting Rate (alpha_law): 1.0000 (0=Frozen, 1=Liquid)\n  Phase-Locked Global Law Distribution:\n    - Force 0 (Inertial Memory)     : 16.6%\n    - Force 1 (Bilinear Resonance)  : 35.1%\n    - Force 2 (Harmonic Vibration)   : 25.0%\n    - Force 3 (Attractor Snapping)  : 23.2%\n\n  Many-Worlds Probability Distribution (K=3 worlds):\n    - World 0 (Negative Fluctuation) : 33.3%\n    - World 1 (Equilibrium Path)     : 33.3%\n    - World 2 (Positive Fluctuation) : 33.3%\n\n  Individual Unit Collapsed Preferences:\n    Unit_00 | Epigenetic Gate: -0.1656 | Locked Laws: [M:0.02, R:0.69, V:0.28, A:0.01]\n    Unit_01 | Epigenetic Gate: -0.1151 | Locked Laws: [M:0.09, R:0.62, V:0.12, A:0.17]\n    Unit_02 | Epigenetic Gate: 0.0783 | Locked Laws: [M:0.01, R:0.51, V:0.10, A:0.38]\n    Unit_03 | Epigenetic Gate: 0.2975 | Locked Laws: [M:0.01, R:0.08, V:0.76, A:0.15]\n    Unit_04 | Epigenetic Gate: 0.0198 | Locked Laws: [M:0.05, R:0.32, V:0.55, A:0.08]\n    Unit_05 | Epigenetic Gate: 0.0603 | Locked Laws: [M:0.26, R:0.40, V:0.20, A:0.14]\n    Unit_06 | Epigenetic Gate: -0.0406 | Locked Laws: [M:0.10, R:0.38, V:0.29, A:0.22]\n    Unit_07 | Epigenetic Gate: 0.0229 | Locked Laws: [M:0.19, R:0.43, V:0.18, A:0.20]\n    Unit_08 | Epigenetic Gate: -0.0141 | Locked Laws: [M:0.55, R:0.23, V:0.19, A:0.04]\n    Unit_09 | Epigenetic Gate: 0.0649 | Locked Laws: [M:0.00, R:0.02, V:0.01, A:0.97]\n    Unit_10 | Epigenetic Gate: -0.0023 | Locked Laws: [M:0.26, R:0.27, V:0.31, A:0.16]\n    Unit_11 | Epigenetic Gate: -0.0158 | Locked Laws: [M:0.01, R:0.66, V:0.24, A:0.09]\n    Unit_12 | Epigenetic Gate: 0.0029 | Locked Laws: [M:0.59, R:0.10, V:0.26, A:0.06]\n    Unit_13 | Epigenetic Gate: 0.0272 | Locked Laws: [M:0.04, R:0.63, V:0.14, A:0.19]\n    Unit_14 | Epigenetic Gate: -0.1187 | Locked Laws: [M:0.47, R:0.19, V:0.19, A:0.15]\n    Unit_15 | Epigenetic Gate: 0.1991 | Locked Laws: [M:0.02, R:0.09, V:0.20, A:0.70]",
+  "verdict": "\u26aa NEUTRAL"
+}
