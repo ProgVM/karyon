@@ -177,10 +177,10 @@ class HolographicTopologicalQuantumEngine(nn.Module):
 
         # 2. TOPOLOGICAL NON-ABELIAN ANYONIC BRAIDING (Noise-Immune Invariants)
         # Calculate braiding phase angle theta_ij between units
-        theta_braid = (torch.matmul(pairs, self.W_braid) + self.b_braid).unsqueeze(-1)  # [A, A, 1]
+        theta_braid = torch.matmul(pairs, self.W_braid) + self.b_braid  # [A, A, 1]
         # Braided states: invariant rotation in SO(2)
-        cos_theta = torch.cos(theta_braid)  # [A, A, 1]
-        sin_theta = torch.sin(theta_braid)  # [A, A, 1]
+        cos_theta = torch.cos(theta_braid)
+        sin_theta = torch.sin(theta_braid)
         braided_interactions = cos_theta * states_j + sin_theta * states_i  # [A, A, D]
         topological_bulk = torch.mean(braided_interactions, dim=1)  # [A, D]
 

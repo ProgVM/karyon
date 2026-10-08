@@ -1,0 +1,13 @@
+{
+  "exp_id": "EXP-377",
+  "active_atoms": 16,
+  "sprout_events": 12,
+  "final_det_bit_errors": 4.067415730337078,
+  "final_det_strain": 6.0004645090424615,
+  "final_stoch_strain": 5.9040535052170915,
+  "tok_per_sec": 131.14232170821336,
+  "final_omega": 0.015787746757268906,
+  "final_melt_rate": 1.0,
+  "discovered_formulas": "=== KARYON HOLOGRAPHIC TOPOLOGICAL QUANTUM SPECIFICATION ===\n  Active Units in Substrate       : 16 (Started at 4)\n  Observation Intensity (Omega_t) : 0.0158 (0=Fluid Wave, 1=Sharp Collapse)\n  Phase Lock Melting Rate         : 1.0000 (0=Frozen, 1=Liquid)\n  Holographically-Locked Global Laws:\n    - Force 0 (Inertial Memory)     : 5.0%\n    - Force 1 (Bilinear Resonance)  : 40.9%\n    - Force 2 (Harmonic Vibration)   : 5.5%\n    - Force 3 (Attractor Snapping)  : 48.6%\n\n  Individual Unit Topological Preferences:\n    Unit_00 | Epigenetic Gate: 0.9802 | Laws: [M:0.01, R:0.93, V:0.00, A:0.06]\n    Unit_01 | Epigenetic Gate: 0.9806 | Laws: [M:0.00, R:1.00, V:0.00, A:0.00]\n    Unit_02 | Epigenetic Gate: 0.9960 | Laws: [M:0.11, R:0.42, V:0.00, A:0.48]\n    Unit_03 | Epigenetic Gate: 0.9920 | Laws: [M:0.00, R:0.22, V:0.00, A:0.77]\n    Unit_04 | Epigenetic Gate: -0.1901 | Laws: [M:0.00, R:0.19, V:0.15, A:0.65]\n    Unit_05 | Epigenetic Gate: 0.0295 | Laws: [M:0.00, R:0.22, V:0.04, A:0.74]\n    Unit_06 | Epigenetic Gate: -0.5086 | Laws: [M:0.03, R:0.19, V:0.00, A:0.78]\n    Unit_07 | Epigenetic Gate: 0.4273 | Laws: [M:0.00, R:1.00, V:0.00, A:0.00]\n    Unit_08 | Epigenetic Gate: 0.3337 | Laws: [M:0.02, R:0.19, V:0.00, A:0.79]\n    Unit_09 | Epigenetic Gate: 0.2790 | Laws: [M:0.12, R:0.18, V:0.06, A:0.63]\n    Unit_10 | Epigenetic Gate: 0.5767 | Laws: [M:0.00, R:1.00, V:0.00, A:0.00]\n    Unit_11 | Epigenetic Gate: 0.2175 | Laws: [M:0.51, R:0.21, V:0.00, A:0.27]\n    Unit_12 | Epigenetic Gate: -0.2547 | Laws: [M:0.00, R:0.18, V:0.10, A:0.72]\n    Unit_13 | Epigenetic Gate: 0.2358 | Laws: [M:0.00, R:0.24, V:0.00, A:0.76]\n    Unit_14 | Epigenetic Gate: -0.1701 | Laws: [M:0.00, R:0.17, V:0.00, A:0.83]\n    Unit_15 | Epigenetic Gate: -0.5567 | Laws: [M:0.00, R:0.18, V:0.52, A:0.29]",
+  "verdict": "\ud83d\udd34 REJECTED"
+}
