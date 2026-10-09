@@ -1,0 +1,24 @@
+{
+  "exp_id": "EXP-382",
+  "raw_text_stream": {
+    "final_strain": 2.695756554922318,
+    "final_bit_errors": 2.227272727272727,
+    "active_layers": 8,
+    "sprout_events": 6,
+    "prune_events": 0,
+    "rejections": 20,
+    "tok_per_sec": 34.27269296042407,
+    "discovered_formulas": "=== KARYON LAMINAR AUTOPOIETIC SPECIFICATION ===\n  Active Laminar depth            : 8 (Max: 8)\n  Sprout Morphogenesis Events     : 6\n  Prune Morphogenesis Events      : 0\n  G\u00f6del Sandbox Rejections        : 20\n\n  Dynamic Laminar Sheets & Assignment Roles:\n    Sheet_00 | Epigenetic Gate: 0.0010 | Dominant Operator: Attractor | Dominant Role: Syntax\n           - Op Blends : [Lin:0.25, Bilin:0.22, Attr:0.36, SSM:0.17]\n           - Roles     : [Synt:0.75, Seman:0.09, Memo:0.10, Dyna:0.06]\n    Sheet_01 | Epigenetic Gate: 0.0223 | Dominant Operator: SSM | Dominant Role: Semantics\n           - Op Blends : [Lin:0.13, Bilin:0.27, Attr:0.27, SSM:0.33]\n           - Roles     : [Synt:0.08, Seman:0.72, Memo:0.08, Dyna:0.11]\n    Sheet_02 | Epigenetic Gate: -0.0001 | Dominant Operator: Linear | Dominant Role: Syntax\n           - Op Blends : [Lin:0.29, Bilin:0.25, Attr:0.25, SSM:0.22]\n           - Roles     : [Synt:0.29, Seman:0.25, Memo:0.24, Dyna:0.22]\n    Sheet_03 | Epigenetic Gate: 0.0981 | Dominant Operator: Linear | Dominant Role: Dynamics\n           - Op Blends : [Lin:0.30, Bilin:0.25, Attr:0.23, SSM:0.21]\n           - Roles     : [Synt:0.23, Seman:0.25, Memo:0.26, Dyna:0.26]\n    Sheet_04 | Epigenetic Gate: -0.0001 | Dominant Operator: Linear | Dominant Role: Semantics\n           - Op Blends : [Lin:0.28, Bilin:0.22, Attr:0.26, SSM:0.25]\n           - Roles     : [Synt:0.27, Seman:0.28, Memo:0.19, Dyna:0.26]\n    Sheet_05 | Epigenetic Gate: -0.0311 | Dominant Operator: Attractor | Dominant Role: Semantics\n           - Op Blends : [Lin:0.25, Bilin:0.26, Attr:0.26, SSM:0.23]\n           - Roles     : [Synt:0.23, Seman:0.27, Memo:0.26, Dyna:0.24]\n    Sheet_06 | Epigenetic Gate: 0.1558 | Dominant Operator: Linear | Dominant Role: Syntax\n           - Op Blends : [Lin:0.34, Bilin:0.26, Attr:0.17, SSM:0.23]\n           - Roles     : [Synt:0.29, Seman:0.23, Memo:0.24, Dyna:0.23]\n    Sheet_07 | Epigenetic Gate: 0.0463 | Dominant Operator: SSM | Dominant Role: Memory\n           - Op Blends : [Lin:0.13, Bilin:0.24, Attr:0.19, SSM:0.44]\n           - Roles     : [Synt:0.22, Seman:0.27, Memo:0.29, Dyna:0.23]"
+  },
+  "lorenz_chaotic_stream": {
+    "final_strain": 0.18238703190613,
+    "final_bit_errors": 0.0,
+    "active_layers": 2,
+    "sprout_events": 1,
+    "prune_events": 1,
+    "rejections": 19,
+    "tok_per_sec": 68.54042079613379,
+    "discovered_formulas": "=== KARYON LAMINAR AUTOPOIETIC SPECIFICATION ===\n  Active Laminar depth            : 2 (Max: 8)\n  Sprout Morphogenesis Events     : 1\n  Prune Morphogenesis Events      : 1\n  G\u00f6del Sandbox Rejections        : 19\n\n  Dynamic Laminar Sheets & Assignment Roles:\n    Sheet_00 | Epigenetic Gate: 0.0352 | Dominant Operator: SSM | Dominant Role: Syntax\n           - Op Blends : [Lin:0.16, Bilin:0.28, Attr:0.21, SSM:0.35]\n           - Roles     : [Synt:0.77, Seman:0.11, Memo:0.06, Dyna:0.06]\n    Sheet_01 | Epigenetic Gate: 0.1377 | Dominant Operator: SSM | Dominant Role: Semantics\n           - Op Blends : [Lin:0.06, Bilin:0.20, Attr:0.19, SSM:0.55]\n           - Roles     : [Synt:0.13, Seman:0.64, Memo:0.12, Dyna:0.11]"
+  },
+  "verdict": "\u26aa NEUTRAL"
+}
