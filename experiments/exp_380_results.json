@@ -1,0 +1,36 @@
+{
+  "exp_id": "EXP-380",
+  "domain_1_lfsr": {
+    "final_strain": 0.253838471751256,
+    "final_bit_errors": 0.13654618473895583,
+    "active_nodes": 4,
+    "sprout_events": 0,
+    "rejections": 18,
+    "tok_per_sec": 93.1187810698133
+  },
+  "domain_2_lorenz": {
+    "final_strain": 0.00964812838531335,
+    "final_bit_errors": 0.0,
+    "active_nodes": 4,
+    "sprout_events": 0,
+    "rejections": 4,
+    "tok_per_sec": 92.3599929825586
+  },
+  "domain_3_harmonic": {
+    "final_strain": 0.38867905455450696,
+    "final_bit_errors": 0.0,
+    "active_nodes": 4,
+    "sprout_events": 0,
+    "rejections": 15,
+    "tok_per_sec": 98.05271922399305
+  },
+  "domain_4_text": {
+    "final_strain": 2.771669064420294,
+    "final_bit_errors": 2.2248995983935744,
+    "active_nodes": 4,
+    "sprout_events": 0,
+    "rejections": 30,
+    "tok_per_sec": 103.4153437620584
+  },
+  "verdict": "\u26aa NEUTRAL"
+}
