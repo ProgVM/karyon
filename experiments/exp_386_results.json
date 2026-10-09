@@ -1,0 +1,26 @@
+{
+  "exp_id": "EXP-386",
+  "raw_text_stream": {
+    "final_strain": 2.7704890246059803,
+    "final_bit_errors": 2.22192513368984,
+    "active_layers": 8,
+    "avg_thinking_steps": 2.334889926617745,
+    "sprout_events": 6,
+    "prune_events": 0,
+    "rejections": 0,
+    "tok_per_sec": 9.679121709845985,
+    "discovered_formulas": "=== RMAS-SMFT ENDOGENOUS AUTOPOIETIC SPECIFICATION ===\n  Active Laminar depth            : 8 (Max: 8)\n  Average Latent Thinking Depth   : 2.33 cycles/token (Max: 4)\n  Noradrenaline (Arousal / NA)    : 0.9999\n  Dopamine (Stability / DA)       : 0.6053\n  Memory Access Gates             : Read Gate = 0.4242 | Write Gate = 0.2333\n  Sprout Morphogenesis Events     : 6\n  Prune Morphogenesis Events      : 0\n  G\u00f6del Sandbox Rejections        : 0\n\n  Dynamic Laminar Sheets & Assignment Roles:\n    Sheet_00 | Epigenetic Gate: 0.0011 | Chrono tau: 0.8829 | Dominant Operator: Linear | Role: Syntax\n           - Op Blends : [Lin:0.31, Bilin:0.19, Attr:0.28, SSM:0.22]\n           - Roles     : [Synt:0.69, Seman:0.11, Memo:0.11, Dyna:0.09]\n    Sheet_01 | Epigenetic Gate: -0.0001 | Chrono tau: 0.9900 | Dominant Operator: Bilinear | Role: Semantics\n           - Op Blends : [Lin:0.29, Bilin:0.30, Attr:0.20, SSM:0.21]\n           - Roles     : [Synt:0.13, Seman:0.70, Memo:0.11, Dyna:0.06]\n    Sheet_02 | Epigenetic Gate: -0.0001 | Chrono tau: 0.9900 | Dominant Operator: Bilinear | Role: Memory\n           - Op Blends : [Lin:0.29, Bilin:0.32, Attr:0.20, SSM:0.19]\n           - Roles     : [Synt:0.20, Seman:0.26, Memo:0.29, Dyna:0.25]\n    Sheet_03 | Epigenetic Gate: 0.0002 | Chrono tau: 0.9900 | Dominant Operator: Linear | Role: Semantics\n           - Op Blends : [Lin:0.32, Bilin:0.23, Attr:0.21, SSM:0.25]\n           - Roles     : [Synt:0.20, Seman:0.42, Memo:0.23, Dyna:0.15]\n    Sheet_04 | Epigenetic Gate: -0.0014 | Chrono tau: 0.8945 | Dominant Operator: Bilinear | Role: Syntax\n           - Op Blends : [Lin:0.16, Bilin:0.30, Attr:0.26, SSM:0.28]\n           - Roles     : [Synt:0.29, Seman:0.26, Memo:0.23, Dyna:0.22]\n    Sheet_05 | Epigenetic Gate: -0.0303 | Chrono tau: 0.9900 | Dominant Operator: Linear | Role: Dynamics\n           - Op Blends : [Lin:0.28, Bilin:0.25, Attr:0.24, SSM:0.23]\n           - Roles     : [Synt:0.28, Seman:0.17, Memo:0.26, Dyna:0.29]\n    Sheet_06 | Epigenetic Gate: -0.0569 | Chrono tau: 0.9900 | Dominant Operator: Linear | Role: Semantics\n           - Op Blends : [Lin:0.32, Bilin:0.27, Attr:0.22, SSM:0.20]\n           - Roles     : [Synt:0.24, Seman:0.30, Memo:0.26, Dyna:0.19]\n    Sheet_07 | Epigenetic Gate: -0.0008 | Chrono tau: 0.4294 | Dominant Operator: SSM | Role: Syntax\n           - Op Blends : [Lin:0.10, Bilin:0.25, Attr:0.19, SSM:0.45]\n           - Roles     : [Synt:0.38, Seman:0.23, Memo:0.18, Dyna:0.21]"
+  },
+  "lorenz_chaotic_stream": {
+    "final_strain": 0.018490655560147288,
+    "final_bit_errors": 0.0,
+    "active_layers": 2,
+    "avg_thinking_steps": 2.6357571714476316,
+    "sprout_events": 0,
+    "prune_events": 0,
+    "rejections": 11,
+    "tok_per_sec": 23.634847893203325,
+    "discovered_formulas": "=== RMAS-SMFT ENDOGENOUS AUTOPOIETIC SPECIFICATION ===\n  Active Laminar depth            : 2 (Max: 8)\n  Average Latent Thinking Depth   : 2.64 cycles/token (Max: 4)\n  Noradrenaline (Arousal / NA)    : 0.1254\n  Dopamine (Stability / DA)       : 0.4487\n  Memory Access Gates             : Read Gate = 0.4675 | Write Gate = 0.2362\n  Sprout Morphogenesis Events     : 0\n  Prune Morphogenesis Events      : 0\n  G\u00f6del Sandbox Rejections        : 11\n\n  Dynamic Laminar Sheets & Assignment Roles:\n    Sheet_00 | Epigenetic Gate: 0.0012 | Chrono tau: 0.4982 | Dominant Operator: SSM | Role: Syntax\n           - Op Blends : [Lin:0.24, Bilin:0.11, Attr:0.17, SSM:0.47]\n           - Roles     : [Synt:0.50, Seman:0.24, Memo:0.13, Dyna:0.13]\n    Sheet_01 | Epigenetic Gate: 0.0111 | Chrono tau: 0.2363 | Dominant Operator: SSM | Role: Semantics\n           - Op Blends : [Lin:0.16, Bilin:0.34, Attr:0.12, SSM:0.38]\n           - Roles     : [Synt:0.14, Seman:0.57, Memo:0.11, Dyna:0.18]"
+  },
+  "verdict": "\u26aa NEUTRAL"
+}

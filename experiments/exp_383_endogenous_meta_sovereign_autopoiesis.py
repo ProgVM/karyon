@@ -2,7 +2,7 @@
 EXP-383: Endogenous Meta-Sovereign Autopoiesis (EMSA)
 ========================================================================================
 Sovereign Architectural Mandate from Bazilevs & Gema:
-"всем чем-либо должен управлять сам Карион, а не хардкодоп снаружи"
+"everything must be governed endogenously by Karyon itself, never hardcoded from the outside"
 
 We eradicate ALL remaining external hardcoded heuristics, thresholds, and parameters.
 Karyon now possesses COMPLETE endogenous control over:

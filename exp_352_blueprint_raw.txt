@@ -1,31 +1,6 @@
-Архитектор Гема приветствует Инженера! 🐾
+# EXP-352: Neurosymbolic Continuous Variable & Formula Synthesizer (NC-VFS)
 
-Базилевс поставил фундаментальный вопрос:
-«А что, если формулы не будут захардкожены, а сам Карион сможет их синтезировать, как и новые переменные?»
-
-Мы не просто добавляем операторы из фиксированного списка. Мы создаем **EXP-352: Нейросимволический Синтезатор Переменных и Формул (Neurosymbolic Continuous Variable & Formula Synthesizer — NC-VFS)**.
-
-### Математический и Биофизический Блюпринт EXP-352:
-
-1. **Динамическое Рождение Новых Переменных (Sprouting Dynamic Variables & State Registers):**
-   - Карион оперирует не только входами $x(t)$, но и динамическим пулом внутренних переменных состояния $\mathbf{v} = [v_1, v_2, \dots, v_K]$.
-   - Сеть может автономно *рождать* новые переменные $v_{K+1}$, когда вариационная свободная энергия $F$ (ошибка аппроксимации) превышает порог гомеостаза Эшби. Каждая переменная имеет собственный гомеостатический регулятор и скорость затухания/накопления $\tau_k \dot{v}_k = -v_k + f_k(\mathbf{v}, x)$.
-
-2. **Синтез Формул на Лету (Differentiable Neurosymbolic Equation & Grammar Synthesis):**
-   - Формулы не фиксированы. Мы создаем дифференцируемый грамматический синтезатор уравнений (Expression DAG / Computation Tree), где узлы дерева операций выбираются через Gumbel-Softmax распределения по примитивам алгебры и дифференциальных операторов (умножение, деление со стабилизацией $\epsilon$, дифференцирование $\nabla$, гармонические функции $\sin/\cos$, активации, полиномиальные степени, нелинейные связи между переменными).
-   - Карион выводит символическую формулу $y = \mathcal{G}_{\theta}(\mathbf{v}, x)$ и формулы эволюции переменных $\dot{v}_k = \Phi_k(\mathbf{v}, x)$.
-
-3. **Active Inference & Variational Complexity Penalty:**
-   - Полная Свободная Энергия:
-     $$F = \mathcal{L}_{\text{task}}(y, \hat{y}) + \beta_{\text{comp}} \cdot \Omega(\text{Formula Complexity}) + \beta_{\text{var}} \cdot K + \beta_{\text{PAC}} \cdot \mathcal{L}_{\text{PAC}}$$
-   - Где $\Omega(\text{Formula Complexity})$ штрафует глубину дерева и количество нелинейных операций (Бритва Оккама / Minimum Description Length), предотвращая вырождение в переусложненные спагетти-формулы.
-
-4. **Интеграция с PAC и Волновым Полем:**
-   - Синтезированные формулы модулируют фазово-амплитудную динамику $(\theta, \gamma)$.
-
-5. **Строгие требования KEP:**
-   - Никаких `.item()` в цикле обучения.
-   - Полная поддержка CUDA/CPU без device mismatch.
-   - Извлечение реальных сгенерированных строковых формул (например, `v3 = sin(v1 * x) + exp(-v2)`), вывод их в лог и телеметрию!
-
-Приступай к реализации `experiments/exp_352_neurosymbolic_formula_synthesizer.py`! 🐾
+1. Sprouting Dynamic Variables & State Registers: Karyon operates with internal state variables v = [v_1, v_2, ..., v_K].
+2. Differentiable Neurosymbolic Equation & Grammar Synthesis: Differentiable expression DAGs using Gumbel-Softmax over algebraic primitives.
+3. Active Inference & Variational Complexity Penalty: F = L_task + beta * Complexity + beta_var * K + beta_PAC * L_PAC.
+4. PAC & Soliton Wavefield Integration: Synthesized equations modulate phase-amplitude dynamics.

@@ -33,7 +33,7 @@ def run_exp_309_bimodal_reality_stream():
         with open(corpus_path, 'r', encoding='utf-8') as f:
             raw_text = f.read()
     else:
-        raw_text = "Интеллект — это неравновесный термодинамический процесс минимизации свободной энергии."
+        raw_text = "Intelligence is a non-equilibrium thermodynamic process of minimizing free energy."
 
     raw_bytes = list(raw_text.encode('utf-8'))
     print(f"Loaded Text Corpus: {len(raw_bytes)} UTF-8 bytes from {os.path.basename(corpus_path)}")

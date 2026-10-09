@@ -2,7 +2,7 @@
 EXP-384: Endogenous Associative Trace Memory & Sovereign Laminar Autopoiesis (EATM-SLA)
 ========================================================================================
 Sovereign Architectural Mandate from Bazilevs & Gema:
-"всем чем-либо должен управлять сам Карион, а не хардкодоп снаружи"
+"everything must be governed endogenously by Karyon itself, never hardcoded from the outside"
 
 To shatter the final barrier preventing prediction error from plunging toward 0.000
 on complex, non-local symbolic streams (raw UTF-8 bytes):

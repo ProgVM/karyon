@@ -2,7 +2,7 @@
 EXP-382: Epigenetic Laminar Morphogenesis & Autonomous Layer Assembly (ELM-ALA)
 ========================================================================================
 Sovereign Architectural Mandate from Bazilevs & Gema:
-"Карион должен сам управлять слоями (их созданием/удалением и их назначениями и содержанием)"
+"Karyon must autonomously govern its layers (their creation, pruning, assignments, and contents)"
 
 To realize this, we implement ELM-ALA:
 1. Dynamic Laminar Stack:

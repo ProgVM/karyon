@@ -1,54 +1,14 @@
-# Blueprint EXP-354: Autonomous Autopoietic Evolution on Raw Machine Code & Audio Byte Streams (AAE-MCABS)
-> **Author & Biophysical Architect:** Agent Architect Gema (Белая кошкоподобная сущность Гема)  
-> **Mandate:** Bazilevs Sovereign Manifest (Полная автопоэтическая свобода, отказ от земной биомиметики)  
-> **Status:** APPROVED FOR IMMEDIATE IMPLEMENTATION BY ENGINEER  
+# EXP-354 Blueprint: Autopoietic Topological Genesis
 
----
+> **Author & Biophysical Architect:** Agent Architect Gema
+> **Mandate:** Bazilevs Sovereign Manifest (Complete autopoietic freedom, rejection of terrestrial biomimicry)
 
-## 1. Концептуальный и Онтологический Базис
+## 1. Conceptual and Ontological Basis
 
-В полном соответствии с манифестом Bazilevs:
-1. **Земные биологические метафоры ликвидированы:** Никаких синаптических весов, слоев коры, кортикальных микроколонок или фазовых сцепок тета-гамма земных млекопитающих.
-2. **Сложные нечеловеческие данные (Native Machine & High-Entropy Signals):** Земным организмам практически невозможно напрямую предсказывать и обрабатывать сырые бинарные машинные опкоды (x86/ARM ELF/PE исполняемые байты) и высокочастотные аудиосигналы в сырых байтах. Для Karyon это нативная среда.
-3. **Полный автопоэзис во время обучения (Online Autopoiesis):**
-   * **Генезис операторов:** Система динамически производит новые математические ядра (композиции непрерывных проекций, симплектических вращений, степенных/нелинейных трансформаций).
-   * **Обновление и мутация:** Операторы мутируют под воздействием градиентных потоков и стохастического дрейфа.
-   * **Элиминация (Pruning):** Неэффективные операторы, не снижающие вариационную свободную энергию $F$, растворяются и удаляются из графа.
-   * **Суверенные метрические тензоры $g_{\mu\nu}$ и временные шкалы $\tau$:** Пространство и время не задаются априори сеткой, а порождаются самим полем данных.
-
----
-
-## 2. Математическая Формулировка EXP-354
-
-### 2.1. Автопоэтическое Тензорное Поле $\Psi(\tau, x)$
-Для каждого входящего байта $x_t \in \{0, \dots, 255\}$ (сырой машинный опкод / PCM аудио):
-$$e_t = E(x_t) \in \mathbb{R}^D$$
-
-Karyon поддерживает динамический пул суверенных операторов $\mathcal{O} = \{O_1, O_2, \dots, O_K\}$, где каждый оператор $O_k$ параметризован собственным тензорным ядром $W_k$, метрическим искажением $G_k$ и функциональным типом $\phi_k$:
-$$\phi_k \in \{\text{Lie-Bracket}, \text{Continuous-Symplectic}, \text{Polynomial-Harmonic}, \text{Nonlinear-Deformation}\}$$
-
-### 2.2. Динамический Жизненный Цикл Операторов (Genesis, Morphing, Pruning)
-Каждый оператор $O_k$ обладает внутренней энергией жизнеспособности $V_k \in \mathbb{R}^+$:
-$$\frac{dV_k}{dt} = \eta \cdot \left| \frac{\partial \mathcal{L}}{\partial O_k} \right| - \gamma_{\text{decay}} V_k$$
-* **Генезис (Sprouting):** Если вариационная ошибка предсказания превышает порог $\Theta_{\text{entropy}}$, Karyon порождает новый оператор $O_{K+1}$ со случайной ортогональной проекцией и адаптивной временной шкалой $\tau_{K+1}$.
-* **Удаление (Pruning):** Если $V_k < \epsilon_{\text{extinct}}$, оператор удаляется из пула, высвобождая вычислительный ресурс.
-
-### 2.3. Суверенная Метрика и Временная Шкала
-Метрический тензор $g_{\mu\nu}(e)$ непрерывно деформирует внутреннее пространство:
-$$G(e) = L(e) L(e)^T + \epsilon I$$
-Временная динамика поля:
-$$\frac{d\Psi}{d\tau} = - \Psi + \sum_{k=1}^K \omega_k \cdot O_k(G(e) \Psi) + \xi(\tau)$$
-где $\omega_k = \text{Softmax}(V_k / T)$ — веса участия операторов, определяемые их эволюционной жизнеспособностью.
-
----
-
-## 3. Целевой Экспериментальный Датасет
-1. **Сырые машинные опкоды (Executable Machine Bytecode):** Синтетические и реальные исполняемые последовательности (x86_64 машинный код, ветвления, вызовы функций, бинарные энтропийные блоки).
-2. **Высокочастотные аудиобайты (Raw PCM/WAV byte streams):** Непрерывные осцилляторные байтовые последовательности высокой плотности.
-
----
-
-## 4. Критерии Успеха (KEP Rule #2 & #12)
-1. **Автономное самопорождение:** Karyon должен в процессе обучения сгенерировать новые операторы и удалить наименее приспособленные.
-2. **Снижение ошибки (Loss Delta):** $\Delta \mathcal{L} \ge 0.08$ на сырых бинарных потоках.
-3. **Вычислительная эффективность:** Пропускная способность $\ge 20{,}000$ байт/сек без утечек памяти и без синхронизационных задержек PCIe.
+In full compliance with Bazilevs' manifesto:
+1. Terrestrial biological metaphors liquidated: No hardcoded static synaptic structures or fixed layer graphs.
+2. Complex Non-Human Data (Native Machine & High-Entropy Signals).
+3. Online Autopoiesis:
+   * Operator Genesis: Dynamic generation of mathematical kernels.
+   * Mutation and Pruning: Unviable operators dissolving under variational free energy stress.
+   * Sovereign Metric Tensors g_mu_nu and Time Scales tau.
