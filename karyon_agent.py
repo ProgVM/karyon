@@ -91,7 +91,7 @@ class CoREAgent(nn.Module):
 
         # 4. C++20 Continuous Saccadic Attractor Drift (C-SSD Engine)
         self.saccadic_drift = kcore.ContinuousSaccadicDrift(embed_dim, 17, str(device))
-        
+
         # 5. Continuous Gaze & Copy Projection
         self.content_q = nn.Linear(embed_dim, embed_dim, bias=False).to(device)
         self.content_k = nn.Linear(embed_dim, embed_dim, bias=False).to(device)
@@ -182,7 +182,7 @@ class CoREAgent(nn.Module):
             # Step 3: Residual Highway + Readout
             h_out = h_seq + h_graph
             h_norm = self.norm(h_out)
-            
+
             # Step 3.1: Context-Gated Hopfield Aversive Repulsion & Attractor Snapping across sequence
             # Uses initial sensory context (h_seq[:, 0:1, :]) to repel known error actions in this context
             h_ctx = h_seq[:, 0, :].unsqueeze(1).expand(B, S, D).reshape(B * S, D)
@@ -230,33 +230,33 @@ class CoREAgent(nn.Module):
         x_seq = torch.cat([h_core.unsqueeze(1), x_t.unsqueeze(1)], dim=1)
         res_tuple = self.ssd.forward(x_seq, free_energy if free_energy is not None else torch.Tensor())
         h_core = res_tuple[0][:, -1, :]
-        
+
         # 1. Pure Modality-Agnostic Information Contrast Salience:
         # Measure feature variance/deviation of each token vector from the local field centroid
-        mean_field = p_field.mean(dim=1, keepdim=True) # [B, 1, D]
-        field_contrast = torch.norm(p_field - mean_field, dim=-1) # [B, L]
-        
+        mean_field = p_field.mean(dim=1, keepdim=True)  # [B, 1, D]
+        field_contrast = torch.norm(p_field - mean_field, dim=-1)  # [B, L]
+
         # Normalized contrast landscape + learned feature importance
-        learned_salience = self.salience_proj(p_field).squeeze(-1) # [B, L]
-        salience_bias = field_contrast + learned_salience # [B, L]
-        
+        learned_salience = self.salience_proj(p_field).squeeze(-1)  # [B, L]
+        salience_bias = field_contrast + learned_salience  # [B, L]
+
         # 2. Continuous Saccadic Attractor Drift in C++20 with Endogenous Salience Landscape
         drifted_bump, _ = self.saccadic_drift(bump, h_core, 0.1, salience_bias)
-        
+
         # 3. Content resonance over prompt field
         q = self.content_q(h_core).unsqueeze(1)
         k = self.content_k(p_field)
         content_scores = torch.bmm(q, k.transpose(1, 2)).squeeze(1) / (D ** 0.5)
         content_bump = torch.softmax((content_scores + salience_bias) * 10.0, dim=-1)
-        
+
         # 4. Continuous Gaze Blending
         alpha_gaze = torch.sigmoid(self.gaze_gate(h_core))
         next_bump = alpha_gaze * drifted_bump + (1.0 - alpha_gaze) * content_bump
         next_bump = next_bump / (next_bump.sum(dim=-1, keepdim=True) + 1e-6)
-        
+
         # 5. Continuous Field Readout
         h_gaze = torch.bmm(next_bump.unsqueeze(1), p_field).squeeze(1)
-        
+
         # 6. C++20 Dynamic Morphic Thinking Recirculation
         h_sensory = self.norm(h_core + self.gaze_proj(torch.cat([h_core, h_gaze], dim=-1)))
         h_deliberated = self.graph.forward(h_sensory, thinking_steps)
@@ -266,12 +266,12 @@ class CoREAgent(nn.Module):
         # Modulates deliberated action representation using accumulated somatic episodes
         h_action = self.hopfield_memory.relax_with_repulsion(h_sensory, h_fused)
         h_fused = self.norm(h_fused + h_action)
-        
+
         # 7. Copy Projection
         p_copy = torch.sigmoid(self.copy_gate(h_fused))
         copy_logits = torch.zeros(B, self.vocab_size, device=p_field.device)
         copy_logits.scatter_add_(1, p_tokens, next_bump)
-        
+
         return h_fused, h_core, next_bump, p_copy, copy_logits
 
     def record_somatic_step_feedback(
@@ -332,15 +332,15 @@ class CoREAgent(nn.Module):
         Computes endogenous attractor query over settled prompt field without ASCII or delimiter checks.
         """
         B, L, D = p_field.shape
-        q_focus = self.init_focus_q(h_core).unsqueeze(1) # [B, 1, D]
+        q_focus = self.init_focus_q(h_core).unsqueeze(1)  # [B, 1, D]
         k_field = self.content_k(p_field)               # [B, L, D]
-        
+
         # Endogenous Information Contrast
         mean_field = p_field.mean(dim=1, keepdim=True)
         field_contrast = torch.norm(p_field - mean_field, dim=-1)
         learned_salience = self.salience_proj(p_field).squeeze(-1)
         salience_bias = field_contrast + learned_salience
-        
+
         # Associative resonance + endogenous salience
         scores = torch.bmm(q_focus, k_field.transpose(1, 2)).squeeze(1) / (D ** 0.5)
         init_bump = torch.softmax((scores + salience_bias) * 10.0, dim=-1)
@@ -486,7 +486,7 @@ class CoREAgent(nn.Module):
                     torch.empty(0, device=flux.device),
                     2
                 ))
-                
+
                 # Evaluate branch Expected Free Energy G(tau)
                 if free_energy_fn is not None:
                     fe_tau = free_energy_fn(sim_state, tau)
@@ -522,22 +522,22 @@ class CoREAgent(nn.Module):
         stress_increment = max(0.0, free_energy - self.tau_base)
         self.somatic_stress = self.stress_lambda * self.somatic_stress + stress_increment
 
-        if (self.somatic_stress > self.theta_morph and 
-                maturity >= self.maturity_threshold and 
+        if (self.somatic_stress > self.theta_morph and
+                maturity >= self.maturity_threshold and
                 self.morphogenesis_count < self.max_morphogenesis_events):
             self.morphogenesis_count += 1
             parent_idx = self.active_organelle_idx
-            
+
             # 1. Epigenetically lock active parent organelle
             self.lock_node(parent_idx, 1.0)
-            
+
             # 2. Susumu Ohno Zero-Shock Duplication
             clone_name = f"auto_organelle_gen{self.morphogenesis_count}"
             clone_idx = self.duplicate_node(parent_idx, clone_name, initial_alpha=1.0)
-            
+
             # 3. Update active organelle index to newly sprouted plastic clone
             self.active_organelle_idx = clone_idx
-            
+
             # 4. Adaptive Noise Injection Impulse
             sigma_noise = min(0.2, 0.02 * math.exp(min(2.0, free_energy / 5.0)))
 
@@ -551,7 +551,7 @@ class CoREAgent(nn.Module):
                         new_params.append(p)
                 if new_params:
                     optimizer.add_param_group({"params": new_params, "lr": base_lr})
-            
+
             # 6. Reset somatic stress upon successful mitosis
             prev_stress = self.somatic_stress
             self.somatic_stress = 0.0
@@ -714,7 +714,7 @@ class CoREAgent(nn.Module):
         EXP-344: Socratic Pedagogical Stream - Local Predictive Step.
         Executes an instant, local predictive coding gradient step on active organelles
         and task-relevant parameters without global backpropagation across arbitrary sequence contexts.
-        
+
         Args:
             input_ids: Prompt input tensor [1, S]
             target_ids: Target completion tensor [1, T] or full sequence [1, S+T]
@@ -725,7 +725,7 @@ class CoREAgent(nn.Module):
             target_organelles_only: If True, restricts gradient flow to dynamic morphic graph organelles
         """
         self.train()
-        
+
         # Determine parameters to update
         if target_organelles_only:
             # Optimize active morphic graph organelles, routing and projection weights
@@ -740,10 +740,10 @@ class CoREAgent(nn.Module):
             params_to_update = [p for p in self.parameters() if p.requires_grad]
 
         optimizer = torch.optim.AdamW(params_to_update, lr=learning_rate, weight_decay=weight_decay)
-        
+
         # Forward pass through deliberative graph
-        logits = self.forward(input_ids, thinking_steps=thinking_steps) # [1, S, V]
-        
+        logits = self.forward(input_ids, thinking_steps=thinking_steps)  # [1, S, V]
+
         # Extract target predictions
         if target_ids.shape == input_ids.shape:
             # Shifted next-token prediction
@@ -755,16 +755,16 @@ class CoREAgent(nn.Module):
             shift_targets = target_ids[:, :].contiguous()
 
         loss = F.cross_entropy(shift_logits.view(-1, 256), shift_targets.view(-1), ignore_index=256)
-        
+
         optimizer.zero_grad()
         loss.backward()
-        
+
         if max_grad_norm > 0:
             torch.nn.utils.clip_grad_norm_(params_to_update, max_grad_norm)
-            
+
         optimizer.step()
         self.eval()
-        
+
         return float(loss.item())
 
     def load_complete_state_dict(self, state_dict: Dict[str, torch.Tensor], device: Optional[str] = None):
