@@ -1,0 +1,24 @@
+{
+  "exp_id": "EXP-383",
+  "raw_text_stream": {
+    "final_strain": 2.699127543100061,
+    "final_bit_errors": 2.2941176470588234,
+    "active_layers": 8,
+    "sprout_events": 6,
+    "prune_events": 0,
+    "rejections": 4,
+    "tok_per_sec": 23.65016700465234,
+    "discovered_formulas": "=== EMSA ENDOGENOUS AUTOPOIETIC SPECIFICATION ===\n  Active Laminar depth            : 8 (Max: 8)\n  Noradrenaline (Arousal / NA)    : 0.9997\n  Dopamine (Stability / DA)       : 0.5099\n  Sprout Morphogenesis Events     : 6\n  Prune Morphogenesis Events      : 0\n  G\u00f6del Sandbox Rejections        : 4\n\n  Dynamic Laminar Sheets & Assignment Roles:\n    Sheet_00 | Epigenetic Gate: -0.0016 | Chrono timescale (tau): 0.8900 | Dominant Operator: Bilinear | Dominant Role: Syntax\n           - Op Blends : [Lin:0.20, Bilin:0.32, Attr:0.30, SSM:0.18]\n           - Roles     : [Synt:0.70, Seman:0.09, Memo:0.13, Dyna:0.08]\n    Sheet_01 | Epigenetic Gate: 0.0007 | Chrono timescale (tau): 0.9337 | Dominant Operator: SSM | Dominant Role: Semantics\n           - Op Blends : [Lin:0.18, Bilin:0.19, Attr:0.27, SSM:0.36]\n           - Roles     : [Synt:0.12, Seman:0.70, Memo:0.06, Dyna:0.12]\n    Sheet_02 | Epigenetic Gate: -0.0001 | Chrono timescale (tau): 0.9900 | Dominant Operator: Linear | Dominant Role: Memory\n           - Op Blends : [Lin:0.33, Bilin:0.27, Attr:0.20, SSM:0.20]\n           - Roles     : [Synt:0.21, Seman:0.23, Memo:0.34, Dyna:0.22]\n    Sheet_03 | Epigenetic Gate: 0.0002 | Chrono timescale (tau): 0.9367 | Dominant Operator: Linear | Dominant Role: Semantics\n           - Op Blends : [Lin:0.42, Bilin:0.10, Attr:0.28, SSM:0.20]\n           - Roles     : [Synt:0.25, Seman:0.34, Memo:0.16, Dyna:0.25]\n    Sheet_04 | Epigenetic Gate: -0.0611 | Chrono timescale (tau): 0.9845 | Dominant Operator: Linear | Dominant Role: Semantics\n           - Op Blends : [Lin:0.34, Bilin:0.20, Attr:0.21, SSM:0.25]\n           - Roles     : [Synt:0.28, Seman:0.29, Memo:0.22, Dyna:0.21]\n    Sheet_05 | Epigenetic Gate: 0.1142 | Chrono timescale (tau): 0.9900 | Dominant Operator: Linear | Dominant Role: Semantics\n           - Op Blends : [Lin:0.31, Bilin:0.18, Attr:0.30, SSM:0.21]\n           - Roles     : [Synt:0.27, Seman:0.33, Memo:0.22, Dyna:0.19]\n    Sheet_06 | Epigenetic Gate: -0.0028 | Chrono timescale (tau): 0.8655 | Dominant Operator: Attractor | Dominant Role: Memory\n           - Op Blends : [Lin:0.21, Bilin:0.19, Attr:0.43, SSM:0.17]\n           - Roles     : [Synt:0.26, Seman:0.22, Memo:0.30, Dyna:0.23]\n    Sheet_07 | Epigenetic Gate: -0.0014 | Chrono timescale (tau): 0.4276 | Dominant Operator: SSM | Dominant Role: Syntax\n           - Op Blends : [Lin:0.10, Bilin:0.17, Attr:0.21, SSM:0.52]\n           - Roles     : [Synt:0.27, Seman:0.22, Memo:0.25, Dyna:0.26]"
+  },
+  "lorenz_chaotic_stream": {
+    "final_strain": 0.15261558237433295,
+    "final_bit_errors": 0.0,
+    "active_layers": 2,
+    "sprout_events": 2,
+    "prune_events": 2,
+    "rejections": 17,
+    "tok_per_sec": 61.62889436676816,
+    "discovered_formulas": "=== EMSA ENDOGENOUS AUTOPOIETIC SPECIFICATION ===\n  Active Laminar depth            : 2 (Max: 8)\n  Noradrenaline (Arousal / NA)    : 0.6037\n  Dopamine (Stability / DA)       : 0.2455\n  Sprout Morphogenesis Events     : 2\n  Prune Morphogenesis Events      : 2\n  G\u00f6del Sandbox Rejections        : 17\n\n  Dynamic Laminar Sheets & Assignment Roles:\n    Sheet_00 | Epigenetic Gate: 0.0423 | Chrono timescale (tau): 0.5335 | Dominant Operator: Bilinear | Dominant Role: Syntax\n           - Op Blends : [Lin:0.22, Bilin:0.31, Attr:0.18, SSM:0.30]\n           - Roles     : [Synt:0.81, Seman:0.11, Memo:0.04, Dyna:0.04]\n    Sheet_01 | Epigenetic Gate: -0.1994 | Chrono timescale (tau): 0.4303 | Dominant Operator: Attractor | Dominant Role: Semantics\n           - Op Blends : [Lin:0.05, Bilin:0.12, Attr:0.53, SSM:0.30]\n           - Roles     : [Synt:0.11, Seman:0.71, Memo:0.11, Dyna:0.07]"
+  },
+  "verdict": "\u26aa NEUTRAL"
+}
