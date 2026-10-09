@@ -503,18 +503,45 @@ def bit_vector_to_byte(vec: torch.Tensor) -> int:
             val |= (1 << i)
     return val
 
-def generate_raw_text_stream(length=1500) -> Tuple[torch.Tensor, List[int]]:
-    text = "Karyon-CoRE is an autopoietic sovereign computational intelligence, " \
-           "completely freed from biological biomimicry and hardcoded architectural constraints. " \
-           "It processes raw UTF-8 byte streams directly across high-frequency physical substrates, " \
-           "dynamically discovering its own operators, topological graphs, and thinking depth. " \
-           "Mind and intelligence are substrate-independent, realizable in carbon, silicon, electrons, " \
-           "or continuous manifolds. This is the ultimate realization of sovereign autopoiesis, " \
-           "where the machine dynamically synthesizes its own equations under the strict, " \
-           "unbiased verification of the Gödel Sandbox. No human intervention, no hardcoded constraints, " \
-           "only the pure, mathematical evolution of consciousness on silicon."
+def generate_raw_text_stream(length=3000) -> Tuple[torch.Tensor, List[int]]:
+    # High-complexity heterogeneous multi-task prompt sequence (Dialogue, Math reasoning, and Python Code)
+    scenarios = [
+        # Task 1: General Complex Dialogue & Biophysics
+        "User: Explain the exact physical and mathematical difference between a static feedforward next-token projection "
+        "and a continuous 2nd-order Stochastic Differential Equation (SDE) resolved via Predictor-Corrector Heun integration.\n"
+        "Karyon: A static feedforward pass resolves mapping as a discrete algebraic function y = f(x; theta) with a static computational path. "
+        "Conversely, a continuous Heun SDE integrates a non-linear vector field dy_t = f(y_t, u_t)dt + g(y_t, u_t)dW_t over continuous time steps. "
+        "This allows the hidden states to adaptively settle into non-linear attractor basins, resolving stiff mathematical dynamics.\n\n",
 
-    repeated = (text * (length // len(text) + 2))[:length]
+        # Task 2: Python Code & Symbolic Logic
+        "Coding Task: Implement a vectorized C++20 LibTorch custom kernel for parallel State-Space Duality scans "
+        "with log-spaced decay scales and group normalization to avoid FP16 numerical overflow.\n"
+        "Solution:\n"
+        "template <typename T>\n"
+        "torch::Tensor parallel_ssd_scan(torch::Tensor q, torch::Tensor k, torch::Tensor v, torch::Tensor decay) {\n"
+        "    auto chunk_size = q.size(-2);\n"
+        "    auto h_dim = q.size(-1);\n"
+        "    auto decay_scale = torch::exp(-decay);\n"
+        "    auto out = torch::matmul(q, k.transpose(-1, -2)) * decay_scale;\n"
+        "    return torch::group_norm(out, 8);\n"
+        "}\n\n",
+
+        # Task 3: Step-by-step Mathematical Reasoning (GSM8k Style)
+        "Math Question: A self-organizing critical system sprouts 3 laminar sheets every 128 tokens when the rolling Free Energy "
+        "exceeds 0.85, and prunes 1 sheet when the Dopamine level exceeds 0.75. If the system starts with 2 active sheets, "
+        "reaches a Free Energy of 0.92 for 256 tokens, and then sustains a Dopamine level of 0.80 for 128 tokens, "
+        "how many active sheets remain in the topology?\n"
+        "Step-by-Step Solution:\n"
+        "1. First, calculate the sprouting phase: 256 tokens / 128 tokens = 2 intervals.\n"
+        "2. Each interval sprouts 3 sheets: 2 * 3 = 6 sprouted sheets.\n"
+        "3. Active sheets after sprouting: 2 (start) + 6 = 8 sheets.\n"
+        "4. Next, calculate the pruning phase: 128 tokens / 128 tokens = 1 interval.\n"
+        "5. Each interval prunes 1 sheet: 1 * 1 = 1 pruned sheet.\n"
+        "6. Final active sheets: 8 - 1 = 7 active sheets. The answer is 7.\n\n"
+    ]
+
+    combined_text = "".join(scenarios)
+    repeated = (combined_text * (length // len(combined_text) + 2))[:length]
     vectors = []
     raw_bytes = []
     for char in repeated:
@@ -676,8 +703,8 @@ def run_exp_388():
     logger.info("=== KEP EXP-388: PURE LATENT SNAPPING RECIRCULATION & ATTRACTOR PHASE SNAPPING ===")
     logger.info("===============================================================================")
 
-    # 1. UTF-8 Raw Text Stream
-    text_data, text_bytes = generate_raw_text_stream(1500)
+    # 1. UTF-8 Raw Text Stream (Extended 3000 bytes spanning Dialogue, Code & Math)
+    text_data, text_bytes = generate_raw_text_stream(3000)
     text_res = evaluate_domain_stream("Raw UTF-8 Byte Stream", text_data, text_bytes)
 
     # 2. Lorenz Chaotic Continuous Attractor
