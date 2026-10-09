@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-379",
+  "active_atoms": 4,
+  "sprout_events": 0,
+  "rejections": 62,
+  "final_det_bit_errors": 0.9550561797752809,
+  "final_det_strain": 1.3778925345049062,
+  "final_stoch_strain": 3.9249124356062706,
+  "tok_per_sec": 103.49082003533437,
+  "discovered_formulas": "=== KARYON G\u00d6DELIAN AUTOPOIETIC SPECIFICATION ===\n  Active Nodes in Graph           : 4 (Started at 4)\n  Observer Intensity (Omega_t)    : 0.2724\n  Sprout Morphogenesis Events     : 0\n  G\u00f6del Sandbox Rejections        : 62\n\n  Dynamic Node AST Genome & Law Configuration:\n    Node_00 | Epigenetic Gate: 0.1461 | tau: 0.860 | Laws: [M:0.03, R:0.82, V:0.09, A:0.06]\n    Node_01 | Epigenetic Gate: -0.0058 | tau: 0.656 | Laws: [M:0.17, R:0.44, V:0.18, A:0.21]\n    Node_02 | Epigenetic Gate: 0.1598 | tau: 0.920 | Laws: [M:0.01, R:0.92, V:0.05, A:0.01]\n    Node_03 | Epigenetic Gate: 0.1090 | tau: 0.766 | Laws: [M:0.03, R:0.55, V:0.32, A:0.10]\n\n  Dynamic Homoiconic Graph Connectivity (SDQC):\n    Node_00 -> Outgoing: [  .    .    .   1.00 ]\n    Node_01 -> Outgoing: [  .    .   1.00  .   ]\n    Node_02 -> Outgoing: [  .   1.00  .   1.00 ]\n    Node_03 -> Outgoing: [  .   1.00 1.00  .   ]",
+  "verdict": "\ud83d\udfe2 POSITIVE"
+}
