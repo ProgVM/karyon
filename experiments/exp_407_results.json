@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-407",
+  "final_loss": 4.9995,
+  "final_accuracy": 8.74,
+  "sprout_events": 112,
+  "prune_events": 93,
+  "final_active_nodes": 16,
+  "final_locked_nodes": 1,
+  "throughput_steps_per_sec": 35.34,
+  "elapsed_time": 84.87
+}

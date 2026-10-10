@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-406",
+  "final_loss": 11.2852,
+  "final_accuracy": 9.47,
+  "sprout_events": 150,
+  "prune_events": 131,
+  "final_active_nodes": 16,
+  "throughput_steps_per_sec": 46.61,
+  "elapsed_time": 64.34
+}
