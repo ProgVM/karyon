@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-399",
+  "elapsed_total": 182.43221783638,
+  "throughput_steps_per_sec": 13.703719823448084,
+  "final_avg_energy": 0.9048039549920691,
+  "final_accuracy": 8.28331332533013,
+  "sprout_events": 28,
+  "prune_events": 0,
+  "final_nodes": 32,
+  "verdict": "POSITIVE"
+}
