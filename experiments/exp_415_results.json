@@ -1,0 +1,14 @@
+{
+  "exp_id": "EXP-415",
+  "final_loss": 4.8056,
+  "final_accuracy": 8.47,
+  "avg_thinking_depth": 10.28,
+  "metabolic_equilibrium_halts": 503,
+  "max_budget_halts": 2496,
+  "sprout_events": 120,
+  "prune_events": 105,
+  "final_active_nodes": 16,
+  "final_locked_nodes": 1,
+  "throughput_steps_per_sec": 6.72,
+  "elapsed_time": 445.95
+}
