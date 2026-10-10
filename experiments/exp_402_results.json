@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-402",
+  "elapsed_time": 11.093811750411987,
+  "throughput_steps_per_sec": 225.35085832037473,
+  "final_avg_loss": 4.745244275406779,
+  "final_accuracy": 7.523009203681473,
+  "final_temperature": 0.1,
+  "final_susceptibility": 9.372593089938164,
+  "verdict": "\u26aa NEUTRAL"
+}
