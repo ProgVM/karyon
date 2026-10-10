@@ -1,0 +1,8 @@
+{
+  "exp_id": "EXP-418",
+  "final_loss": 3.8312,
+  "final_accuracy": 9.87,
+  "avg_relaxation_steps": 5.72,
+  "throughput_steps_per_sec": 94.05,
+  "elapsed_time": 31.89
+}
