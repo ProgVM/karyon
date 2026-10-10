@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-408",
+  "final_loss": 4.6699,
+  "final_accuracy": 9.5,
+  "avg_thinking_depth": 5.0,
+  "sprout_events": 131,
+  "prune_events": 116,
+  "final_active_nodes": 16,
+  "final_locked_nodes": 1,
+  "throughput_steps_per_sec": 10.8,
+  "elapsed_time": 277.7
+}

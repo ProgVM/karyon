@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-412",
+  "final_loss": NaN,
+  "final_accuracy": 0.4,
+  "sprout_events": 15,
+  "prune_events": 1,
+  "final_active_nodes": 1,
+  "final_locked_nodes": 1,
+  "throughput_steps_per_sec": 215.84,
+  "elapsed_time": 13.89
+}
