@@ -1449,8 +1449,6 @@ public:
     }
 };
 
-#include "karyon_core_zeroprior.inc"
-
 // ============================================================================
 // 9. DYNAMIC MORPHIC GRAPH & COMMUTATION ORCHESTRATOR R(h_t)
 // ============================================================================
@@ -1528,11 +1526,8 @@ public:
             op = std::make_shared<StrictOrthogonalNexusImpl>(dim, device_str);
         } else if (op_type == "QuantumSpinWave") {
             op = std::make_shared<QuantumSpinWaveOpImpl>(dim, device_str, 0.20f, 2);
-        } else if (op_type == "ZeroPriorSynthesized" || op_type == "AutopoieticTensorHyper") {
-            op = std::make_shared<ZeroPriorSynthesizedOpImpl>(dim, 32, device_str);
         } else {
-            // Default to ZeroPriorSynthesized instead of legacy LinearAccumulator!
-            op = std::make_shared<ZeroPriorSynthesizedOpImpl>(dim, 32, device_str);
+            op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
         }
 
         std::string prefix = "node_" + std::to_string(node_ops.size()) + "_" + name;
@@ -2138,12 +2133,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, std::string, float, int64_t>(), py::arg("dim") = 258, py::arg("device_str") = "cpu", py::arg("dt") = 0.20f, py::arg("steps") = 2)
         .def("forward", &QuantumSpinWaveOpImpl::forward)
         .def("__call__", &QuantumSpinWaveOpImpl::forward);
-
-    py::class_<ZeroPriorSynthesizedOpImpl, GraphOp, std::shared_ptr<ZeroPriorSynthesizedOpImpl>>(m, "ZeroPriorSynthesizedOp")
-        .def(py::init<int64_t, int64_t, std::string>(), py::arg("dim") = 258, py::arg("rank") = 32, py::arg("device_str") = "cpu")
-        .def("forward", &ZeroPriorSynthesizedOpImpl::forward)
-        .def("__call__", &ZeroPriorSynthesizedOpImpl::forward)
-        .def("forward_birecurrent", &ZeroPriorSynthesizedOpImpl::forward_birecurrent, py::arg("x"), py::arg("h"));
 
     py::class_<UniversalManifoldImpl, torch::nn::Module, std::shared_ptr<UniversalManifoldImpl>>(m, "UniversalManifold")
         .def(py::init<int64_t, int64_t, std::string>(), py::arg("vocab_size") = 258, py::arg("dim") = 256, py::arg("device") = "cpu")

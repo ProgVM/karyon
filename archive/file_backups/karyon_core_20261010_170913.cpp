@@ -2139,12 +2139,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("forward", &QuantumSpinWaveOpImpl::forward)
         .def("__call__", &QuantumSpinWaveOpImpl::forward);
 
-    py::class_<ZeroPriorSynthesizedOpImpl, GraphOp, std::shared_ptr<ZeroPriorSynthesizedOpImpl>>(m, "ZeroPriorSynthesizedOp")
-        .def(py::init<int64_t, int64_t, std::string>(), py::arg("dim") = 258, py::arg("rank") = 32, py::arg("device_str") = "cpu")
-        .def("forward", &ZeroPriorSynthesizedOpImpl::forward)
-        .def("__call__", &ZeroPriorSynthesizedOpImpl::forward)
-        .def("forward_birecurrent", &ZeroPriorSynthesizedOpImpl::forward_birecurrent, py::arg("x"), py::arg("h"));
-
     py::class_<UniversalManifoldImpl, torch::nn::Module, std::shared_ptr<UniversalManifoldImpl>>(m, "UniversalManifold")
         .def(py::init<int64_t, int64_t, std::string>(), py::arg("vocab_size") = 258, py::arg("dim") = 256, py::arg("device") = "cpu")
         .def("forward", &UniversalManifoldImpl::forward)
