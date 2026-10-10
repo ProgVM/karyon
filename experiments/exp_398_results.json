@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-398",
+  "final_margin_free_energy": 0.25241892436146735,
+  "final_bit_errors": 0.219,
+  "final_exact_accuracy": 91.9,
+  "active_nodes": 4,
+  "sprout_events": 0,
+  "godel_rejections": 0,
+  "elapsed_time": 288.3617265224457
+}

@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-396",
+  "final_free_energy": 0.10061601972579956,
+  "final_bit_errors": 2.738,
+  "final_exact_accuracy": 8.0,
+  "active_nodes": 3,
+  "sprout_events": 0,
+  "godel_rejections": 0,
+  "elapsed_time": 193.2586190700531
+}
