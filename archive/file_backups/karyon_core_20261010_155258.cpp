@@ -1356,100 +1356,6 @@ public:
 };
 
 // ============================================================================
-// 8.11 QUANTUM SPIN WAVEFIELD & GAUGE ANNEALING OP (EXP-403 BREAKTHROUGH)
-// ============================================================================
-class QuantumSpinWaveOpImpl : public GraphOp {
-public:
-    int64_t dim;
-    torch::Tensor j_real;
-    torch::Tensor j_imag;
-    torch::Tensor nonlin_lambda;
-    torch::Tensor log_temp;
-    float dt;
-    int64_t steps;
-
-    QuantumSpinWaveOpImpl(int64_t dim, std::string device_str = "cpu", float dt = 0.20f, int64_t steps = 2)
-        : dim(dim), dt(dt), steps(steps) {
-        auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-
-        // Complex Hermitian Coupling Matrix J = J_real + i * J_imag
-        auto jr = torch::randn({dim, dim}, torch::TensorOptions().device(device)) / std::sqrt((float)dim);
-        auto j_real_sym = 0.5f * (jr + jr.t());
-        j_real_sym.fill_diagonal_(0.0f);
-        j_real = register_parameter("j_real", j_real_sym);
-
-        auto ji = torch::randn({dim, dim}, torch::TensorOptions().device(device)) / std::sqrt((float)dim);
-        auto j_imag_anti = 0.5f * (ji - ji.t());
-        j_imag_anti.fill_diagonal_(0.0f);
-        j_imag = register_parameter("j_imag", j_imag_anti);
-
-        nonlin_lambda = register_parameter("nonlin_lambda", torch::tensor(0.1f, torch::TensorOptions().device(device)));
-        log_temp = register_parameter("log_temp", torch::tensor(0.0f, torch::TensorOptions().device(device)));
-
-        this->to(device);
-    }
-
-    torch::Tensor forward(torch::Tensor x) override {
-        // x represents the incoming driving field [B, D] or [D]
-        bool is_1d = (x.dim() == 1);
-        auto x_2d = is_1d ? x.unsqueeze(0) : x;
-        int64_t batch = x_2d.size(0);
-
-        // Hermitian enforcement
-        auto jr = 0.5f * (j_real + j_real.t());
-        jr = jr - torch::diag(torch::diag(jr));
-
-        auto ji = 0.5f * (j_imag - j_imag.t());
-        ji = ji - torch::diag(torch::diag(ji));
-
-        // Incoming field as driving field h = h_r + i h_i
-        auto h_r = x_2d;
-        auto h_i = 0.5f * x_2d; // Initial orthogonal quadrature
-
-        // Initial psi = normalized driving field
-        auto norm_init = torch::sqrt(torch::sum(h_r.pow(2) + h_i.pow(2), -1, true) + 1e-8f);
-        auto p_r = h_r / norm_init;
-        auto p_i = h_i / norm_init;
-
-        auto curr_temp = torch::exp(log_temp).clamp(0.05f, 2.0f);
-        auto eff_gamma = (curr_temp * 0.2f).clamp_min(0.02f);
-
-        // Dissipative Complex Ginzburg-Landau steps
-        for (int64_t s = 0; s < steps; ++s) {
-            // (J_r + i J_i) * (p_r + i p_i) = (J_r p_r - J_i p_i) + i (J_r p_i + J_i p_r)
-            auto field_r = torch::matmul(p_r, jr.t()) - torch::matmul(p_i, ji.t()) + h_r;
-            auto field_i = torch::matmul(p_i, jr.t()) + torch::matmul(p_r, ji.t()) + h_i;
-
-            auto norm_sq = p_r.pow(2) + p_i.pow(2);
-            auto v_r = nonlin_lambda * norm_sq * p_r;
-            auto v_i = nonlin_lambda * norm_sq * p_i;
-
-            auto dH_r = field_r - v_r;
-            auto dH_i = field_i - v_i;
-
-            // Dissipative step: d(psi)/dt = -i dH - gamma dH
-            // Real update: dH_i - eff_gamma * dH_r
-            // Imag update: -dH_r - eff_gamma * dH_i
-            auto dp_r = (dH_i - eff_gamma * dH_r) * dt;
-            auto dp_i = (-dH_r - eff_gamma * dH_i) * dt;
-
-            p_r = p_r + dp_r;
-            p_i = p_i + dp_i;
-        }
-
-        // Quantum Normalization
-        auto psi_norm = torch::sqrt(torch::sum(p_r.pow(2) + p_i.pow(2), -1, true) + 1e-8f);
-        auto p_r_norm = p_r / psi_norm;
-        auto p_i_norm = p_i / psi_norm;
-
-        // Born Rule Collapsed Amplitude Out: |Psi|^2 * sign(p_r) to preserve vector manifold
-        auto out = (p_r_norm.pow(2) + p_i_norm.pow(2)) * torch::sign(p_r_norm);
-
-        return is_1d ? out.squeeze(0) : out;
-    }
-};
-
-// ============================================================================
 // 9. DYNAMIC MORPHIC GRAPH & COMMUTATION ORCHESTRATOR R(h_t)
 // ============================================================================
 class DynamicMorphicGraphImpl : public torch::nn::Module {
@@ -1524,8 +1430,6 @@ public:
             op = std::make_shared<MultiHeadFastAssociativeMemoryImpl>(dim, 6, 0.20f, device_str);
         } else if (op_type == "StrictOrthogonalNexus") {
             op = std::make_shared<StrictOrthogonalNexusImpl>(dim, device_str);
-        } else if (op_type == "QuantumSpinWave") {
-            op = std::make_shared<QuantumSpinWaveOpImpl>(dim, device_str, 0.20f, 2);
         } else {
             op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
         }
@@ -2128,11 +2032,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, std::string>(), py::arg("num_basins") = 258, py::arg("device_str") = "cpu")
         .def("perceive", &StrictOrthogonalNexusImpl::perceive, py::arg("byte_idx"))
         .def("compute_margin_free_energy", &StrictOrthogonalNexusImpl::compute_margin_free_energy, py::arg("psi"), py::arg("target_idx"), py::arg("margin") = 0.40f);
-
-    py::class_<QuantumSpinWaveOpImpl, GraphOp, std::shared_ptr<QuantumSpinWaveOpImpl>>(m, "QuantumSpinWaveOp")
-        .def(py::init<int64_t, std::string, float, int64_t>(), py::arg("dim") = 258, py::arg("device_str") = "cpu", py::arg("dt") = 0.20f, py::arg("steps") = 2)
-        .def("forward", &QuantumSpinWaveOpImpl::forward)
-        .def("__call__", &QuantumSpinWaveOpImpl::forward);
 
     py::class_<UniversalManifoldImpl, torch::nn::Module, std::shared_ptr<UniversalManifoldImpl>>(m, "UniversalManifold")
         .def(py::init<int64_t, int64_t, std::string>(), py::arg("vocab_size") = 258, py::arg("dim") = 256, py::arg("device") = "cpu")

@@ -1524,8 +1524,6 @@ public:
             op = std::make_shared<MultiHeadFastAssociativeMemoryImpl>(dim, 6, 0.20f, device_str);
         } else if (op_type == "StrictOrthogonalNexus") {
             op = std::make_shared<StrictOrthogonalNexusImpl>(dim, device_str);
-        } else if (op_type == "QuantumSpinWave") {
-            op = std::make_shared<QuantumSpinWaveOpImpl>(dim, device_str, 0.20f, 2);
         } else {
             op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
         }
@@ -2128,11 +2126,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<int64_t, std::string>(), py::arg("num_basins") = 258, py::arg("device_str") = "cpu")
         .def("perceive", &StrictOrthogonalNexusImpl::perceive, py::arg("byte_idx"))
         .def("compute_margin_free_energy", &StrictOrthogonalNexusImpl::compute_margin_free_energy, py::arg("psi"), py::arg("target_idx"), py::arg("margin") = 0.40f);
-
-    py::class_<QuantumSpinWaveOpImpl, GraphOp, std::shared_ptr<QuantumSpinWaveOpImpl>>(m, "QuantumSpinWaveOp")
-        .def(py::init<int64_t, std::string, float, int64_t>(), py::arg("dim") = 258, py::arg("device_str") = "cpu", py::arg("dt") = 0.20f, py::arg("steps") = 2)
-        .def("forward", &QuantumSpinWaveOpImpl::forward)
-        .def("__call__", &QuantumSpinWaveOpImpl::forward);
 
     py::class_<UniversalManifoldImpl, torch::nn::Module, std::shared_ptr<UniversalManifoldImpl>>(m, "UniversalManifold")
         .def(py::init<int64_t, int64_t, std::string>(), py::arg("vocab_size") = 258, py::arg("dim") = 256, py::arg("device") = "cpu")
