@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-403",
+  "elapsed_time": 12.667200565338135,
+  "throughput_steps_per_sec": 197.36010234501768,
+  "final_avg_loss": 2.9913275647087065,
+  "final_accuracy": 42.296918767507,
+  "final_phase_coherence": 1.7928061485290527,
+  "final_temperature": 2.0,
+  "verdict": "\ud83d\udfe2 POSITIVE"
+}
