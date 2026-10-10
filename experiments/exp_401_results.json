@@ -1,0 +1,9 @@
+{
+  "exp_id": "EXP-401",
+  "elapsed_time": 12.666442394256592,
+  "throughput_steps_per_sec": 197.37191566383214,
+  "final_avg_loss": 5.236527599969737,
+  "final_accuracy": 4.2416966786714685,
+  "final_hyperbolic_radius": 2.998222827911377,
+  "verdict": "\u26aa NEUTRAL"
+}
