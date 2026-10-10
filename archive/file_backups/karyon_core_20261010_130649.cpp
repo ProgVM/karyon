@@ -906,8 +906,6 @@ public:
     virtual ~GraphOp() = default;
 };
 
-#include "karyon_core_mhfam.inc"
-
 class LinearAccumulatorOpImpl : public GraphOp {
 public:
     int64_t dim;
@@ -1426,10 +1424,6 @@ public:
             op = std::make_shared<NonLinearTransformOpImpl>(dim, device_str);
         } else if (op_type == "VectorSymbolicBinding") {
             op = std::make_shared<VectorSymbolicBindingOpImpl>(dim, device_str);
-        } else if (op_type == "MultiHeadFastAssociativeMemory") {
-            op = std::make_shared<MultiHeadFastAssociativeMemoryImpl>(dim, 6, 0.20f, device_str);
-        } else if (op_type == "StrictOrthogonalNexus") {
-            op = std::make_shared<StrictOrthogonalNexusImpl>(dim, device_str);
         } else {
             op = std::make_shared<LinearAccumulatorOpImpl>(dim, device_str);
         }
@@ -2016,19 +2010,19 @@ public:
 };
 TORCH_MODULE(DynamicMorphicGraph);
 
+#include "karyon_core_mhfam.inc"
+
 // ============================================================================
 // 10. PYBIND11 MODULE BINDINGS
 // ============================================================================
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    py::class_<GraphOp, torch::nn::Module, std::shared_ptr<GraphOp>>(m, "GraphOp");
-
-    py::class_<MultiHeadFastAssociativeMemoryImpl, GraphOp, std::shared_ptr<MultiHeadFastAssociativeMemoryImpl>>(m, "MultiHeadFastAssociativeMemory")
+    py::class_<MultiHeadFastAssociativeMemoryImpl, torch::nn::Module, std::shared_ptr<MultiHeadFastAssociativeMemoryImpl>>(m, "MultiHeadFastAssociativeMemory")
         .def(py::init<int64_t, int64_t, float, std::string>(), py::arg("dim") = 258, py::arg("num_heads") = 6, py::arg("eta") = 0.20f, py::arg("device_str") = "cpu")
         .def("reset_memory", &MultiHeadFastAssociativeMemoryImpl::reset_memory)
         .def("read_memory", &MultiHeadFastAssociativeMemoryImpl::read_memory, py::arg("x"))
         .def("write_memory", &MultiHeadFastAssociativeMemoryImpl::write_memory, py::arg("x"), py::arg("target_v"));
 
-    py::class_<StrictOrthogonalNexusImpl, GraphOp, std::shared_ptr<StrictOrthogonalNexusImpl>>(m, "StrictOrthogonalNexus")
+    py::class_<StrictOrthogonalNexusImpl, torch::nn::Module, std::shared_ptr<StrictOrthogonalNexusImpl>>(m, "StrictOrthogonalNexus")
         .def(py::init<int64_t, std::string>(), py::arg("num_basins") = 258, py::arg("device_str") = "cpu")
         .def("perceive", &StrictOrthogonalNexusImpl::perceive, py::arg("byte_idx"))
         .def("compute_margin_free_energy", &StrictOrthogonalNexusImpl::compute_margin_free_energy, py::arg("psi"), py::arg("target_idx"), py::arg("margin") = 0.40f);

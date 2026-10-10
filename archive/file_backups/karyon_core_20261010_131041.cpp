@@ -2020,8 +2020,6 @@ TORCH_MODULE(DynamicMorphicGraph);
 // 10. PYBIND11 MODULE BINDINGS
 // ============================================================================
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    py::class_<GraphOp, torch::nn::Module, std::shared_ptr<GraphOp>>(m, "GraphOp");
-
     py::class_<MultiHeadFastAssociativeMemoryImpl, GraphOp, std::shared_ptr<MultiHeadFastAssociativeMemoryImpl>>(m, "MultiHeadFastAssociativeMemory")
         .def(py::init<int64_t, int64_t, float, std::string>(), py::arg("dim") = 258, py::arg("num_heads") = 6, py::arg("eta") = 0.20f, py::arg("device_str") = "cpu")
         .def("reset_memory", &MultiHeadFastAssociativeMemoryImpl::reset_memory)

@@ -897,6 +897,8 @@ inline torch::Tensor sample_hardware_gaussian_entropy(c10::IntArrayRef shape, to
     return cpu_tensor.to(device);
 }
 
+#include "karyon_core_mhfam.inc"
+
 // ============================================================================
 // 8. GRAPH OPERATOR PRIMITIVES
 // ============================================================================
@@ -905,8 +907,6 @@ public:
     virtual torch::Tensor forward(torch::Tensor x) = 0;
     virtual ~GraphOp() = default;
 };
-
-#include "karyon_core_mhfam.inc"
 
 class LinearAccumulatorOpImpl : public GraphOp {
 public:
@@ -2020,15 +2020,13 @@ TORCH_MODULE(DynamicMorphicGraph);
 // 10. PYBIND11 MODULE BINDINGS
 // ============================================================================
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    py::class_<GraphOp, torch::nn::Module, std::shared_ptr<GraphOp>>(m, "GraphOp");
-
-    py::class_<MultiHeadFastAssociativeMemoryImpl, GraphOp, std::shared_ptr<MultiHeadFastAssociativeMemoryImpl>>(m, "MultiHeadFastAssociativeMemory")
+    py::class_<MultiHeadFastAssociativeMemoryImpl, torch::nn::Module, std::shared_ptr<MultiHeadFastAssociativeMemoryImpl>>(m, "MultiHeadFastAssociativeMemory")
         .def(py::init<int64_t, int64_t, float, std::string>(), py::arg("dim") = 258, py::arg("num_heads") = 6, py::arg("eta") = 0.20f, py::arg("device_str") = "cpu")
         .def("reset_memory", &MultiHeadFastAssociativeMemoryImpl::reset_memory)
         .def("read_memory", &MultiHeadFastAssociativeMemoryImpl::read_memory, py::arg("x"))
         .def("write_memory", &MultiHeadFastAssociativeMemoryImpl::write_memory, py::arg("x"), py::arg("target_v"));
 
-    py::class_<StrictOrthogonalNexusImpl, GraphOp, std::shared_ptr<StrictOrthogonalNexusImpl>>(m, "StrictOrthogonalNexus")
+    py::class_<StrictOrthogonalNexusImpl, torch::nn::Module, std::shared_ptr<StrictOrthogonalNexusImpl>>(m, "StrictOrthogonalNexus")
         .def(py::init<int64_t, std::string>(), py::arg("num_basins") = 258, py::arg("device_str") = "cpu")
         .def("perceive", &StrictOrthogonalNexusImpl::perceive, py::arg("byte_idx"))
         .def("compute_margin_free_energy", &StrictOrthogonalNexusImpl::compute_margin_free_energy, py::arg("psi"), py::arg("target_idx"), py::arg("margin") = 0.40f);

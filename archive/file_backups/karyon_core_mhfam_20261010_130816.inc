@@ -2,7 +2,7 @@
 // 18. MULTI-HEAD FAST-WEIGHT ASSOCIATIVE MEMORY & MARGIN RESONANCE (EXP-398 C++20)
 // KEP Principle 27: Strict Deterministic Orthogonal Basis & Multi-Head Working Memory
 // ============================================================================
-class MultiHeadFastAssociativeMemoryImpl : public GraphOp {
+class MultiHeadFastAssociativeMemoryImpl : public torch::nn::Module {
 public:
     int64_t dim;
     int64_t num_heads;
@@ -34,10 +34,6 @@ public:
 
     void reset_memory() {
         m_fast.zero_();
-    }
-
-    torch::Tensor forward(torch::Tensor x) override {
-        return read_memory(x);
     }
 
     torch::Tensor read_memory(torch::Tensor x) {
@@ -88,7 +84,7 @@ public:
 };
 TORCH_MODULE(MultiHeadFastAssociativeMemory);
 
-class StrictOrthogonalNexusImpl : public GraphOp {
+class StrictOrthogonalNexusImpl : public torch::nn::Module {
 public:
     int64_t num_basins;
     torch::Tensor basis; // [258, 258] Identity
@@ -98,10 +94,6 @@ public:
         auto device = device_str.find("cuda") != std::string::npos && torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
         basis = register_buffer("basis", torch::eye(num_basins, torch::TensorOptions().device(device)));
         this->to(device);
-    }
-
-    torch::Tensor forward(torch::Tensor x) override {
-        return x;
     }
 
     torch::Tensor perceive(int64_t byte_idx) {
