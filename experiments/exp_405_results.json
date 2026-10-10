@@ -1,0 +1,109 @@
+{
+  "exp_id": "EXP-405",
+  "elapsed_time": 35.85833191871643,
+  "throughput_steps_per_sec": 83.66256430445208,
+  "final_avg_loss": 5.010599500376031,
+  "final_accuracy": 20.206735578526175,
+  "final_active_nodes": 12,
+  "sprout_count": 16,
+  "prune_count": 5,
+  "emergent_operators_analysis": [
+    {
+      "node_id": "node_genesis_0",
+      "gate_activation": 0.31059902906417847,
+      "functional_role": "Emergent Phase-Space Metric Flow Filter",
+      "w1_norm": 19.39739227294922,
+      "w3_norm": 56.45125961303711,
+      "metric_norm": 136.4291229248047
+    },
+    {
+      "node_id": "synthesized_op_1_197",
+      "gate_activation": 0.08043702691793442,
+      "functional_role": "Emergent Phase-Space Metric Flow Filter",
+      "w1_norm": 18.090545654296875,
+      "w3_norm": 49.52406311035156,
+      "metric_norm": 137.3521728515625
+    },
+    {
+      "node_id": "synthesized_op_2_360",
+      "gate_activation": -0.03480777144432068,
+      "functional_role": "Emergent Phase-Space Metric Flow Filter",
+      "w1_norm": 17.24303436279297,
+      "w3_norm": 47.475162506103516,
+      "metric_norm": 136.7453155517578
+    },
+    {
+      "node_id": "synthesized_op_5_1334",
+      "gate_activation": -0.013763281516730785,
+      "functional_role": "Emergent Phase-Space Metric Flow Filter",
+      "w1_norm": 18.28349494934082,
+      "w3_norm": 48.40376663208008,
+      "metric_norm": 135.0472412109375
+    },
+    {
+      "node_id": "synthesized_op_7_2711",
+      "gate_activation": 0.09354232251644135,
+      "functional_role": "Emergent Phase-Space Metric Flow Filter",
+      "w1_norm": 19.05279541015625,
+      "w3_norm": 51.196983337402344,
+      "metric_norm": 136.27366638183594
+    },
+    {
+      "node_id": "synthesized_op_8_5100",
+      "gate_activation": 0.23479220271110535,
+      "functional_role": "Emergent Phase-Space Metric Flow Filter",
+      "w1_norm": 20.661836624145508,
+      "w3_norm": 49.083518981933594,
+      "metric_norm": 134.46090698242188
+    },
+    {
+      "node_id": "synthesized_op_9_5530",
+      "gate_activation": -0.03495870903134346,
+      "functional_role": "Emergent Phase-Space Metric Flow Filter",
+      "w1_norm": 20.245941162109375,
+      "w3_norm": 50.907379150390625,
+      "metric_norm": 134.36514282226562
+    },
+    {
+      "node_id": "synthesized_op_9_8312",
+      "gate_activation": 0.1300877183675766,
+      "functional_role": "Emergent Phase-Space Metric Flow Filter",
+      "w1_norm": 17.38802719116211,
+      "w3_norm": 42.8318977355957,
+      "metric_norm": 135.68099975585938
+    },
+    {
+      "node_id": "synthesized_op_10_9242",
+      "gate_activation": 0.007238452322781086,
+      "functional_role": "Emergent Phase-Space Metric Flow Filter",
+      "w1_norm": 17.575742721557617,
+      "w3_norm": 41.18288803100586,
+      "metric_norm": 136.17233276367188
+    },
+    {
+      "node_id": "synthesized_op_11_9756",
+      "gate_activation": -0.1740870624780655,
+      "functional_role": "Emergent Phase-Space Metric Flow Filter",
+      "w1_norm": 15.335580825805664,
+      "w3_norm": 36.00353240966797,
+      "metric_norm": 133.6929473876953
+    },
+    {
+      "node_id": "synthesized_op_11_6840",
+      "gate_activation": 0.008283971808850765,
+      "functional_role": "Emergent Phase-Space Metric Flow Filter",
+      "w1_norm": 16.116456985473633,
+      "w3_norm": 35.39555740356445,
+      "metric_norm": 136.4165802001953
+    },
+    {
+      "node_id": "synthesized_op_11_1573",
+      "gate_activation": -0.024789152666926384,
+      "functional_role": "Emergent Phase-Space Metric Flow Filter",
+      "w1_norm": 6.764587879180908,
+      "w3_norm": 15.281671524047852,
+      "metric_norm": 129.7256317138672
+    }
+  ],
+  "verdict": "\ud83d\udfe2 POSITIVE"
+}
