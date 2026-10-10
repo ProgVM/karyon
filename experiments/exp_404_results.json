@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-404",
+  "elapsed_time": 95.60526251792908,
+  "throughput_steps_per_sec": 26.14918817393728,
+  "final_avg_loss": 4.257742443577009,
+  "final_accuracy": 11.964785914365745,
+  "final_nodes": 5,
+  "sprout_events": 3,
+  "verdict": "\u26aa NEUTRAL"
+}
