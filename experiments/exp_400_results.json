@@ -1,0 +1,9 @@
+{
+  "exp_id": "EXP-400",
+  "elapsed_time": 10.051809310913086,
+  "throughput_steps_per_sec": 248.71144315141262,
+  "final_avg_loss": 4.085496279741584,
+  "final_accuracy": 12.284913965586234,
+  "final_phase_coherence": 1.7708749771118164,
+  "verdict": "\ud83d\udfe2 POSITIVE"
+}
