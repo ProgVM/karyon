@@ -1,0 +1,15 @@
+{
+  "exp_id": "EXP-452",
+  "final_loss": 4.7582,
+  "final_accuracy": 15.65,
+  "average_thinking_turns": 31.24,
+  "max_thinking_turns": 32,
+  "min_thinking_turns": 1,
+  "second_half_low_loss_mass": 6.2,
+  "second_half_ultra_low_loss_mass": 2.2,
+  "second_half_near_zero_loss_mass": 1.45,
+  "tail_retention_rate": 2.2,
+  "throughput_steps_per_sec": 31.19,
+  "mean_entropy_nats": 4.254,
+  "elapsed_time": 128.22
+}
