@@ -1,0 +1,8 @@
+{
+  "exp_id": "EXP-461",
+  "broadcast_spikes": 65,
+  "coupled_spikes": 65,
+  "beta_test_loss": 5.70088,
+  "beta_test_acc": 3.07692,
+  "p2p_mesh_active": true
+}
