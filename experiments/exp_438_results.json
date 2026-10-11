@@ -1,0 +1,16 @@
+{
+  "exp_id": "EXP-438",
+  "final_loss": 4.1866,
+  "final_accuracy": 40.41,
+  "synthesized_operator_distribution": {
+    "O1_context_exact_delta": 0.3444,
+    "O2_lie_rotation": 0.4921,
+    "O3_attractor_compression": 0.148,
+    "O4_leaky_decay": 0.0155
+  },
+  "second_half_low_loss_mass": 45.5,
+  "tail_retention_rate": 48.2,
+  "throughput_steps_per_sec": 196.28,
+  "mean_entropy_nats": 0.707,
+  "elapsed_time": 20.37
+}

@@ -1,0 +1,390 @@
+"""
+EXP-437: Deep 2-Stage Laminar Sovereign Law Synthesizer (2S-HPDOS)
+Author: Bazilevs (ProgVM) & Lead AI Cyberneticist
+Standard: KEP v16.0 Sovereign Master (Principle 2, Principle 3, Principle 8, Principle 22, Principle 27 & KEP Rule #12)
+
+Core Concept:
+To push single-pass accuracy from 43.51% towards 70-90%+, EXP-437 expands capacity and establishes
+a 2-Stage Laminar Compositional Hierarchy with 8 heads x 96 head_dim (147,456 complex matrix cells):
+
+1. Stage 1 (Fast Morpho-Syntactic Laminar Field):
+   - 8 Heads x 96 Head_Dim
+   - Fast LMS integration rate dt_1 = 1.0
+   - Autonomously synthesizes stage-1 operator dynamic laws w_1(t)
+   - Decodes immediate N-gram, spelling, and morphemic transitions.
+
+2. Stage 2 (Slow Semantic-Discourse Laminar Field):
+   - 8 Heads x 96 Head_Dim
+   - Receives Stage 1 residual prediction errors & state projections
+   - Slower, long-horizon integration rate dt_2 = 0.5
+   - Autonomously synthesizes stage-2 operator dynamic laws w_2(t)
+   - Maintains discourse, code syntax rules, and long-range structural dependencies.
+
+3. Complete Unified Readout:
+   - Fuses Stage 1 + Stage 2 normalized fields via Born-rule complex projection.
+"""
+
+import time
+import json
+import logging
+from dataclasses import dataclass
+from typing import Dict, Tuple
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("EXP-437-2S-HPDOS")
+
+DEVICE_STR = "cuda" if torch.cuda.is_available() else "cpu"
+DEVICE = torch.device(DEVICE_STR)
+
+
+@dataclass
+class EXP437Config:
+    exp_id: str = "EXP-437"
+    vocab_dim: int = 258
+    heads: int = 8
+    head_dim: int = 96
+    num_operators: int = 4
+    learning_rate: float = 0.012
+    stream_length: int = 4000
+    dt_stage1: float = 1.0
+    dt_stage2: float = 0.5
+    device_str: str = DEVICE_STR
+
+
+class LaminarLawSynthesizerStage(nn.Module):
+    """
+    A single Laminar Stage with Multi-Head Complex Holographic Memory M in C^(H x D x D)
+    and an Autonomous Formula Synthesizer.
+    """
+    def __init__(self, heads: int, head_dim: int, num_ops: int, dt: float):
+        super().__init__()
+        self.H = heads
+        self.D = head_dim
+        self.total_dim = heads * head_dim
+        self.num_ops = num_ops
+        self.dt = dt
+
+        # Skew-Hermitian Lie Generator
+        self.A = nn.Parameter(torch.randn(self.H, self.D, self.D, device=DEVICE) * 0.01)
+
+        # Autonomous Law Synthesizer Network
+        self.synthesizer = nn.Sequential(
+            nn.Linear(self.H * 3, 32),
+            nn.SiLU(),
+            nn.Linear(32, self.num_ops)
+        )
+
+        # Persistent Complex Memory Tensor: [H, D, D]
+        self.M_real = torch.zeros(self.H, self.D, self.D, device=DEVICE)
+        self.M_imag = torch.zeros(self.H, self.D, self.D, device=DEVICE)
+
+    def reset_state(self):
+        self.M_real.zero_()
+        self.M_imag.zero_()
+
+    def forward(
+        self,
+        xr: torch.Tensor,
+        xi: torch.Tensor,
+        yr: torch.Tensor,
+        yi: torch.Tensor,
+        surprise: float
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, list]:
+        """
+        xr, xi: Input stimulus complex vectors [H, D, 1]
+        yr, yi: Target target complex vectors [H, D, 1]
+        Returns:
+            rec_r, rec_i: Resonant recalled vectors [H, D, 1]
+            delta_r, delta_i: Complex residual prediction errors [H, D, 1]
+            op_weights: Synthesized operator blend [4]
+        """
+        M_r = self.M_real.detach()
+        M_i = self.M_imag.detach()
+
+        # Resonant Recall: y_rec = M * x
+        rec_r = torch.bmm(M_r, xr) - torch.bmm(M_i, xi)  # [H, D, 1]
+        rec_i = torch.bmm(M_r, xi) + torch.bmm(M_i, xr)  # [H, D, 1]
+
+        # Complex Residual Error: delta = y_target - y_rec
+        delta_r = yr - rec_r
+        delta_i = yi - rec_i
+
+        # === EVALUATE ATOMIC MATRIX OPERATORS ===
+        # O_1: Exact Geometric LMS Projection
+        x_norm_sq = torch.sum(xr ** 2 + xi ** 2, dim=(1, 2), keepdim=True) + 1e-6  # [H, 1, 1]
+        xr_t = xr.transpose(1, 2)  # [H, 1, D]
+        xi_t = xi.transpose(1, 2)  # [H, 1, D]
+
+        p1_r = torch.bmm(delta_r, xr_t) + torch.bmm(delta_i, xi_t)
+        p1_i = torch.bmm(delta_i, xr_t) - torch.bmm(delta_r, xi_t)
+
+        o1_r = p1_r / x_norm_sq  # [H, D, D]
+        o1_i = p1_i / x_norm_sq  # [H, D, D]
+
+        # O_2: Unitary Phase Rotation (Lie Flow: [H_skew, M])
+        H_skew = (self.A - self.A.transpose(1, 2)) * 0.5
+        o2_r = torch.bmm(H_skew, M_r) - torch.bmm(M_r, H_skew)
+        o2_i = torch.bmm(H_skew, M_i) - torch.bmm(M_i, H_skew)
+
+        # O_3: Attractor Well Compression
+        m_norms = torch.sqrt(torch.sum(M_r ** 2 + M_i ** 2, dim=(-1, -2), keepdim=True) + 1e-8)
+        o3_r = -0.05 * M_r * m_norms
+        o3_i = -0.05 * M_i * m_norms
+
+        # O_4: Leaky Trace Decay
+        o4_r = -0.02 * M_r
+        o4_i = -0.02 * M_i
+
+        # === AUTONOMOUS FORMULA SYNTHESIS ===
+        err_norm = torch.sqrt(torch.sum(delta_r ** 2 + delta_i ** 2, dim=1)).view(1, self.H)  # [1, H]
+        m_head_norm = m_norms.view(1, self.H)  # [1, H]
+        surp_feat = torch.full((1, self.H), surprise, device=DEVICE)  # [1, H]
+
+        synth_input = torch.cat([err_norm, m_head_norm, surp_feat], dim=-1)
+        synth_logits = self.synthesizer(synth_input)
+        w = F.softmax(synth_logits, dim=-1).squeeze(0)  # [4]
+
+        # Synthesized Differential Equation:
+        dM_r = w[0] * o1_r + w[1] * o2_r + w[2] * o3_r + w[3] * o4_r
+        dM_i = w[0] * o1_i + w[1] * o2_i + w[2] * o3_i + w[3] * o4_i
+
+        # Out-of-Place State Update:
+        new_M_r = M_r + self.dt * dM_r
+        new_M_i = M_i + self.dt * dM_i
+
+        # Safe Allostatic Bounding
+        new_norms = torch.sqrt(torch.sum(new_M_r ** 2 + new_M_i ** 2, dim=(-1, -2), keepdim=True) + 1e-8)
+        max_bound = 15.0
+        scale = torch.clamp(max_bound / new_norms, max=1.0)
+        self.M_real = new_M_r * scale
+        self.M_imag = new_M_i * scale
+
+        return rec_r, rec_i, delta_r, delta_i, w.detach().cpu().numpy().tolist()
+
+
+class TwoStageLaminarSovereignSynthesizer(nn.Module):
+    """
+    2-Stage Compositional Laminar Architecture with 8 Heads x 96 Head_Dim.
+    """
+    def __init__(self, config: EXP437Config):
+        super().__init__()
+        self.config = config
+        self.vocab_dim = config.vocab_dim
+        self.H = config.heads
+        self.D = config.head_dim
+        self.total_dim = self.H * self.D
+
+        # Complex embeddings
+        self.emb_real = nn.Embedding(self.vocab_dim, self.total_dim)
+        self.emb_imag = nn.Embedding(self.vocab_dim, self.total_dim)
+
+        # Stage 1: Fast Morpho-Syntactic Laminar Sheet
+        self.stage1 = LaminarLawSynthesizerStage(
+            heads=self.H, head_dim=self.D, num_ops=config.num_operators, dt=config.dt_stage1
+        )
+
+        # Stage 2: Slow Semantic-Discourse Laminar Sheet
+        self.stage2 = LaminarLawSynthesizerStage(
+            heads=self.H, head_dim=self.D, num_ops=config.num_operators, dt=config.dt_stage2
+        )
+
+        # RMS Normalization parameters
+        self.norm_scale = nn.Parameter(torch.ones(self.total_dim, device=DEVICE))
+
+        # Readout Projection
+        self.readout_real = nn.Linear(self.total_dim, self.vocab_dim, bias=False)
+        self.readout_imag = nn.Linear(self.total_dim, self.vocab_dim, bias=False)
+
+    def reset_state(self):
+        self.stage1.reset_state()
+        self.stage2.reset_state()
+
+    def step(self, byte_idx: int, target_byte: int) -> Tuple[torch.Tensor, Dict]:
+        idx_t = torch.tensor([byte_idx], device=DEVICE)
+        target_t = torch.tensor([target_byte], device=DEVICE)
+
+        # Input and Target Embeddings
+        xr = self.emb_real(idx_t).view(self.H, self.D, 1)  # [H, D, 1]
+        xi = self.emb_imag(idx_t).view(self.H, self.D, 1)  # [H, D, 1]
+
+        yr = self.emb_real(target_t).view(self.H, self.D, 1)  # [H, D, 1]
+        yi = self.emb_imag(target_t).view(self.H, self.D, 1)  # [H, D, 1]
+
+        # Stage 1 Execution
+        rec1_r, rec1_i, delta1_r, delta1_i, w1 = self.stage1(
+            xr=xr, xi=xi, yr=yr, yi=yi, surprise=1.0
+        )
+
+        # Stage 2 Execution (Fed with Stage 1 residual delta1 as input stimulus)
+        rec2_r, rec2_i, _, _, w2 = self.stage2(
+            xr=delta1_r, xi=delta1_i, yr=yr, yi=yi, surprise=1.0
+        )
+
+        # Fused Laminar Readout: xr + rec1 + rec2
+        comb_r = (xr + rec1_r + rec2_r).view(1, self.total_dim)
+        comb_i = (xi + rec1_i + rec2_i).view(1, self.total_dim)
+
+        # RMS-Normalization
+        mag_sq = comb_r ** 2 + comb_i ** 2
+        rms = torch.sqrt(torch.mean(mag_sq, dim=-1, keepdim=True) + 1e-6)
+        norm_r = (comb_r / rms) * self.norm_scale
+        norm_i = (comb_i / rms) * self.norm_scale
+
+        logits = self.readout_real(norm_r) - self.readout_imag(norm_i)
+
+        loss = F.cross_entropy(logits, target_t)
+        pred = torch.argmax(logits, dim=-1).item()
+        surprise = loss.item()
+
+        with torch.no_grad():
+            probs = F.softmax(logits, dim=-1)
+            entropy = -torch.sum(probs * torch.log(probs + 1e-9)).item()
+
+        meta = {
+            "loss": surprise,
+            "pred": pred,
+            "target": target_byte,
+            "is_correct": (pred == target_byte),
+            "entropy": entropy,
+            "stage1_weights": w1,
+            "stage2_weights": w2
+        }
+        return loss, meta
+
+
+def run_exp_437():
+    logger.info("================================================================================")
+    logger.info("=== STARTING EXP-437: DEEP 2-STAGE LAMINAR SOVEREIGN LAW SYNTHESIZER (2S-HPDOS) ===")
+    logger.info("================================================================================")
+
+    config = EXP437Config()
+    model = TwoStageLaminarSovereignSynthesizer(config).to(DEVICE)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate, weight_decay=1e-5)
+
+    stream_data = (
+        "def karyon_sovereign_autopoiesis(stream):\n"
+        "    super_operator = Liouvillian(phase_space)\n"
+        "    return super_operator.synthesize()\n\n"
+        "#include <torch/extension.h>\n"
+        "void dynamic_kernel(float* x, float* h) {\n"
+        "    // Tensor core phase alignment\n"
+        "}\n\n"
+        "HTTP/1.1 200 OK\r\nContent-Type: application/kcore\r\n\r\n"
+        "Mind is substrate-independent continuous field dynamics.\n"
+        "Ashby homeostatic ultrastability balances energy and surprise.\n"
+    ).encode("utf-8")
+
+    raw_bytes = list(stream_data) * (config.stream_length // len(stream_data) + 1)
+    raw_bytes = raw_bytes[:config.stream_length]
+
+    logger.info(f"Stream loaded: {len(raw_bytes)} bytes on {DEVICE_STR.upper()}")
+    logger.info("Evaluating 2-Stage Laminar Stack (147,456 complex cells) on raw byte stream...")
+
+    correct_preds = 0
+    total_loss = 0.0
+    total_entropy = 0.0
+    recent_losses = []
+    stg1_w_accum = [0.0] * config.num_operators
+    stg2_w_accum = [0.0] * config.num_operators
+
+    t_start = time.perf_counter()
+
+    for t in range(len(raw_bytes) - 1):
+        x_byte = raw_bytes[t]
+        target_byte = raw_bytes[t + 1]
+
+        optimizer.zero_grad()
+        loss, meta = model.step(x_byte, target_byte)
+        loss.backward()
+
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
+
+        if meta["is_correct"]:
+            correct_preds += 1
+
+        total_loss += meta["loss"]
+        total_entropy += meta["entropy"]
+        recent_losses.append(meta["loss"])
+
+        for i in range(config.num_operators):
+            stg1_w_accum[i] += meta["stage1_weights"][i]
+            stg2_w_accum[i] += meta["stage2_weights"][i]
+
+        if (t + 1) % 500 == 0:
+            avg_loss = total_loss / (t + 1)
+            acc = (correct_preds / (t + 1)) * 100.0
+            cur_w1 = [round(w_val / (t + 1), 3) for w_val in stg1_w_accum]
+            cur_w2 = [round(w_val / (t + 1), 3) for w_val in stg2_w_accum]
+            logger.info(
+                f"Progress [{t+1}/{len(raw_bytes)-1}] | Avg Loss: {avg_loss:.4f} | "
+                f"Acc: {acc:.2f}% | Current Loss: {meta['loss']:.4f}\n"
+                f"  Stage-1 Op Weights [ExactDelta, LieRot, Attractor, Leaky]: {cur_w1}\n"
+                f"  Stage-2 Op Weights [ExactDelta, LieRot, Attractor, Leaky]: {cur_w2}"
+            )
+
+    t_elapsed = time.perf_counter() - t_start
+    final_loss = total_loss / (len(raw_bytes) - 1)
+    final_acc = (correct_preds / (len(raw_bytes) - 1)) * 100.0
+    avg_final_entropy = total_entropy / (len(raw_bytes) - 1)
+    throughput = (len(raw_bytes) - 1) / t_elapsed
+
+    mean_stg1_w = [round(w_val / (len(raw_bytes) - 1), 4) for w_val in stg1_w_accum]
+    mean_stg2_w = [round(w_val / (len(raw_bytes) - 1), 4) for w_val in stg2_w_accum]
+
+    second_half = recent_losses[len(recent_losses)//2:]
+    low_loss_count = sum(1 for loss_val in second_half if loss_val < 0.5)
+    low_loss_fraction = (low_loss_count / len(second_half)) * 100.0
+
+    tail_500 = recent_losses[-500:]
+    tail_low_loss_count = sum(1 for loss_val in tail_500 if loss_val < 0.5)
+    tail_retention_rate = (tail_low_loss_count / len(tail_500)) * 100.0
+
+    logger.info("================================================================================")
+    logger.info("=== EXP-437 2-STAGE LAMINAR LAW SYNTHESIS TELEMETRY REPORT ===")
+    logger.info(f"Final Average Loss: {final_loss:.4f} nats")
+    logger.info(f"Single-Pass Accuracy: {final_acc:.2f}%")
+    logger.info(f"Stage 1 Operator Distribution: {mean_stg1_w}")
+    logger.info(f"Stage 2 Operator Distribution: {mean_stg2_w}")
+    logger.info(f"Second-Half Low-Loss Mass (<0.5 nats): {low_loss_fraction:.2f}%")
+    logger.info(f"Tail 500-byte Retention Rate (<0.5 nats): {tail_retention_rate:.2f}%")
+    logger.info(f"Throughput: {throughput:.2f} steps/sec")
+    logger.info(f"Mean Output Entropy: {avg_final_entropy:.3f} nats")
+    logger.info(f"Elapsed Time: {t_elapsed:.2f} s")
+    logger.info("================================================================================")
+
+    results = {
+        "exp_id": "EXP-437",
+        "final_loss": round(final_loss, 4),
+        "final_accuracy": round(final_acc, 2),
+        "stage1_operator_distribution": {
+            "O1_exact_geometric_delta": mean_stg1_w[0],
+            "O2_lie_rotation": mean_stg1_w[1],
+            "O3_attractor_compression": mean_stg1_w[2],
+            "O4_leaky_decay": mean_stg1_w[3]
+        },
+        "stage2_operator_distribution": {
+            "O1_exact_geometric_delta": mean_stg2_w[0],
+            "O2_lie_rotation": mean_stg2_w[1],
+            "O3_attractor_compression": mean_stg2_w[2],
+            "O4_leaky_decay": mean_stg2_w[3]
+        },
+        "second_half_low_loss_mass": round(low_loss_fraction, 2),
+        "tail_retention_rate": round(tail_retention_rate, 2),
+        "throughput_steps_per_sec": round(throughput, 2),
+        "mean_entropy_nats": round(avg_final_entropy, 3),
+        "elapsed_time": round(t_elapsed, 2)
+    }
+
+    with open("experiments/exp_437_results.json", "w") as f:
+        json.dump(results, f, indent=2)
+
+    return results
+
+
+if __name__ == "__main__":
+    run_exp_437()

@@ -1,0 +1,22 @@
+{
+  "exp_id": "EXP-437",
+  "final_loss": 4.2073,
+  "final_accuracy": 34.03,
+  "stage1_operator_distribution": {
+    "O1_exact_geometric_delta": 0.4514,
+    "O2_lie_rotation": 0.506,
+    "O3_attractor_compression": 0.0178,
+    "O4_leaky_decay": 0.0247
+  },
+  "stage2_operator_distribution": {
+    "O1_exact_geometric_delta": 0.0115,
+    "O2_lie_rotation": 0.902,
+    "O3_attractor_compression": 0.0507,
+    "O4_leaky_decay": 0.0358
+  },
+  "second_half_low_loss_mass": 35.45,
+  "tail_retention_rate": 14.2,
+  "throughput_steps_per_sec": 158.22,
+  "mean_entropy_nats": 1.0,
+  "elapsed_time": 25.27
+}
