@@ -1,0 +1,14 @@
+{
+  "exp_id": "EXP-428",
+  "final_loss": 2.8553,
+  "final_accuracy": 25.63,
+  "first_half_low_loss_mass": 7.9,
+  "second_half_low_loss_mass": 14.85,
+  "second_half_ultra_low_loss_mass": 10.55,
+  "second_half_near_zero_loss_mass": 6.75,
+  "tail_retention_rate": 21.2,
+  "sleep_events": 3984,
+  "throughput_steps_per_sec": 68.07,
+  "mean_entropy_nats": 1.853,
+  "elapsed_time": 58.74
+}
