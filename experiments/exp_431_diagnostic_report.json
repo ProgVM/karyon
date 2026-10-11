@@ -1,0 +1,31 @@
+{
+  "total_steps": 3999,
+  "elapsed_seconds": 19.21,
+  "final_loss": 1.7121,
+  "total_errors": 1541,
+  "error_breakdown_percent": {
+    "word_start": 11.29,
+    "punctuation": 4.61,
+    "indentation": 7.33,
+    "alphanumeric": 76.77
+  },
+  "spectral_health": {
+    "slow_pr_mean": 21.952396869659424,
+    "slow_cond_mean": 489701.3566894531,
+    "fast_pr_mean": 5.590351462364197,
+    "norm_s_slow": 7.9280476570129395,
+    "norm_s_fast": 4.122735023498535
+  },
+  "avg_loss_rep_active": 1.7215,
+  "avg_loss_rep_inactive": 0.6172,
+  "grad_norms_mean": {
+    "byte_emb": 0.18,
+    "W_q": 0.2232,
+    "W_k": 0.0,
+    "W_v": 0.0,
+    "W_att": 0.8774,
+    "W_rep": 0.0784,
+    "w_beta": 0.2395,
+    "w_gamma": 0.0759
+  }
+}
