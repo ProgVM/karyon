@@ -1,0 +1,15 @@
+{
+  "exp_id": "EXP-454",
+  "final_loss": 1.9088,
+  "final_accuracy": 52.89,
+  "average_thinking_turns": 3.87,
+  "max_thinking_turns": 8,
+  "min_thinking_turns": 1,
+  "second_half_low_loss_mass": 78.4,
+  "second_half_ultra_low_loss_mass": 62.75,
+  "second_half_near_zero_loss_mass": 47.35,
+  "tail_retention_rate": 69.19,
+  "throughput_steps_per_sec": 83.63,
+  "mean_entropy_nats": 0.331,
+  "elapsed_time": 47.82
+}
