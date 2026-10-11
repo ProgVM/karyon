@@ -1,0 +1,13 @@
+{
+  "exp_id": "EXP-441",
+  "final_loss": 1.4976,
+  "final_accuracy": 68.54,
+  "mean_synthesized_alpha": 0.7,
+  "mean_synthesized_delta_rate": 0.8243,
+  "mean_synthesized_hebbian_rate": 0.7152,
+  "second_half_low_loss_mass": 83.25,
+  "tail_retention_rate": 86.8,
+  "throughput_steps_per_sec": 271.44,
+  "mean_entropy_nats": 0.941,
+  "elapsed_time": 14.73
+}

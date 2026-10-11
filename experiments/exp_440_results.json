@@ -1,0 +1,16 @@
+{
+  "exp_id": "EXP-440",
+  "final_loss": 15.7795,
+  "final_accuracy": 14.23,
+  "endogenous_operator_synthesis": {
+    "O1_error_delta_inscription": 0.2666,
+    "O2_lie_rotation": 0.3424,
+    "O3_self_modulation": 0.2793,
+    "O4_dissipation": 0.1117
+  },
+  "second_half_low_loss_mass": 5.0,
+  "tail_retention_rate": 8.8,
+  "throughput_steps_per_sec": 204.0,
+  "mean_entropy_nats": 3.937,
+  "elapsed_time": 19.6
+}
