@@ -18,7 +18,7 @@ class HomeostasisConfig:
     energy_recovery_rate: float = 0.0025
     perceptive_rest_recovery: float = 0.0040
     backprop_energy_cost: float = 0.0050
-    motor_speech_cost_per_patch: float = 0.0015
+    motor_action_cost_per_patch: float = 0.0015
     idle_somatic_decay: float = 0.0005
     sleep_energy_recovery: float = 0.0080
 
@@ -110,7 +110,7 @@ class TrainConfig:
     weight_decay: float = 0.01
     grad_clip_norm: float = 3.0
     loss_free_energy_weight: float = 0.05
-    loss_speech_weight: float = 1.00
+    loss_surprise_weight: float = 1.00
 
     dfet_enabled: bool = True
     dfet_alpha_ma: float = 0.05
@@ -118,7 +118,7 @@ class TrainConfig:
     dfet_k_sigma_na_weight: float = 0.25
     dfet_min_k_sigma: float = 0.15
     mastery_setpoint: float = 0.025
-    speech_mastery_setpoint: float = 0.30
+    surprise_mastery_setpoint: float = 0.30
 
 
 @dataclass
