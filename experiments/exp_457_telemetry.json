@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-457",
+  "baseline_accuracy": 51.6096,
+  "sandbox_accuracy": 39.9864,
+  "baseline_loss": 2.53555,
+  "sandbox_loss": 2.53555,
+  "accuracy_delta": -11.6232,
+  "throughput_steps_per_sec": 807.257,
+  "elapsed_time": 3.65559
+}

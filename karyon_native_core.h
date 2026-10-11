@@ -1,22 +1,20 @@
-// karyon_native_core.h — Pure C++20 Sovereign Substrate Core Engine Header
+// karyon_native_core.h — Pure C++20 Sovereign Substrate Core Engine Interface
 // Standard: KEP v16.0 Sovereign Master & EXP-456 Master Autopoiesis
 // Zero-Python / Zero-Torch / Pure Native C++20 Substrate Architecture
 
-#ifndef KARYON_NATIVE_CORE_H
-#define KARYON_NATIVE_CORE_H
+#pragma once
 
-#include <vector>
-#include <cstddef>
 #include <cstdint>
-#include <cmath>
+#include <cstddef>
+#include <vector>
 #include <string>
 
 namespace karyon {
 
 struct NativeConfig {
-    size_t dim = 258;          // Raw byte vocabulary V=258 (256 bytes + pad + eos)
-    size_t num_heads = 8;      // Multi-head associative memory
-    size_t dim_k = 32;         // Key dimension per head
+    size_t dim = 258;          // Byte vocabulary size (0..255 + pad + eos)
+    size_t num_heads = 4;      // Sovereign memory heads
+    size_t dim_k = 16;         // Key dimension per head
     size_t dim_v = 32;         // Value dimension per head
     size_t dim_emb = 128;      // Continuous state embedding dimension
     float lr = 0.015f;         // Sovereign plastic learning rate
@@ -42,8 +40,8 @@ struct StepMetrics {
 
 class SovereignNativeEngine {
 public:
-    SovereignNativeEngine(const NativeConfig& config = NativeConfig());
-    ~SovereignNativeEngine();
+    SovereignNativeEngine(const NativeConfig& config);
+    virtual ~SovereignNativeEngine();
 
     void reset_state();
     StepMetrics step(uint8_t byte_in, uint8_t byte_target);
@@ -54,7 +52,7 @@ public:
 
     bool is_rust_active() const { return config_.use_rust_backend; }
 
-private:
+protected:
     NativeConfig config_;
     
     // Core parameters (std::vector<float>)
@@ -105,5 +103,3 @@ extern "C" {
     void karyon_native_step(void* handle, uint8_t byte_in, uint8_t byte_target,
                            float* out_loss, uint8_t* out_pred, size_t* out_turns, float* out_entropy);
 }
-
-#endif // KARYON_NATIVE_CORE_H
