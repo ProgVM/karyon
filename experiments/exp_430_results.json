@@ -1,0 +1,13 @@
+{
+  "exp_id": "EXP-430",
+  "final_loss": 1.7259,
+  "final_accuracy": 60.72,
+  "second_half_low_loss_mass": 78.85,
+  "second_half_ultra_low_loss_mass": 64.25,
+  "second_half_near_zero_loss_mass": 42.4,
+  "tail_retention_rate": 87.8,
+  "sleep_events": 9,
+  "throughput_steps_per_sec": 216.74,
+  "mean_entropy_nats": 1.099,
+  "elapsed_time": 18.45
+}
