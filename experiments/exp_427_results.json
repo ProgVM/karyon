@@ -1,0 +1,13 @@
+{
+  "exp_id": "EXP-427",
+  "final_loss": 1.7121,
+  "final_accuracy": 61.57,
+  "second_half_low_loss_mass": 82.55,
+  "second_half_ultra_low_loss_mass": 72.5,
+  "second_half_near_zero_loss_mass": 55.55,
+  "tail_retention_rate": 88.8,
+  "throughput_steps_per_sec": 292.07,
+  "mean_entropy_nats": 1.026,
+  "slow_memory_pr": 39.14,
+  "elapsed_time": 13.69
+}
