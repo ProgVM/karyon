@@ -1,0 +1,13 @@
+[package]
+name = "karyon_rust_core"
+version = "1.0.0"
+edition = "2021"
+authors = ["Bazilevs <progvminc@gmail.com>"]
+description = "High-Performance Pure Substrate Tensor & Associative Memory Engine for Karyon-CoRE"
+
+[lib]
+name = "karyon_rust_core"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+# Zero dependencies for absolute maximum portability & zero overhead
