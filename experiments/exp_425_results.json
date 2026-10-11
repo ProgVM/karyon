@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-425",
+  "final_loss": 3.4313,
+  "final_accuracy": 46.22,
+  "second_half_low_loss_mass": 63.53,
+  "second_half_ultra_low_loss_mass": 50.33,
+  "second_half_near_zero_loss_mass": 35.07,
+  "throughput_steps_per_sec": 215.66,
+  "mean_entropy_nats": 1.33,
+  "elapsed_time": 13.91
+}
