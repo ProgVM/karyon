@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-420",
+  "final_loss": 3.8097,
+  "final_accuracy": 14.54,
+  "avg_relaxation_steps": 3.58,
+  "throughput_steps_per_sec": 117.56,
+  "mean_entropy_nats": 2.903,
+  "gauge_state_cosine_sim": -0.004,
+  "state_participation_ratio": 9.31,
+  "memory_participation_ratio": 2.48,
+  "elapsed_time": 25.51
+}

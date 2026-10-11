@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-419",
+  "final_loss": 3.9845,
+  "final_accuracy": 7.6,
+  "avg_relaxation_steps": 3.74,
+  "throughput_steps_per_sec": 110.52,
+  "mean_entropy_nats": 3.153,
+  "stimulus_state_cosine_sim": 0.0,
+  "memory_participation_ratio": 1.47,
+  "elapsed_time": 27.13
+}
