@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-459",
+  "speed_pre": 3845.36,
+  "speed_post": 3897.12,
+  "speedup_factor": 1.01346,
+  "loss_pre": 5.00532,
+  "loss_post": 4.13729,
+  "acc_pre": 28.5547,
+  "acc_post": 35.4386,
+  "hot_patch_success": true
+}
