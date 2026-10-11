@@ -575,6 +575,62 @@ StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
     return metrics;
 }
 
+uint8_t SovereignNativeEngine::sample_next(uint8_t byte_in, float temperature) {
+    const float* emb_in = byte_emb_.data() + byte_in * config_.dim_emb;
+
+    std::vector<float> q(config_.num_heads * config_.dim_k);
+    matvec_mul(W_q_.data(), emb_in, q.data(), config_.num_heads * config_.dim_k, config_.dim_emb);
+    normalize_heads(q.data(), config_.num_heads, config_.dim_k);
+
+    // Multi-head memory readout
+    std::vector<float> y_read(config_.num_heads * config_.dim_v, 0.0f);
+    #pragma omp parallel for schedule(static)
+    for (size_t h = 0; h < config_.num_heads; ++h) {
+        const float* sh = S_memory_.data() + h * config_.dim_k * config_.dim_v;
+        const float* qh = q.data() + h * config_.dim_k;
+        float* yh = y_read.data() + h * config_.dim_v;
+
+        for (size_t v_idx = 0; v_idx < config_.dim_v; ++v_idx) {
+            float sum = 0.0f;
+            for (size_t k_idx = 0; k_idx < config_.dim_k; ++k_idx) {
+                sum += qh[k_idx] * sh[k_idx * config_.dim_v + v_idx];
+            }
+            yh[v_idx] = sum;
+        }
+    }
+
+    std::vector<float> logits(config_.dim);
+    matvec_mul(W_out_.data(), y_read.data(), logits.data(), config_.dim, config_.num_heads * config_.dim_v);
+
+    // PAC Sampling: Softmax with Temperature
+    float inv_t = 1.0f / std::max(0.01f, temperature);
+    float max_l = logits[0] * inv_t;
+    for (size_t i = 1; i < config_.dim; ++i) {
+        if (logits[i] * inv_t > max_l) max_l = logits[i] * inv_t;
+    }
+
+    float sum_exp = 0.0f;
+    std::vector<float> probs(config_.dim);
+    for (size_t i = 0; i < config_.dim; ++i) {
+        probs[i] = std::exp(logits[i] * inv_t - max_l);
+        sum_exp += probs[i];
+    }
+
+    // Cumulative random sampling
+    std::mt19937 gen(std::random_device{}());
+    std::uniform_real_distribution<float> dist(0.0f, sum_exp);
+    float r = dist(gen);
+    float cum = 0.0f;
+
+    for (size_t i = 0; i < config_.dim; ++i) {
+        cum += probs[i];
+        if (cum >= r) {
+            return static_cast<uint8_t>(i);
+        }
+    }
+    return static_cast<uint8_t>(config_.dim - 1);
+}
+
 } // namespace karyon
 
 extern "C" {
