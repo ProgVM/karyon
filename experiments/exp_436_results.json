@@ -1,0 +1,16 @@
+{
+  "exp_id": "EXP-436",
+  "final_loss": 2.8621,
+  "final_accuracy": 43.51,
+  "synthesized_operator_distribution": {
+    "O1_exact_geometric_delta": 0.8653,
+    "O2_lie_rotation": 0.0146,
+    "O3_attractor_compression": 0.0226,
+    "O4_leaky_decay": 0.0975
+  },
+  "second_half_low_loss_mass": 51.8,
+  "tail_retention_rate": 59.0,
+  "throughput_steps_per_sec": 233.73,
+  "mean_entropy_nats": 0.993,
+  "elapsed_time": 17.11
+}

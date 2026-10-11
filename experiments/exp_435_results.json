@@ -1,0 +1,17 @@
+{
+  "exp_id": "EXP-435",
+  "final_loss": 3.052,
+  "final_accuracy": 28.58,
+  "synthesized_operator_distribution": {
+    "O1_delta_outer_product": 0.0025,
+    "O2_lie_rotation": 0.1251,
+    "O3_unit_attractor": 0.029,
+    "O4_leaky_dissipation": 0.8329,
+    "O5_multiplicative_mod": 0.0105
+  },
+  "second_half_low_loss_mass": 26.6,
+  "tail_retention_rate": 30.0,
+  "throughput_steps_per_sec": 225.12,
+  "mean_entropy_nats": 1.283,
+  "elapsed_time": 17.76
+}

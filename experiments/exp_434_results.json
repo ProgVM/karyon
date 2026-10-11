@@ -1,0 +1,17 @@
+{
+  "exp_id": "EXP-434",
+  "final_loss": 18.5226,
+  "final_accuracy": 17.85,
+  "synthesized_operator_distribution": {
+    "O1_associative_trace": 0.2279,
+    "O2_lie_rotation": 0.1997,
+    "O3_matrix_transport": 0.1842,
+    "O4_landau_attractor": 0.2025,
+    "O5_matrix_repeller": 0.1857
+  },
+  "second_half_low_loss_mass": 20.25,
+  "tail_retention_rate": 26.8,
+  "throughput_steps_per_sec": 264.99,
+  "mean_entropy_nats": 0.486,
+  "elapsed_time": 15.09
+}
