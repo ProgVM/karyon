@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-458",
+  "baseline_accuracy": 59.3618,
+  "hyp_accuracy": 59.3618,
+  "baseline_loss": 2.04633,
+  "hyp_loss": 2.04633,
+  "sprouted_nodes": 46,
+  "throughput_steps_per_sec": 1026.83,
+  "elapsed_time": 2.99077
+}
