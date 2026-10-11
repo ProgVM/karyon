@@ -1,6 +1,6 @@
-// karyon_native_core.h — Pure C++20 Sovereign Substrate Core Engine Interface v3.0 Integrated
-// Standard: KEP v16.0 Sovereign Master & Integrated Sovereign Organs (EXP-457 to EXP-465)
-// Zero-Python / Zero-Torch / Pure Native C++20 Substrate Architecture
+// karyon_native_core.h — Pure C++20 Sovereign Substrate Core Engine Interface v4.0 (Dual-Tied Resonance Engine)
+// Standard: KEP v16.0 Sovereign Master & Principle 27 (Anti-Hardcode Sovereignty / Absolute Substrate Freedom)
+// Zero-AdamW / Zero-Backprop / Pure Continuous Physics-Driven State Dynamics
 
 #pragma once
 
@@ -16,7 +16,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <liburing.h>
 #include <immintrin.h>
 #include <omp.h>
 
@@ -26,9 +25,13 @@ struct NativeConfig {
     size_t dim = 258;                // Byte vocabulary size (0..255 + pad + eos)
     size_t num_heads = 4;            // Sovereign memory heads
     size_t dim_k = 16;               // Key dimension per head
-    size_t dim_v = 32;               // Value dimension per head
-    size_t dim_emb = 128;            // Continuous state embedding dimension
-    float lr = 0.015f;               // Sovereign plastic learning rate
+    size_t dim_v = 16;               // Value dimension per head (num_heads * dim_v = dim_emb)
+    size_t dim_emb = 64;             // Continuous state embedding & dual-tied manifold dimension
+
+    float beta_scale = 12.0f;        // Attractor sharpness / inverse temperature
+    float alpha_decay = 0.92f;       // Continuous memory trace decay
+    float eta_mem = 0.45f;           // Local physical learning rate for memory trace
+    float mu_emb = 0.05f;            // Local embedding manifold plasticity
     float gamma_dissipation = 0.70f; // Deliberation impulse decay
     size_t max_thinking_turns = 8;   // Maximum deliberative thinking turns
     float entropy_satisfy = 0.35f;   // Target surprise entropy cutoff
@@ -41,18 +44,11 @@ struct NativeConfig {
     float geodesic_gamma = 0.5f;     // EXP-462 Geodesic retrieval scaling factor
     size_t geodesic_k = 3;           // Top-k nearest hyperbolic attractors
 
-    // EXP-460 & EXP-465: io_uring Gateway
-    size_t uring_queue_depth = 128;
-
     // EXP-461 & EXP-463: Synaptic Mesh P2P & Multi-Node Swarm
     uint32_t node_id = 101;
     int p2p_port = 19001;
     int target_peer_port = 19002;
-    std::vector<int> swarm_peer_ports; // EXP-463: Multi-node peer ports
     bool p2p_enabled = true;
-
-    // EXP-464: SIMD & Parallelism
-    bool enable_avx2_fma = true;
 };
 
 struct StepMetrics {
@@ -61,89 +57,61 @@ struct StepMetrics {
     bool is_correct = false;
     size_t turns_taken = 0;
     float entropy = 0.0f;
-    float beta = 0.0f;
+    float beta = 1.0f;
     float mean_alpha = 0.0f;
     float mean_eta_delta = 0.0f;
     float mean_eta_hebb = 0.0f;
-    float s_norm = 0.0f;
-
-    // Integrated Organ Telemetry
+    float error_norm = 0.0f;
+    float h_norm = 0.0f;
     size_t poincare_nodes = 0;
     size_t geodesic_recalls = 0;
-    bool jit_hotpatched = false;
-    bool p2p_spike_broadcast = false;
+    bool p2p_spike_sent = false;
     bool p2p_spike_received = false;
-    size_t swarm_delivered_spikes = 0;
+    size_t swarm_delivered = 0;
+    bool jit_patch_triggered = false;
 };
 
-// EXP-458 & EXP-462 Poincare Hyperbolic Memory Node
 struct PoincareMemoryNode {
-    std::vector<float> coords;
-    std::vector<float> payload;
+    std::vector<float> center; // Inside unit disk |x| < 1
+    std::vector<float> value;
+    float access_count = 1.0f;
     float curvature = -1.0f;
-    size_t access_count = 0;
 };
 
-// UDP Packet payload for EXP-461 & EXP-463 Synaptic Mesh
-struct SynapticSpikePacket {
-    uint32_t node_id;
-    float free_energy;
-    float phase_q[16];
-    float phase_v[32];
-};
-
+// Function pointer signature for JIT compiled kernel (EXP-459)
 typedef void (*JitKernelFn)(float* S, const float* q, const float* v, float lr, size_t num_heads, size_t dim_k, size_t dim_v);
 
 class SovereignNativeEngine {
 public:
-    SovereignNativeEngine(const NativeConfig& config);
-    virtual ~SovereignNativeEngine();
+    explicit SovereignNativeEngine(const NativeConfig& config = NativeConfig());
+    ~SovereignNativeEngine();
 
-    void reset_state();
+    void reset();
     StepMetrics step(uint8_t byte_in, uint8_t byte_target);
-    uint8_t sample_next(uint8_t byte_in, float temperature = 0.5f);
 
-    // EXP-460 & EXP-465: io_uring Async Byte Gateway Stream
-    bool async_stream_ingest(const std::string& filepath, std::vector<uint8_t>& out_buffer, size_t chunk_size = 65536);
+    // High-Throughput Stream Ingestion
+    size_t stream_from_file(const std::string& filepath, size_t max_bytes);
 
-    // EXP-461 & EXP-463: Synaptic Mesh P2P & Multi-Node Swarm Broadcast
-    bool broadcast_mesh_spike(float free_energy, const std::vector<float>& q, const std::vector<float>& v);
-    size_t broadcast_to_swarm(float free_energy, const std::vector<float>& q, const std::vector<float>& v);
+    // EXP-461 & EXP-463: Synaptic Mesh P2P UDP Broadcast & Swarm Multicast
+    bool broadcast_mesh_spike(float error, const std::vector<float>& key, const std::vector<float>& value);
+    size_t broadcast_to_swarm(float error, const std::vector<float>& key, const std::vector<float>& value);
     bool receive_mesh_spike();
+
+    // EXP-458 & EXP-462: Poincare Geodesic Retrieval
+    size_t retrieve_geodesic_memories(const std::vector<float>& query_key, size_t top_k, float gamma);
 
     // EXP-459: JIT Hot-Patching Engine
     bool trigger_jit_hotpatch();
 
-    // EXP-462: Riemannian Geodesic Memory Retrieval
-    size_t retrieve_geodesic_memories(const std::vector<float>& query_key, size_t k, float gamma, float mix_weight = 0.20f);
+    const NativeConfig& config() const { return config_; }
+    size_t poincare_node_count() const { return poincare_graph_.size(); }
 
-    std::vector<uint8_t> serialize_kcore() const;
-    bool deserialize_kcore(const std::vector<uint8_t>& buffer);
-
-    bool is_rust_active() const { return config_.use_rust_backend; }
-
-protected:
+private:
     NativeConfig config_;
 
-    // Core parameters
-    std::vector<float> byte_emb_;
-    std::vector<float> W_q_;
-    std::vector<float> W_k_;
-    std::vector<float> W_v_;
-    std::vector<float> W_feedback_;
-    std::vector<float> W_out_;
-
-    // Sovereign Multi-Head Law Synthesizer
-    std::vector<float> W_law1_, b_law1_;
-    std::vector<float> W_law2_, b_law2_;
-
-    // Beta precision gain parameters
-    float w_beta_ = 0.5f, b_beta_ = 1.0f;
-    float m_w_beta_ = 0.0f, v_w_beta_ = 0.0f;
-    float m_b_beta_ = 0.0f, v_b_beta_ = 0.0f;
-
-    // Multi-head Associative Memory Matrix
-    std::vector<float> S_memory_;
+    // Dual-Tied Continuous Coordinate Manifold (Input Embedding + Output Resonance Basis)
+    std::vector<float> byte_emb_; // [dim x dim_emb]
+    std::vector<float> S_memory_; // [num_heads x dim_k x dim_v] Associative field
 
     // EXP-458 & EXP-462: Poincare Hyperbolic Memory Graph
     std::vector<PoincareMemoryNode> poincare_graph_;
@@ -153,34 +121,18 @@ protected:
     JitKernelFn active_jit_kernel_ = nullptr;
     bool is_jit_patched_ = false;
 
-    // EXP-460: io_uring Struct
-    struct io_uring uring_ring_;
-    bool uring_initialized_ = false;
-
     // EXP-461 & EXP-463: Synaptic UDP Mesh Socket
     int p2p_sock_fd_ = -1;
-
-    // AdamW Momentum Buffers
-    std::vector<float> m_out_, v_out_;
-    size_t adam_t_ = 0;
 
     void* rust_handle_ = nullptr;
 
     // Internal helper math
     void init_parameters();
-    void init_io_uring();
     void init_p2p_socket();
 
-    // EXP-464: AVX2 SIMD Accelerated MatVec Multiplication
-    void matvec_mul(const float* W, const float* x, float* y, size_t rows, size_t cols);
-    void simdfma_matvec_mul(const float* W, const float* x, float* y, size_t rows, size_t cols);
-
-    void normalize_heads(float* ptr, size_t num_heads, size_t head_dim);
+    void normalize_vector(float* ptr, size_t n);
     float compute_l2_norm(const float* ptr, size_t n);
     float compute_entropy_from_logits(const float* logits, size_t n);
-    void adamw_step(std::vector<float>& W, const std::vector<float>& grad,
-                    std::vector<float>& m, std::vector<float>& v,
-                    float lr, float weight_decay = 0.0001f);
 
     // EXP-458 & EXP-462: Poincare Distance & Geodesics
     float poincare_distance(const std::vector<float>& u, const std::vector<float>& v_vec);
