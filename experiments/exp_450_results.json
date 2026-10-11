@@ -1,0 +1,13 @@
+{
+  "exp_id": "EXP-450",
+  "final_loss": 1.6947,
+  "final_accuracy": 61.87,
+  "average_thinking_turns": 1.97,
+  "second_half_low_loss_mass": 80.75,
+  "second_half_ultra_low_loss_mass": 66.55,
+  "second_half_near_zero_loss_mass": 51.85,
+  "tail_retention_rate": 71.39,
+  "throughput_steps_per_sec": 216.73,
+  "mean_entropy_nats": 0.37,
+  "elapsed_time": 18.45
+}
