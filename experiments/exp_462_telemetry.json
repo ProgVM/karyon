@@ -1,0 +1,8 @@
+{
+  "exp_id": "EXP-462",
+  "poincare_nodes": 223,
+  "geodesic_recalls": 666,
+  "mean_loss": 5.54916,
+  "accuracy": 0.44843,
+  "throughput_steps_per_sec": 1845.93
+}
