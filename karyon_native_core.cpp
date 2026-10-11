@@ -1,6 +1,7 @@
-// karyon_native_core.cpp — Integrated C++20 Sovereign Substrate Core Engine v4.0 (Dual-Tied Resonance Engine)
+// karyon_native_core.cpp — Integrated C++20 Sovereign Substrate Core Engine v5.0
 // Standard: KEP v16.0 Sovereign Master & Principle 27 (Anti-Hardcode Sovereignty / Absolute Substrate Freedom)
 // Zero-AdamW / Zero-Backprop / Pure Continuous Physics-Driven State Dynamics
+// EXP-470 (Sovereign Head Dynamics) & EXP-472 (Unbounded Sovereign Attractor Manifold) Integrated
 
 #include "karyon_native_core.h"
 #include <iostream>
@@ -60,6 +61,12 @@ void SovereignNativeEngine::init_parameters() {
     }
 
     S_memory_.resize(config_.num_heads * config_.dim_k * config_.dim_v, 0.0f);
+
+    // EXP-470: Symmetrically initialized timescale coordinates
+    theta_heads_.resize(config_.num_heads);
+    for (size_t h = 0; h < config_.num_heads; ++h) {
+        theta_heads_[h] = -1.5f + (4.0f * h) / (config_.num_heads - 1);
+    }
 }
 
 void SovereignNativeEngine::normalize_vector(float* ptr, size_t n) {
@@ -76,6 +83,13 @@ float SovereignNativeEngine::compute_l2_norm(const float* ptr, size_t n) {
     #pragma omp simd reduction(+:sum)
     for (size_t i = 0; i < n; ++i) sum += ptr[i] * ptr[i];
     return std::sqrt(sum);
+}
+
+float SovereignNativeEngine::dot_product(const float* a, const float* b, size_t n) {
+    float sum = 0.0f;
+    #pragma omp simd reduction(+:sum)
+    for (size_t i = 0; i < n; ++i) sum += a[i] * b[i];
+    return sum;
 }
 
 float SovereignNativeEngine::compute_entropy_from_logits(const float* logits, size_t n) {
@@ -101,6 +115,10 @@ float SovereignNativeEngine::compute_entropy_from_logits(const float* logits, si
 
 void SovereignNativeEngine::reset() {
     std::fill(S_memory_.begin(), S_memory_.end(), 0.0f);
+    for (size_t h = 0; h < config_.num_heads; ++h) {
+        theta_heads_[h] = -1.5f + (4.0f * h) / (config_.num_heads - 1);
+    }
+    unbounded_memory_.clear();
     poincare_graph_.clear();
 }
 
@@ -216,13 +234,15 @@ StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
         normalize_vector(kh, config_.dim_k);
     }
 
-    // 3. Associative Continuous Field Retrieval: h_field = S @ k
+    // 3. Fast Associative Continuous Field Retrieval: h_field = S @ k
     std::vector<float> h_field(config_.dim_emb, 0.0f);
+    std::vector<float> head_outputs(config_.num_heads * config_.dim_v, 0.0f);
+
     #pragma omp parallel for schedule(static)
     for (size_t h = 0; h < config_.num_heads; ++h) {
         const float* s_head = S_memory_.data() + h * config_.dim_k * config_.dim_v;
         const float* kh = k.data() + h * config_.dim_k;
-        float* hh = h_field.data() + h * config_.dim_v;
+        float* hh = head_outputs.data() + h * config_.dim_v;
 
         for (size_t v_idx = 0; v_idx < config_.dim_v; ++v_idx) {
             float sum = 0.0f;
@@ -231,22 +251,44 @@ StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
                 sum += kh[k_idx] * s_head[k_idx * config_.dim_v + v_idx];
             }
             hh[v_idx] = sum;
+            h_field[h * config_.dim_v + v_idx] = sum;
         }
     }
 
-    // Direct wave transmission leak along substrate
+    // Substrate leak integration
     #pragma omp simd
     for (size_t i = 0; i < config_.dim_emb; ++i) {
         h_field[i] = 0.70f * h_field[i] + 0.30f * e_in[i];
     }
+    normalize_vector(h_field.data(), config_.dim_emb);
 
     float h_norm = compute_l2_norm(h_field.data(), config_.dim_emb);
     metrics.h_norm = h_norm;
 
-    // 4. Dual-Tied Resonance Projection (Cosine Physical Overlap onto Byte Manifold)
+    // 4. EXP-472: Unbounded Sovereign Attractor Manifold Resonance Readout
+    std::vector<float> attractor_logits(config_.dim, 0.0f);
+    float best_match_score = -1.0f;
+    size_t best_match_idx = 0;
+
+    if (config_.use_unbounded_memory && !unbounded_memory_.empty()) {
+        for (size_t idx = 0; idx < unbounded_memory_.size(); ++idx) {
+            float sim = dot_product(h_field.data(), unbounded_memory_[idx].key.data(), config_.dim_emb);
+            if (sim > best_match_score) {
+                best_match_score = sim;
+                best_match_idx = idx;
+            }
+        }
+
+        if (best_match_score > 0.70f) {
+            uint8_t recall_byte = unbounded_memory_[best_match_idx].target_byte;
+            attractor_logits[recall_byte] += config_.beta_attractor * (best_match_score - 0.70f);
+            unbounded_memory_[best_match_idx].usage_count += 0.01f;
+        }
+    }
+
+    // 5. Dual-Tied Resonance Projection (Cosine Physical Overlap + Attractor Prior)
     std::vector<float> logits(config_.dim, 0.0f);
     float max_logit = -1e9f;
-    float inv_h_norm = 1.0f / (h_norm + 1e-4f);
 
     #pragma omp parallel for schedule(static) reduction(max:max_logit)
     for (size_t b = 0; b < config_.dim; ++b) {
@@ -256,12 +298,12 @@ StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
         for (size_t d = 0; d < config_.dim_emb; ++d) {
             dot += h_field[d] * eb[d];
         }
-        float l = config_.beta_scale * (dot * inv_h_norm);
+        float l = config_.beta_scale * dot + attractor_logits[b];
         logits[b] = l;
         if (l > max_logit) max_logit = l;
     }
 
-    // 5. Gibbs-Boltzmann Probability Distribution
+    // 6. Gibbs-Boltzmann Probability Distribution
     float sum_exp = 0.0f;
     std::vector<float> probs(config_.dim);
     for (size_t b = 0; b < config_.dim; ++b) {
@@ -285,9 +327,8 @@ StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
     metrics.is_correct = (best_byte == byte_target);
     metrics.entropy = compute_entropy_from_logits(logits.data(), config_.dim);
     metrics.beta = config_.beta_scale;
-    metrics.mean_alpha = config_.alpha_decay;
 
-    // 6. Prediction Error Wave: e_t = E_{target} - h_{field}
+    // 7. Prediction Error Wave: e_t = E_{target} - h_{field}
     float* e_target = byte_emb_.data() + byte_target * config_.dim_emb;
     std::vector<float> error_wave(config_.dim_emb);
     float err_sq = 0.0f;
@@ -297,9 +338,54 @@ StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
     }
     metrics.error_norm = std::sqrt(err_sq);
 
-    // 7. Pure Endogenous Delta-Hebbian Dissipation (Zero AdamW / Zero Backprop)
-    #pragma omp parallel for schedule(static)
+    // 8. EXP-472: Autonomous Attractor Consolidation & Sprouting
+    if (config_.use_unbounded_memory) {
+        if (!metrics.is_correct || loss > config_.surprise_threshold) {
+            if (best_match_score > 0.85f && unbounded_memory_[best_match_idx].target_byte == byte_target) {
+                for (size_t d = 0; d < config_.dim_emb; ++d) {
+                    unbounded_memory_[best_match_idx].key[d] =
+                        0.90f * unbounded_memory_[best_match_idx].key[d] + 0.10f * h_field[d];
+                }
+                normalize_vector(unbounded_memory_[best_match_idx].key.data(), config_.dim_emb);
+            } else {
+                AttractorNode new_node;
+                new_node.key = h_field;
+                new_node.target_byte = byte_target;
+                new_node.usage_count = 1.0f;
+                unbounded_memory_.push_back(std::move(new_node));
+            }
+        }
+    }
+    metrics.memory_nodes = unbounded_memory_.size();
+
+    // 9. EXP-470: Sovereign Self-Organizing Head Adaptation & Memory Relaxation
+    std::vector<float> d_thetas(config_.num_heads, 0.0f);
+    for (size_t i = 0; i < config_.num_heads; ++i) {
+        for (size_t j = 0; j < config_.num_heads; ++j) {
+            if (i == j) continue;
+            float diff = theta_heads_[i] - theta_heads_[j];
+            float sgn = (diff > 0.0f) ? 1.0f : -1.0f;
+            float dist = std::abs(diff);
+            d_thetas[i] += 0.05f * sgn / (dist * dist + 0.1f);
+        }
+    }
+
+    float mean_a = 0.0f;
     for (size_t h = 0; h < config_.num_heads; ++h) {
+        const float* target_h = e_target + h * config_.dim_v;
+        const float* out_h = head_outputs.data() + h * config_.dim_v;
+        float alignment = 0.0f;
+        for (size_t v_idx = 0; v_idx < config_.dim_v; ++v_idx) {
+            alignment += out_h[v_idx] * target_h[v_idx];
+        }
+
+        float update = config_.eta_theta * (alignment * 0.1f + d_thetas[h]);
+        theta_heads_[h] = std::clamp(theta_heads_[h] + update, -2.5f, 5.0f);
+
+        float alpha_h = 1.0f / (1.0f + std::exp(-theta_heads_[h]));
+        alpha_h = std::clamp(alpha_h, 0.15f, 0.999f);
+        mean_a += alpha_h;
+
         float* s_head = S_memory_.data() + h * config_.dim_k * config_.dim_v;
         const float* kh = k.data() + h * config_.dim_k;
         const float* err_h = error_wave.data() + h * config_.dim_v;
@@ -309,18 +395,19 @@ StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
             float* s_row = s_head + k_idx * config_.dim_v;
             #pragma omp simd
             for (size_t v_idx = 0; v_idx < config_.dim_v; ++v_idx) {
-                s_row[v_idx] = config_.alpha_decay * s_row[v_idx] + config_.eta_mem * (kval * err_h[v_idx]);
+                s_row[v_idx] = alpha_h * s_row[v_idx] + config_.eta_mem * (kval * err_h[v_idx]);
             }
         }
     }
+    metrics.mean_alpha = mean_a / config_.num_heads;
 
-    // 8. Endogenous Manifold Self-Organization
+    // 10. Endogenous Manifold Self-Organization
     for (size_t d = 0; d < config_.dim_emb; ++d) {
         e_target[d] += config_.mu_emb * h_field[d];
     }
     normalize_vector(e_target, config_.dim_emb);
 
-    // 9. Poincare Geodesic Retrieval & Dynamic Sprouting on High Surprise
+    // 11. Poincare Geodesics & Swarm Broadcast
     if (loss > 2.5f) {
         metrics.geodesic_recalls = retrieve_geodesic_memories(k, config_.geodesic_k, config_.geodesic_gamma);
     }
@@ -330,8 +417,6 @@ StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
         sprout_poincare_node(key_k, val_v);
     }
     metrics.poincare_nodes = poincare_graph_.size();
-
-    // 10. Synaptic P2P & Multi-Node Swarm Broadcast
     metrics.p2p_spike_sent = broadcast_mesh_spike(loss, k, error_wave);
     metrics.swarm_delivered = broadcast_to_swarm(loss, k, error_wave);
     metrics.p2p_spike_received = receive_mesh_spike();
@@ -373,5 +458,10 @@ extern "C" {
         if (out_pred) *out_pred = metrics.pred_byte;
         if (out_turns) *out_turns = metrics.turns_taken;
         if (out_entropy) *out_entropy = metrics.entropy;
+    }
+
+    size_t karyon_native_get_memory_nodes(void* handle) {
+        if (!handle) return 0;
+        return static_cast<karyon::SovereignNativeEngine*>(handle)->attractor_node_count();
     }
 }
