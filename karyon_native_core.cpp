@@ -7,41 +7,100 @@
 #include <algorithm>
 #include <cstring>
 #include <iostream>
-
-// Optional Rust FFI declarations with weak linkage or dynamic dlopen stubs
-extern "C" {
-#if defined(__GNUC__) || defined(__clang__)
-    __attribute__((weak)) void* karyon_rust_create(size_t dim, size_t num_heads, size_t dim_k, size_t dim_v, size_t dim_emb) { return nullptr; }
-    __attribute__((weak)) void karyon_rust_destroy(void* handle) {}
-    __attribute__((weak)) void karyon_rust_reset(void* handle) {}
-    __attribute__((weak)) void karyon_rust_associative_read(const void* handle, const float* q_heads, float* read_out) {}
-    __attribute__((weak)) void karyon_rust_apply_laws(void* handle, const float* k_heads, const float* v_heads, 
-                                const float* v_pred_heads, const float* alphas, 
-                                const float* etas_delta, const float* etas_hebb, const float* lambdas) {}
-#else
-    void* karyon_rust_create(size_t dim, size_t num_heads, size_t dim_k, size_t dim_v, size_t dim_emb);
-    void karyon_rust_destroy(void* handle);
-    void karyon_rust_reset(void* handle);
-    void karyon_rust_associative_read(const void* handle, const float* q_heads, float* read_out);
-    void karyon_rust_apply_laws(void* handle, const float* k_heads, const float* v_heads, 
-                                const float* v_pred_heads, const float* alphas, 
-                                const float* etas_delta, const float* etas_hebb, const float* lambdas);
-#endif
-}
+#include <numeric>
+#include <cmath>
+#include <dlfcn.h>
 
 namespace karyon {
 
+// Dynamic Rust Engine Loader Struct
+struct RustBackendDispatch {
+    void* lib_handle = nullptr;
+    void* (*create_fn)(size_t, size_t, size_t, size_t, size_t) = nullptr;
+    void (*destroy_fn)(void*) = nullptr;
+    void (*reset_fn)(void*) = nullptr;
+    void (*read_fn)(const void*, const float*, float*) = nullptr;
+    void (*apply_laws_fn)(void*, const float*, const float*, const float*, const float*, const float*, const float*, const float*) = nullptr;
+
+    bool is_available() const {
+        return lib_handle && create_fn && destroy_fn && reset_fn && read_fn && apply_laws_fn;
+    }
+
+    void load() {
+        const char* lib_paths[] = {
+            "./libkaryon_rust_core.so",
+            "libkaryon_rust_core.so",
+            "../libkaryon_rust_core.so",
+            "rust_engine/target/release/libkaryon_rust_core.so"
+        };
+
+        for (const char* path : lib_paths) {
+            lib_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+            if (lib_handle) {
+                break;
+            }
+        }
+
+        if (!lib_handle) {
+            return;
+        }
+
+        create_fn = reinterpret_cast<decltype(create_fn)>(dlsym(lib_handle, "karyon_rust_create"));
+        destroy_fn = reinterpret_cast<decltype(destroy_fn)>(dlsym(lib_handle, "karyon_rust_destroy"));
+        reset_fn = reinterpret_cast<decltype(reset_fn)>(dlsym(lib_handle, "karyon_rust_reset"));
+        read_fn = reinterpret_cast<decltype(read_fn)>(dlsym(lib_handle, "karyon_rust_associative_read"));
+        apply_laws_fn = reinterpret_cast<decltype(apply_laws_fn)>(dlsym(lib_handle, "karyon_rust_apply_laws"));
+
+        if (!is_available()) {
+            dlclose(lib_handle);
+            lib_handle = nullptr;
+        }
+    }
+
+    ~RustBackendDispatch() {
+        if (lib_handle) {
+            dlclose(lib_handle);
+            lib_handle = nullptr;
+        }
+    }
+};
+
+static RustBackendDispatch& get_rust_dispatch() {
+    static RustBackendDispatch dispatch;
+    static bool initialized = false;
+    if (!initialized) {
+        dispatch.load();
+        initialized = true;
+    }
+    return dispatch;
+}
+
 SovereignNativeEngine::SovereignNativeEngine(const NativeConfig& config)
-    : config_(config), adam_t_(0) {
+    : config_(config), adam_t_(0), rust_handle_(nullptr) {
     init_parameters();
     if (config_.use_rust_backend) {
-        rust_handle_ = karyon_rust_create(config_.dim, config_.num_heads, config_.dim_k, config_.dim_v, config_.dim_emb);
+        auto& dispatch = get_rust_dispatch();
+        if (dispatch.is_available()) {
+            rust_handle_ = dispatch.create_fn(config_.dim, config_.num_heads, config_.dim_k, config_.dim_v, config_.dim_emb);
+            if (rust_handle_) {
+                std::cout << "[INFO] SovereignNativeEngine: Rust SIMD acceleration backend dynamically engaged.\n";
+            } else {
+                std::cout << "[WARN] SovereignNativeEngine: Failed to instantiate Rust engine. Falling back to native C++20 AVX2.\n";
+                config_.use_rust_backend = false;
+            }
+        } else {
+            std::cout << "[INFO] SovereignNativeEngine: libkaryon_rust_core.so not found or symbols missing. Falling back to native C++20 AVX2.\n";
+            config_.use_rust_backend = false;
+        }
     }
 }
 
 SovereignNativeEngine::~SovereignNativeEngine() {
     if (rust_handle_) {
-        karyon_rust_destroy(rust_handle_);
+        auto& dispatch = get_rust_dispatch();
+        if (dispatch.is_available()) {
+            dispatch.destroy_fn(rust_handle_);
+        }
         rust_handle_ = nullptr;
     }
 }
@@ -49,7 +108,10 @@ SovereignNativeEngine::~SovereignNativeEngine() {
 void SovereignNativeEngine::reset_state() {
     std::fill(S_memory_.begin(), S_memory_.end(), 0.0f);
     if (rust_handle_) {
-        karyon_rust_reset(rust_handle_);
+        auto& dispatch = get_rust_dispatch();
+        if (dispatch.is_available()) {
+            dispatch.reset_fn(rust_handle_);
+        }
     }
 }
 
@@ -91,6 +153,7 @@ void SovereignNativeEngine::init_parameters() {
 StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
     adam_t_++;
     StepMetrics metrics;
+    auto& dispatch = get_rust_dispatch();
 
     // 1. Forward Embedding
     const float* emb_ptr = byte_emb_.data() + byte_in * config_.dim_emb;
@@ -110,8 +173,8 @@ StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
 
     // 2. Associative Memory Read
     std::vector<float> read_heads(config_.num_heads * config_.dim_v, 0.0f);
-    if (rust_handle_) {
-        karyon_rust_associative_read(rust_handle_, q_heads.data(), read_heads.data());
+    if (rust_handle_ && dispatch.is_available()) {
+        dispatch.read_fn(rust_handle_, q_heads.data(), read_heads.data());
     } else {
         for (size_t h = 0; h < config_.num_heads; ++h) {
             const float* qh = q_heads.data() + h * config_.dim_k;
@@ -168,8 +231,8 @@ StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
         if (std::sqrt(impulse_sq) < config_.eps_halt) break;
 
         normalize_heads(q_curr.data(), config_.num_heads, config_.dim_k);
-        if (rust_handle_) {
-            karyon_rust_associative_read(rust_handle_, q_curr.data(), read_heads.data());
+        if (rust_handle_ && dispatch.is_available()) {
+            dispatch.read_fn(rust_handle_, q_curr.data(), read_heads.data());
         } else {
             std::fill(read_heads.begin(), read_heads.end(), 0.0f);
             for (size_t h = 0; h < config_.num_heads; ++h) {
@@ -263,8 +326,8 @@ StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
     }
 
     // Apply into Memory (C++ or Rust)
-    if (rust_handle_) {
-        karyon_rust_apply_laws(rust_handle_, k_proj.data(), v_proj.data(), v_pred.data(),
+    if (rust_handle_ && dispatch.is_available()) {
+        dispatch.apply_laws_fn(rust_handle_, k_proj.data(), v_proj.data(), v_pred.data(),
                                alphas.data(), etas_delta.data(), etas_hebb.data(), lambdas.data());
     } else {
         for (size_t h = 0; h < config_.num_heads; ++h) {
@@ -348,8 +411,9 @@ uint8_t SovereignNativeEngine::sample_next(uint8_t byte_in, float temperature) {
     normalize_heads(q_proj.data(), config_.num_heads, config_.dim_k);
 
     std::vector<float> read_heads(config_.num_heads * config_.dim_v, 0.0f);
-    if (rust_handle_) {
-        karyon_rust_associative_read(rust_handle_, q_proj.data(), read_heads.data());
+    auto& dispatch = get_rust_dispatch();
+    if (rust_handle_ && dispatch.is_available()) {
+        dispatch.read_fn(rust_handle_, q_proj.data(), read_heads.data());
     } else {
         for (size_t h = 0; h < config_.num_heads; ++h) {
             const float* qh = q_proj.data() + h * config_.dim_k;
@@ -508,11 +572,15 @@ extern "C" {
     }
 
     void karyon_native_destroy(void* handle) {
-        if (handle) delete static_cast<karyon::SovereignNativeEngine*>(handle);
+        if (handle) {
+            delete static_cast<karyon::SovereignNativeEngine*>(handle);
+        }
     }
 
     void karyon_native_reset(void* handle) {
-        if (handle) static_cast<karyon::SovereignNativeEngine*>(handle)->reset_state();
+        if (handle) {
+            static_cast<karyon::SovereignNativeEngine*>(handle)->reset_state();
+        }
     }
 
     void karyon_native_step(void* handle, uint8_t byte_in, uint8_t byte_target,
