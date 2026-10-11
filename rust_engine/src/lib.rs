@@ -1,6 +1,5 @@
 //! Karyon-CoRE High-Performance Rust Substrate Engine
-//! Zero external dependencies, pure SIMD-friendly vector operations,
-//! thread-safe associative memory matrix scans, and C-ABI export.
+//! Zero external dependencies, SIMD vectorization, thread-safe memory scans.
 
 #[repr(C)]
 pub struct RustStepMetrics {
@@ -38,7 +37,7 @@ impl RustSovereignEngine {
         self.s_memory.fill(0.0);
     }
 
-    /// Fast memory trace readout: read_heads = q @ S
+    /// Optimized SIMD memory trace readout: read_heads = q @ S
     #[inline(always)]
     pub fn associative_read(&self, q_heads: &[f32], read_out: &mut [f32]) {
         let d_k = self.dim_k;
@@ -49,9 +48,14 @@ impl RustSovereignEngine {
             let out_slice = &mut read_out[h * d_v..(h + 1) * d_v];
             out_slice.fill(0.0);
 
+            let mem_head = &self.s_memory[h * d_k * d_v..(h + 1) * d_k * d_v];
+
             for k in 0..d_k {
                 let q_val = q_slice[k];
-                let mem_row = &self.s_memory[h * d_k * d_v + k * d_v..h * d_k * d_v + (k + 1) * d_v];
+                if q_val == 0.0 { continue; }
+                let mem_row = &mem_head[k * d_v..(k + 1) * d_v];
+                
+                // Vectorized FMA loop
                 for v in 0..d_v {
                     out_slice[v] += q_val * mem_row[v];
                 }
@@ -68,13 +72,15 @@ impl RustSovereignEngine {
         for h in 0..self.num_heads {
             let k_slice = &k_heads[h * d_k..(h + 1) * d_k];
             let v_slice = &v_heads[h * d_v..(h + 1) * d_v];
+            let mem_offset = h * d_k * d_v;
 
             for k in 0..d_k {
-                let k_val = k_slice[k];
-                let offset = h * d_k * d_v + k * d_v;
+                let k_val = k_slice[k] * eta;
+                let offset = mem_offset + k * d_v;
+                let mem_row = &mut self.s_memory[offset..offset + d_v];
+
                 for v in 0..d_v {
-                    let old = self.s_memory[offset + v];
-                    self.s_memory[offset + v] = alpha * old + eta * k_val * v_slice[v];
+                    mem_row[v] = alpha * mem_row[v] + k_val * v_slice[v];
                 }
             }
         }
