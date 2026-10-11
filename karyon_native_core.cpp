@@ -8,8 +8,17 @@
 #include <cstring>
 #include <iostream>
 
-// Optional Rust FFI declarations
+// Optional Rust FFI declarations with weak linkage or dynamic dlopen stubs
 extern "C" {
+#if defined(__GNUC__) || defined(__clang__)
+    __attribute__((weak)) void* karyon_rust_create(size_t dim, size_t num_heads, size_t dim_k, size_t dim_v, size_t dim_emb) { return nullptr; }
+    __attribute__((weak)) void karyon_rust_destroy(void* handle) {}
+    __attribute__((weak)) void karyon_rust_reset(void* handle) {}
+    __attribute__((weak)) void karyon_rust_associative_read(const void* handle, const float* q_heads, float* read_out) {}
+    __attribute__((weak)) void karyon_rust_apply_laws(void* handle, const float* k_heads, const float* v_heads, 
+                                const float* v_pred_heads, const float* alphas, 
+                                const float* etas_delta, const float* etas_hebb, const float* lambdas) {}
+#else
     void* karyon_rust_create(size_t dim, size_t num_heads, size_t dim_k, size_t dim_v, size_t dim_emb);
     void karyon_rust_destroy(void* handle);
     void karyon_rust_reset(void* handle);
@@ -17,6 +26,7 @@ extern "C" {
     void karyon_rust_apply_laws(void* handle, const float* k_heads, const float* v_heads, 
                                 const float* v_pred_heads, const float* alphas, 
                                 const float* etas_delta, const float* etas_hebb, const float* lambdas);
+#endif
 }
 
 namespace karyon {
