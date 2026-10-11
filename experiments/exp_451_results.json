@@ -1,0 +1,13 @@
+{
+  "exp_id": "EXP-451",
+  "final_loss": 2.7025,
+  "final_accuracy": 41.86,
+  "average_thinking_turns": 2.63,
+  "second_half_low_loss_mass": 57.4,
+  "second_half_ultra_low_loss_mass": 37.65,
+  "second_half_near_zero_loss_mass": 23.95,
+  "tail_retention_rate": 50.12,
+  "throughput_steps_per_sec": 126.98,
+  "mean_entropy_nats": 0.687,
+  "elapsed_time": 31.49
+}
