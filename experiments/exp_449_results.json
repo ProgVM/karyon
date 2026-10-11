@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-449",
+  "final_loss": 2.2225,
+  "final_accuracy": 44.74,
+  "second_half_low_loss_mass": 62.35,
+  "second_half_ultra_low_loss_mass": 41.5,
+  "second_half_near_zero_loss_mass": 26.8,
+  "tail_retention_rate": 60.39,
+  "throughput_steps_per_sec": 125.03,
+  "mean_entropy_nats": 0.497,
+  "elapsed_time": 31.99
+}
