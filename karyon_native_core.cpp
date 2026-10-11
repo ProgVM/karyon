@@ -1,565 +1,465 @@
-// karyon_native_core.cpp — Pure C++20 Sovereign Substrate Core Engine Implementation
-// Standard: KEP v16.0 Sovereign Master & EXP-456 Master Autopoiesis
+// karyon_native_core.cpp — Integrated C++20 Sovereign Substrate Core Engine v2.0
+// Standard: KEP v16.0 Sovereign Master & Integrated Sovereign Organs (EXP-457 to EXP-461)
 // Zero-Python / Zero-Torch / Pure Native C++20 Substrate Architecture
 
 #include "karyon_native_core.h"
+#include <iostream>
+#include <cmath>
 #include <random>
 #include <algorithm>
 #include <cstring>
-#include <iostream>
-#include <numeric>
-#include <cmath>
+#include <fstream>
+#include <sstream>
 #include <dlfcn.h>
 
 namespace karyon {
 
-// Dynamic Rust Engine Loader Struct
-struct RustBackendDispatch {
-    void* lib_handle = nullptr;
-    void* (*create_fn)(size_t, size_t, size_t, size_t, size_t) = nullptr;
-    void (*destroy_fn)(void*) = nullptr;
-    void (*reset_fn)(void*) = nullptr;
-    void (*read_fn)(const void*, const float*, float*) = nullptr;
-    void (*apply_laws_fn)(void*, const float*, const float*, const float*, const float*, const float*, const float*, const float*) = nullptr;
-
-    bool is_available() const {
-        return lib_handle && create_fn && destroy_fn && reset_fn && read_fn && apply_laws_fn;
-    }
-
-    void load() {
-        const char* lib_paths[] = {
-            "./libkaryon_rust_core.so",
-            "libkaryon_rust_core.so",
-            "../libkaryon_rust_core.so",
-            "rust_engine/target/release/libkaryon_rust_core.so"
-        };
-
-        for (const char* path : lib_paths) {
-            lib_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-            if (lib_handle) {
-                break;
-            }
-        }
-
-        if (!lib_handle) {
-            return;
-        }
-
-        create_fn = reinterpret_cast<decltype(create_fn)>(dlsym(lib_handle, "karyon_rust_create"));
-        destroy_fn = reinterpret_cast<decltype(destroy_fn)>(dlsym(lib_handle, "karyon_rust_destroy"));
-        reset_fn = reinterpret_cast<decltype(reset_fn)>(dlsym(lib_handle, "karyon_rust_reset"));
-        read_fn = reinterpret_cast<decltype(read_fn)>(dlsym(lib_handle, "karyon_rust_associative_read"));
-        apply_laws_fn = reinterpret_cast<decltype(apply_laws_fn)>(dlsym(lib_handle, "karyon_rust_apply_laws"));
-
-        if (!is_available()) {
-            dlclose(lib_handle);
-            lib_handle = nullptr;
-        }
-    }
-
-    ~RustBackendDispatch() {
-        if (lib_handle) {
-            dlclose(lib_handle);
-            lib_handle = nullptr;
-        }
-    }
-};
-
-static RustBackendDispatch& get_rust_dispatch() {
-    static RustBackendDispatch dispatch;
-    static bool initialized = false;
-    if (!initialized) {
-        dispatch.load();
-        initialized = true;
-    }
-    return dispatch;
-}
-
 SovereignNativeEngine::SovereignNativeEngine(const NativeConfig& config)
-    : config_(config), adam_t_(0), rust_handle_(nullptr) {
+    : config_(config) {
     init_parameters();
-    if (config_.use_rust_backend) {
-        auto& dispatch = get_rust_dispatch();
-        if (dispatch.is_available()) {
-            rust_handle_ = dispatch.create_fn(config_.dim, config_.num_heads, config_.dim_k, config_.dim_v, config_.dim_emb);
-            if (rust_handle_) {
-                std::cout << "[INFO] SovereignNativeEngine: Rust SIMD acceleration backend dynamically engaged.\n";
-            } else {
-                std::cout << "[WARN] SovereignNativeEngine: Failed to instantiate Rust engine. Falling back to native C++20 AVX2.\n";
-                config_.use_rust_backend = false;
-            }
-        } else {
-            std::cout << "[INFO] SovereignNativeEngine: libkaryon_rust_core.so not found or symbols missing. Falling back to native C++20 AVX2.\n";
-            config_.use_rust_backend = false;
-        }
-    }
+    init_io_uring();
+    init_p2p_socket();
 }
 
 SovereignNativeEngine::~SovereignNativeEngine() {
-    if (rust_handle_) {
-        auto& dispatch = get_rust_dispatch();
-        if (dispatch.is_available()) {
-            dispatch.destroy_fn(rust_handle_);
-        }
-        rust_handle_ = nullptr;
+    if (jit_dl_handle_) {
+        dlclose(jit_dl_handle_);
+        jit_dl_handle_ = nullptr;
+    }
+    if (uring_initialized_) {
+        io_uring_queue_exit(&uring_ring_);
+        uring_initialized_ = false;
+    }
+    if (p2p_sock_fd_ >= 0) {
+        close(p2p_sock_fd_);
+        p2p_sock_fd_ = -1;
     }
 }
 
-void SovereignNativeEngine::reset_state() {
-    std::fill(S_memory_.begin(), S_memory_.end(), 0.0f);
-    if (rust_handle_) {
-        auto& dispatch = get_rust_dispatch();
-        if (dispatch.is_available()) {
-            dispatch.reset_fn(rust_handle_);
-        }
+void SovereignNativeEngine::init_io_uring() {
+    int ret = io_uring_queue_init(config_.uring_queue_depth, &uring_ring_, 0);
+    if (ret == 0) {
+        uring_initialized_ = true;
     }
+}
+
+void SovereignNativeEngine::init_p2p_socket() {
+    if (!config_.p2p_enabled) return;
+    p2p_sock_fd_ = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
+    if (p2p_sock_fd_ < 0) return;
+
+    struct sockaddr_in local_addr{};
+    local_addr.sin_family = AF_INET;
+    local_addr.sin_addr.s_addr = INADDR_ANY;
+    local_addr.sin_port = htons(config_.p2p_port);
+
+    bind(p2p_sock_fd_, (struct sockaddr*)&local_addr, sizeof(local_addr));
 }
 
 void SovereignNativeEngine::init_parameters() {
-    std::mt19937 rng(42);
-    std::normal_distribution<float> d_emb(0.0f, 0.05f);
-    
+    std::mt19937 gen(42);
+    float scale = 1.0f / std::sqrt(static_cast<float>(config_.dim_emb));
+    std::uniform_real_distribution<float> dist(-scale, scale);
+
     byte_emb_.resize(config_.dim * config_.dim_emb);
-    for (auto& val : byte_emb_) val = d_emb(rng);
+    for (auto& w : byte_emb_) w = dist(gen);
 
-    auto init_proj = [&](std::vector<float>& W, size_t r, size_t c) {
-        W.resize(r * c);
-        std::normal_distribution<float> dist(0.0f, 1.0f / std::sqrt(static_cast<float>(c)));
-        for (auto& val : W) val = dist(rng);
-    };
+    W_q_.resize((config_.num_heads * config_.dim_k) * config_.dim_emb);
+    for (auto& w : W_q_) w = dist(gen);
 
-    init_proj(W_q_, config_.num_heads * config_.dim_k, config_.dim_emb);
-    init_proj(W_k_, config_.num_heads * config_.dim_k, config_.dim_emb);
-    init_proj(W_v_, config_.num_heads * config_.dim_v, config_.dim_emb);
-    init_proj(W_feedback_, config_.dim_k, config_.dim_v);
-    init_proj(W_out_, config_.dim, config_.num_heads * config_.dim_v);
+    W_k_.resize((config_.num_heads * config_.dim_k) * config_.dim_emb);
+    for (auto& w : W_k_) w = dist(gen);
 
-    m_out_.assign(W_out_.size(), 0.0f);
-    v_out_.assign(W_out_.size(), 0.0f);
+    W_v_.resize((config_.num_heads * config_.dim_v) * config_.dim_emb);
+    for (auto& w : W_v_) w = dist(gen);
 
-    // Law Synthesizer MLP: 4 -> 32 -> 4
+    W_feedback_.resize(config_.dim_k * config_.dim_v);
+    for (auto& w : W_feedback_) w = dist(gen);
+
+    W_out_.resize(config_.dim * (config_.num_heads * config_.dim_v));
+    for (auto& w : W_out_) w = dist(gen);
+
     W_law1_.resize(32 * 4);
-    b_law1_.assign(32, 0.0f);
-    std::normal_distribution<float> d_law(0.0f, 0.1f);
-    for (auto& val : W_law1_) val = d_law(rng);
+    b_law1_.resize(32, 0.0f);
+    for (auto& w : W_law1_) w = dist(gen);
 
     W_law2_.resize(4 * 32);
-    b_law2_.assign(4, 0.0f);
-    for (auto& val : W_law2_) val = d_law(rng);
+    b_law2_.resize(4, 0.0f);
+    for (auto& w : W_law2_) w = dist(gen);
 
-    S_memory_.assign(config_.num_heads * config_.dim_k * config_.dim_v, 0.0f);
-}
-
-StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
-    adam_t_++;
-    StepMetrics metrics;
-    auto& dispatch = get_rust_dispatch();
-
-    // 1. Forward Embedding
-    const float* emb_ptr = byte_emb_.data() + byte_in * config_.dim_emb;
-    std::vector<float> emb(config_.dim_emb);
-    for (size_t e = 0; e < config_.dim_emb; ++e) emb[e] = emb_ptr[e];
-
-    // Multi-head projections
-    std::vector<float> q_proj(config_.num_heads * config_.dim_k);
-    std::vector<float> k_proj(config_.num_heads * config_.dim_k);
-    std::vector<float> v_proj(config_.num_heads * config_.dim_v);
-    matvec_mul(W_q_.data(), emb.data(), q_proj.data(), q_proj.size(), config_.dim_emb);
-    matvec_mul(W_k_.data(), emb.data(), k_proj.data(), k_proj.size(), config_.dim_emb);
-    matvec_mul(W_v_.data(), emb.data(), v_proj.data(), v_proj.size(), config_.dim_emb);
-
-    std::vector<float> q_heads = q_proj;
-    normalize_heads(q_heads.data(), config_.num_heads, config_.dim_k);
-
-    // 2. Associative Memory Read
-    std::vector<float> read_heads(config_.num_heads * config_.dim_v, 0.0f);
-    if (rust_handle_ && dispatch.is_available()) {
-        dispatch.read_fn(rust_handle_, q_heads.data(), read_heads.data());
-    } else {
-        for (size_t h = 0; h < config_.num_heads; ++h) {
-            const float* qh = q_heads.data() + h * config_.dim_k;
-            float* rh = read_heads.data() + h * config_.dim_v;
-            const float* sh = S_memory_.data() + h * config_.dim_k * config_.dim_v;
-            for (size_t k = 0; k < config_.dim_k; ++k) {
-                float qv = qh[k];
-                const float* srow = sh + k * config_.dim_v;
-                for (size_t v = 0; v < config_.dim_v; ++v) rh[v] += qv * srow[v];
-            }
-        }
-    }
-
-    // 3. Deliberative Dissipative Recurrent Thinking
-    size_t turns_taken = 1;
-    float g_0 = 0.85f;
-    std::vector<float> q_curr = q_heads;
-    std::vector<float> read_flat = read_heads;
-    float read_norm = 0.0f;
-    float beta_val = 1.0f;
-    std::vector<float> logits(config_.dim, 0.0f);
-
-    for (size_t turn = 0; turn < config_.max_thinking_turns; ++turn) {
-        read_flat = read_heads;
-        read_norm = compute_l2_norm(read_flat.data(), read_flat.size());
-
-        float u_beta = std::clamp(w_beta_ * read_norm + b_beta_, -20.0f, 20.0f);
-        beta_val = 1.0f + std::log1p(std::exp(u_beta));
-
-        matvec_mul(W_out_.data(), read_flat.data(), logits.data(), config_.dim, read_flat.size());
-        for (size_t d = 0; d < config_.dim; ++d) logits[d] *= beta_val;
-
-        if (turn == config_.max_thinking_turns - 1) break;
-
-        float curr_entropy = compute_entropy_from_logits(logits.data(), config_.dim);
-        if (curr_entropy <= config_.entropy_satisfy) break;
-
-        // Feedback impulse
-        float g_step = g_0 * std::pow(config_.gamma_dissipation, static_cast<float>(turn));
-        std::vector<float> fb(config_.num_heads * config_.dim_k, 0.0f);
-        for (size_t h = 0; h < config_.num_heads; ++h) {
-            const float* rh = read_heads.data() + h * config_.dim_v;
-            float* fbh = fb.data() + h * config_.dim_k;
-            matvec_mul(W_feedback_.data(), rh, fbh, config_.dim_k, config_.dim_v);
-            for (size_t k = 0; k < config_.dim_k; ++k) fbh[k] = std::tanh(fbh[k]);
-        }
-
-        float impulse_sq = 0.0f;
-        for (size_t i = 0; i < fb.size(); ++i) {
-            float imp = g_step * fb[i];
-            q_curr[i] += imp;
-            impulse_sq += imp * imp;
-        }
-        if (std::sqrt(impulse_sq) < config_.eps_halt) break;
-
-        normalize_heads(q_curr.data(), config_.num_heads, config_.dim_k);
-        if (rust_handle_ && dispatch.is_available()) {
-            dispatch.read_fn(rust_handle_, q_curr.data(), read_heads.data());
-        } else {
-            std::fill(read_heads.begin(), read_heads.end(), 0.0f);
-            for (size_t h = 0; h < config_.num_heads; ++h) {
-                const float* qh = q_curr.data() + h * config_.dim_k;
-                float* rh = read_heads.data() + h * config_.dim_v;
-                const float* sh = S_memory_.data() + h * config_.dim_k * config_.dim_v;
-                for (size_t k = 0; k < config_.dim_k; ++k) {
-                    float qv = qh[k];
-                    const float* srow = sh + k * config_.dim_v;
-                    for (size_t v = 0; v < config_.dim_v; ++v) rh[v] += qv * srow[v];
-                }
-            }
-        }
-        turns_taken++;
-    }
-
-    // Softmax & Surprise
-    float max_l = *std::max_element(logits.begin(), logits.end());
-    float sum_exp = 0.0f;
-    std::vector<float> probs(config_.dim);
-    for (size_t d = 0; d < config_.dim; ++d) {
-        probs[d] = std::exp(logits[d] - max_l);
-        sum_exp += probs[d];
-    }
-    float entropy = 0.0f;
-    for (size_t d = 0; d < config_.dim; ++d) {
-        probs[d] /= sum_exp;
-        if (probs[d] > 1e-12f) entropy -= probs[d] * std::log(probs[d]);
-    }
-
-    float p_target = std::max(probs[byte_target], 1e-7f);
-    float loss = -std::log(p_target);
-    uint8_t pred = static_cast<uint8_t>(std::distance(probs.begin(), std::max_element(probs.begin(), probs.end())));
-
-    // 4. Multi-Head Law Synthesis
-    std::vector<float> v_pred(config_.num_heads * config_.dim_v, 0.0f);
-    for (size_t h = 0; h < config_.num_heads; ++h) {
-        const float* kh = k_proj.data() + h * config_.dim_k;
-        float* vph = v_pred.data() + h * config_.dim_v;
-        const float* sh = S_memory_.data() + h * config_.dim_k * config_.dim_v;
-        for (size_t k = 0; k < config_.dim_k; ++k) {
-            float kv = kh[k];
-            const float* srow = sh + k * config_.dim_v;
-            for (size_t v = 0; v < config_.dim_v; ++v) vph[v] += kv * srow[v];
-        }
-    }
-
-    std::vector<float> features(config_.num_heads * 4);
-    for (size_t h = 0; h < config_.num_heads; ++h) {
-        const float* vh = v_proj.data() + h * config_.dim_v;
-        const float* vph = v_pred.data() + h * config_.dim_v;
-        const float* sh = S_memory_.data() + h * config_.dim_k * config_.dim_v;
-
-        float err_sq = 0.0f, s_sq = 0.0f, coher = 0.0f;
-        for (size_t v = 0; v < config_.dim_v; ++v) {
-            float diff = vh[v] - vph[v];
-            err_sq += diff * diff;
-            coher += vh[v] * vph[v];
-        }
-        for (size_t i = 0; i < config_.dim_k * config_.dim_v; ++i) s_sq += sh[i] * sh[i];
-
-        features[h * 4 + 0] = std::sqrt(err_sq);
-        features[h * 4 + 1] = std::sqrt(s_sq) / 10.0f;
-        features[h * 4 + 2] = std::min(loss / 3.0f, 3.0f);
-        features[h * 4 + 3] = coher;
-    }
-
-    std::vector<float> alphas(config_.num_heads);
-    std::vector<float> etas_delta(config_.num_heads);
-    std::vector<float> etas_hebb(config_.num_heads);
-    std::vector<float> lambdas(config_.num_heads);
-
-    for (size_t h = 0; h < config_.num_heads; ++h) {
-        const float* feat = features.data() + h * 4;
-        std::vector<float> h_law(32, 0.0f);
-        matvec_mul(W_law1_.data(), feat, h_law.data(), 32, 4);
-        for (size_t i = 0; i < 32; ++i) {
-            h_law[i] += b_law1_[i];
-            float sig = 1.0f / (1.0f + std::exp(-std::clamp(h_law[i], -20.0f, 20.0f)));
-            h_law[i] *= sig;
-        }
-
-        std::vector<float> ol(4, 0.0f);
-        matvec_mul(W_law2_.data(), h_law.data(), ol.data(), 4, 32);
-        for (size_t i = 0; i < 4; ++i) ol[i] += b_law2_[i];
-
-        alphas[h] = std::clamp(1.0f / (1.0f + std::exp(-ol[0])), 0.70f, 0.999f);
-        etas_delta[h] = std::log1p(std::exp(std::clamp(ol[1], -20.0f, 20.0f))) + 0.1f;
-        etas_hebb[h] = std::log1p(std::exp(std::clamp(ol[2], -20.0f, 20.0f)));
-        lambdas[h] = 0.05f / (1.0f + std::exp(-ol[3]));
-    }
-
-    // Apply into Memory (C++ or Rust)
-    if (rust_handle_ && dispatch.is_available()) {
-        dispatch.apply_laws_fn(rust_handle_, k_proj.data(), v_proj.data(), v_pred.data(),
-                               alphas.data(), etas_delta.data(), etas_hebb.data(), lambdas.data());
-    } else {
-        for (size_t h = 0; h < config_.num_heads; ++h) {
-            float alpha = alphas[h];
-            float eta_d = etas_delta[h];
-            float eta_h = etas_hebb[h];
-            float lam = lambdas[h];
-
-            const float* kh = k_proj.data() + h * config_.dim_k;
-            const float* vh = v_proj.data() + h * config_.dim_v;
-            const float* vph = v_pred.data() + h * config_.dim_v;
-            float* sh = S_memory_.data() + h * config_.dim_k * config_.dim_v;
-
-            for (size_t k = 0; k < config_.dim_k; ++k) {
-                float kval = kh[k];
-                float* srow = sh + k * config_.dim_v;
-                for (size_t v = 0; v < config_.dim_v; ++v) {
-                    float err_val = vh[v] - vph[v];
-                    srow[v] = alpha * srow[v] + eta_d * (kval * err_val) + eta_h * (kval * vh[v]) - lam * srow[v];
-                }
-            }
-        }
-
-        // Norm clamp
-        float s_total_sq = 0.0f;
-        for (size_t i = 0; i < S_memory_.size(); ++i) s_total_sq += S_memory_[i] * S_memory_[i];
-        float norm_s = std::sqrt(s_total_sq);
-        if (norm_s > 30.0f) {
-            float scale = 30.0f / norm_s;
-            for (size_t i = 0; i < S_memory_.size(); ++i) S_memory_[i] *= scale;
-        }
-    }
-
-    // 5. Output Weights Optimization
-    std::vector<float> d_logits = probs;
-    d_logits[byte_target] -= 1.0f;
-
-    std::vector<float> grad_out(W_out_.size(), 0.0f);
-    for (size_t r = 0; r < config_.dim; ++r) {
-        float dl = d_logits[r];
-        for (size_t c = 0; c < read_flat.size(); ++c) {
-            grad_out[r * read_flat.size() + c] = beta_val * dl * read_flat[c];
-        }
-    }
-    adamw_step(W_out_, grad_out, m_out_, v_out_, config_.lr);
-
-    float d_beta = 0.0f;
-    for (size_t d = 0; d < config_.dim; ++d) d_beta += (logits[d] / beta_val) * d_logits[d];
-    float sig_u = 1.0f / (1.0f + std::exp(-std::clamp(w_beta_ * read_norm + b_beta_, -20.0f, 20.0f)));
-    float d_u = d_beta * sig_u;
-
-    m_w_beta_ = 0.9f * m_w_beta_ + 0.1f * (d_u * read_norm);
-    v_w_beta_ = 0.999f * v_w_beta_ + 0.001f * (d_u * read_norm) * (d_u * read_norm);
-    w_beta_ -= 0.015f * m_w_beta_ / (std::sqrt(v_w_beta_) + 1e-8f);
-
-    m_b_beta_ = 0.9f * m_b_beta_ + 0.1f * d_u;
-    v_b_beta_ = 0.999f * v_b_beta_ + 0.001f * d_u * d_u;
-    b_beta_ -= 0.015f * m_b_beta_ / (std::sqrt(v_b_beta_) + 1e-8f);
-
-    metrics.loss = loss;
-    metrics.pred_byte = pred;
-    metrics.is_correct = (pred == byte_target);
-    metrics.turns_taken = turns_taken;
-    metrics.entropy = entropy;
-    metrics.beta = beta_val;
-    metrics.mean_alpha = std::accumulate(alphas.begin(), alphas.end(), 0.0f) / config_.num_heads;
-    metrics.mean_eta_delta = std::accumulate(etas_delta.begin(), etas_delta.end(), 0.0f) / config_.num_heads;
-    metrics.mean_eta_hebb = std::accumulate(etas_hebb.begin(), etas_hebb.end(), 0.0f) / config_.num_heads;
-    metrics.s_norm = read_norm;
-
-    return metrics;
-}
-
-uint8_t SovereignNativeEngine::sample_next(uint8_t byte_in, float temperature) {
-    const float* emb_ptr = byte_emb_.data() + byte_in * config_.dim_emb;
-    std::vector<float> emb(config_.dim_emb);
-    for (size_t e = 0; e < config_.dim_emb; ++e) emb[e] = emb_ptr[e];
-
-    std::vector<float> q_proj(config_.num_heads * config_.dim_k);
-    matvec_mul(W_q_.data(), emb.data(), q_proj.data(), q_proj.size(), config_.dim_emb);
-    normalize_heads(q_proj.data(), config_.num_heads, config_.dim_k);
-
-    std::vector<float> read_heads(config_.num_heads * config_.dim_v, 0.0f);
-    auto& dispatch = get_rust_dispatch();
-    if (rust_handle_ && dispatch.is_available()) {
-        dispatch.read_fn(rust_handle_, q_proj.data(), read_heads.data());
-    } else {
-        for (size_t h = 0; h < config_.num_heads; ++h) {
-            const float* qh = q_proj.data() + h * config_.dim_k;
-            float* rh = read_heads.data() + h * config_.dim_v;
-            const float* sh = S_memory_.data() + h * config_.dim_k * config_.dim_v;
-            for (size_t k = 0; k < config_.dim_k; ++k) {
-                float qv = qh[k];
-                const float* srow = sh + k * config_.dim_v;
-                for (size_t v = 0; v < config_.dim_v; ++v) rh[v] += qv * srow[v];
-            }
-        }
-    }
-
-    std::vector<float> logits(config_.dim, 0.0f);
-    matvec_mul(W_out_.data(), read_heads.data(), logits.data(), config_.dim, read_heads.size());
-
-    // Temperature scale
-    float max_l = *std::max_element(logits.begin(), logits.end());
-    float sum_exp = 0.0f;
-    std::vector<float> probs(config_.dim);
-    for (size_t d = 0; d < config_.dim; ++d) {
-        probs[d] = std::exp((logits[d] - max_l) / std::max(temperature, 0.01f));
-        sum_exp += probs[d];
-    }
-    for (size_t d = 0; d < config_.dim; ++d) probs[d] /= sum_exp;
-
-    return static_cast<uint8_t>(std::distance(probs.begin(), std::max_element(probs.begin(), probs.end())));
+    S_memory_.resize(config_.num_heads * config_.dim_k * config_.dim_v, 0.0f);
+    m_out_.resize(W_out_.size(), 0.0f);
+    v_out_.resize(W_out_.size(), 0.0f);
 }
 
 void SovereignNativeEngine::matvec_mul(const float* W, const float* x, float* y, size_t rows, size_t cols) {
-    for (size_t r = 0; r < rows; ++r) {
+    for (size_t i = 0; i < rows; ++i) {
         float sum = 0.0f;
-        const float* row = W + r * cols;
-        for (size_t c = 0; c < cols; ++c) sum += row[c] * x[c];
-        y[r] = sum;
+        const float* w_row = W + i * cols;
+        for (size_t j = 0; j < cols; ++j) {
+            sum += w_row[j] * x[j];
+        }
+        y[i] = sum;
     }
 }
 
 void SovereignNativeEngine::normalize_heads(float* ptr, size_t num_heads, size_t head_dim) {
     for (size_t h = 0; h < num_heads; ++h) {
-        float* head_ptr = ptr + h * head_dim;
-        float sq = 0.0f;
-        for (size_t i = 0; i < head_dim; ++i) sq += head_ptr[i] * head_ptr[i];
-        float inv = 1.0f / (std::sqrt(sq) + 1e-8f);
-        for (size_t i = 0; i < head_dim; ++i) head_ptr[i] *= inv;
+        float* h_ptr = ptr + h * head_dim;
+        float norm = compute_l2_norm(h_ptr, head_dim);
+        if (norm > 1e-6f) {
+            float inv_norm = 1.0f / norm;
+            for (size_t i = 0; i < head_dim; ++i) {
+                h_ptr[i] *= inv_norm;
+            }
+        }
     }
 }
 
 float SovereignNativeEngine::compute_l2_norm(const float* ptr, size_t n) {
-    float sq = 0.0f;
-    for (size_t i = 0; i < n; ++i) sq += ptr[i] * ptr[i];
-    return std::sqrt(sq);
+    float sum = 0.0f;
+    for (size_t i = 0; i < n; ++i) sum += ptr[i] * ptr[i];
+    return std::sqrt(sum);
 }
 
 float SovereignNativeEngine::compute_entropy_from_logits(const float* logits, size_t n) {
-    float max_l = *std::max_element(logits, logits + n);
+    float max_l = logits[0];
+    for (size_t i = 1; i < n; ++i) if (logits[i] > max_l) max_l = logits[i];
+
     float sum_exp = 0.0f;
-    for (size_t i = 0; i < n; ++i) sum_exp += std::exp(logits[i] - max_l);
-    float ent = 0.0f;
+    std::vector<float> probs(n);
     for (size_t i = 0; i < n; ++i) {
-        float p = std::exp(logits[i] - max_l) / sum_exp;
-        if (p > 1e-12f) ent -= p * std::log(p);
+        probs[i] = std::exp(logits[i] - max_l);
+        sum_exp += probs[i];
     }
-    return ent;
+
+    float inv_sum = 1.0f / sum_exp;
+    float entropy = 0.0f;
+    for (size_t i = 0; i < n; ++i) {
+        probs[i] *= inv_sum;
+        if (probs[i] > 1e-9f) {
+            entropy -= probs[i] * std::log(probs[i]);
+        }
+    }
+    return entropy;
 }
 
-void SovereignNativeEngine::adamw_step(std::vector<float>& W, const std::vector<float>& grad, 
-                                      std::vector<float>& m, std::vector<float>& v, 
-                                      float lr, float weight_decay) {
-    float b1 = 0.9f, b2 = 0.999f, eps = 1e-8f;
-    float bc1 = 1.0f - std::pow(b1, static_cast<float>(adam_t_));
-    float bc2 = 1.0f - std::pow(b2, static_cast<float>(adam_t_));
+float SovereignNativeEngine::poincare_distance(const std::vector<float>& u, const std::vector<float>& v_vec) {
+    float u_sq = 0.0f, v_sq = 0.0f, diff_sq = 0.0f;
+    size_t dim = std::min(u.size(), v_vec.size());
+    for (size_t i = 0; i < dim; ++i) {
+        u_sq += u[i] * u[i];
+        v_sq += v_vec[i] * v_vec[i];
+        float d = u[i] - v_vec[i];
+        diff_sq += d * d;
+    }
+    u_sq = std::min(u_sq, 0.99f);
+    v_sq = std::min(v_sq, 0.99f);
 
-    for (size_t i = 0; i < W.size(); ++i) {
-        float g = std::clamp(grad[i], -1.0f, 1.0f);
-        W[i] -= lr * weight_decay * W[i];
-        m[i] = b1 * m[i] + (1.0f - b1) * g;
-        v[i] = b2 * v[i] + (1.0f - b2) * g * g;
-        float m_hat = m[i] / bc1;
-        float v_hat = v[i] / bc2;
-        W[i] -= lr * m_hat / (std::sqrt(v_hat) + eps);
+    float num = 2.0f * diff_sq;
+    float den = (1.0f - u_sq) * (1.0f - v_sq);
+    float arg = 1.0f + num / (den + 1e-6f);
+    return std::acosh(std::max(1.0f, arg));
+}
+
+void SovereignNativeEngine::sprout_poincare_node(const std::vector<float>& key, const std::vector<float>& value) {
+    PoincareMemoryNode node;
+    node.coords.resize(config_.poincare_dim);
+    for (size_t i = 0; i < config_.poincare_dim; ++i) {
+        node.coords[i] = (i < key.size()) ? std::tanh(key[i]) * 0.5f : 0.0f;
+    }
+    node.payload = value;
+    node.curvature = config_.max_poincare_curvature;
+    node.access_count = 1;
+    poincare_graph_.push_back(node);
+}
+
+bool SovereignNativeEngine::trigger_jit_hotpatch() {
+    std::string cpp_code = R"(
+#include <cstddef>
+extern "C" void active_kernel(float* S, const float* q, const float* v, float lr, size_t num_heads, size_t dim_k, size_t dim_v) {
+    for (size_t h = 0; h < num_heads; ++h) {
+        float* sh = S + h * dim_k * dim_v;
+        const float* qh = q + h * dim_k;
+        const float* vh = v + h * dim_v;
+        for (size_t k = 0; k < dim_k; ++k) {
+            float q_val = qh[k];
+            float* srow = sh + k * dim_v;
+            #pragma omp simd
+            for (size_t v_idx = 0; v_idx < dim_v; ++v_idx) {
+                srow[v_idx] += lr * (q_val * vh[v_idx]);
+            }
+        }
     }
 }
+)";
+    std::ofstream out("/tmp/karyon_integrated_jit.cpp");
+    out << cpp_code;
+    out.close();
 
-std::vector<uint8_t> SovereignNativeEngine::serialize_kcore() const {
-    std::vector<uint8_t> buf;
-    const char magic[] = "KCORE\x06\x00\x00";
-    buf.insert(buf.end(), magic, magic + 8);
-    
-    auto append_vec = [&](const std::vector<float>& v) {
-        size_t n = v.size();
-        const uint8_t* p = reinterpret_cast<const uint8_t*>(&n);
-        buf.insert(buf.end(), p, p + sizeof(n));
-        const uint8_t* vp = reinterpret_cast<const uint8_t*>(v.data());
-        buf.insert(buf.end(), vp, vp + n * sizeof(float));
-    };
+    int res = system("g++ -O3 -shared -fPIC -mavx2 -mfma -o /tmp/karyon_integrated_jit.so /tmp/karyon_integrated_jit.cpp");
+    if (res != 0) return false;
 
-    append_vec(byte_emb_);
-    append_vec(W_q_);
-    append_vec(W_k_);
-    append_vec(W_v_);
-    append_vec(W_feedback_);
-    append_vec(W_out_);
-    append_vec(W_law1_);
-    append_vec(b_law1_);
-    append_vec(W_law2_);
-    append_vec(b_law2_);
-    append_vec(S_memory_);
+    if (jit_dl_handle_) dlclose(jit_dl_handle_);
+    jit_dl_handle_ = dlopen("/tmp/karyon_integrated_jit.so", RTLD_NOW);
+    if (!jit_dl_handle_) return false;
 
-    return buf;
-}
+    active_jit_kernel_ = (JitKernelFn)dlsym(jit_dl_handle_, "active_kernel");
+    if (!active_jit_kernel_) return false;
 
-bool SovereignNativeEngine::deserialize_kcore(const std::vector<uint8_t>& buffer) {
-    if (buffer.size() < 8) return false;
-    if (std::memcmp(buffer.data(), "KCORE\x06\x00\x00", 8) != 0) return false;
-
-    size_t offset = 8;
-    auto read_vec = [&](std::vector<float>& v) -> bool {
-        if (offset + sizeof(size_t) > buffer.size()) return false;
-        size_t n = *reinterpret_cast<const size_t*>(buffer.data() + offset);
-        offset += sizeof(size_t);
-        if (offset + n * sizeof(float) > buffer.size()) return false;
-        v.resize(n);
-        std::memcpy(v.data(), buffer.data() + offset, n * sizeof(float));
-        offset += n * sizeof(float);
-        return true;
-    };
-
-    if (!read_vec(byte_emb_)) return false;
-    if (!read_vec(W_q_)) return false;
-    if (!read_vec(W_k_)) return false;
-    if (!read_vec(W_v_)) return false;
-    if (!read_vec(W_feedback_)) return false;
-    if (!read_vec(W_out_)) return false;
-    if (!read_vec(W_law1_)) return false;
-    if (!read_vec(b_law1_)) return false;
-    if (!read_vec(W_law2_)) return false;
-    if (!read_vec(b_law2_)) return false;
-    if (!read_vec(S_memory_)) return false;
-
+    is_jit_patched_ = true;
     return true;
 }
 
-} // namespace karyon
+bool SovereignNativeEngine::async_stream_ingest(const std::string& filepath, std::vector<uint8_t>& out_buffer, size_t chunk_size) {
+    int fd = open(filepath.c_str(), O_RDONLY);
+    if (fd < 0) return false;
 
-// C-ABI Safe Exports
+    struct stat st;
+    if (fstat(fd, &st) < 0) { close(fd); return false; }
+
+    size_t file_size = st.st_size;
+    out_buffer.resize(file_size);
+
+    if (!uring_initialized_) {
+        ssize_t bytes_read = read(fd, out_buffer.data(), file_size);
+        close(fd);
+        return (bytes_read == static_cast<ssize_t>(file_size));
+    }
+
+    size_t offset = 0;
+    size_t bytes_remaining = file_size;
+
+    while (bytes_remaining > 0) {
+        struct io_uring_sqe* sqe = io_uring_get_sqe(&uring_ring_);
+        if (!sqe) {
+            io_uring_submit(&uring_ring_);
+            sqe = io_uring_get_sqe(&uring_ring_);
+        }
+        size_t bytes_to_read = std::min(bytes_remaining, chunk_size);
+        io_uring_prep_read(sqe, fd, out_buffer.data() + offset, bytes_to_read, offset);
+        sqe->user_data = offset;
+        offset += bytes_to_read;
+        bytes_remaining -= bytes_to_read;
+    }
+
+    io_uring_submit(&uring_ring_);
+
+    size_t completed_chunks = (file_size + chunk_size - 1) / chunk_size;
+    for (size_t c = 0; c < completed_chunks; ++c) {
+        struct io_uring_cqe* cqe = nullptr;
+        int ret = io_uring_wait_cqe(&uring_ring_, &cqe);
+        if (ret < 0) { close(fd); return false; }
+        io_uring_cqe_seen(&uring_ring_, cqe);
+    }
+    close(fd);
+    return true;
+}
+
+bool SovereignNativeEngine::broadcast_mesh_spike(float free_energy, const std::vector<float>& q, const std::vector<float>& v) {
+    if (p2p_sock_fd_ < 0) return false;
+    SynapticSpikePacket pkt;
+    pkt.node_id = config_.node_id;
+    pkt.free_energy = free_energy;
+
+    size_t k_len = std::min(q.size(), static_cast<size_t>(16));
+    size_t v_len = std::min(v.size(), static_cast<size_t>(32));
+
+    for (size_t i = 0; i < k_len; ++i) pkt.phase_q[i] = q[i];
+    for (size_t i = 0; i < v_len; ++i) pkt.phase_v[i] = v[i];
+
+    struct sockaddr_in dest_addr{};
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(config_.target_peer_port);
+    inet_pton(AF_INET, "127.0.0.1", &dest_addr.sin_addr);
+
+    ssize_t sent = sendto(p2p_sock_fd_, &pkt, sizeof(pkt), 0, (struct sockaddr*)&dest_addr, sizeof(dest_addr));
+    return sent == static_cast<ssize_t>(sizeof(pkt));
+}
+
+bool SovereignNativeEngine::receive_mesh_spike() {
+    if (p2p_sock_fd_ < 0) return false;
+    SynapticSpikePacket pkt;
+    struct sockaddr_in src_addr{};
+    socklen_t addr_len = sizeof(src_addr);
+
+    ssize_t bytes_recv = recvfrom(p2p_sock_fd_, &pkt, sizeof(pkt), 0, (struct sockaddr*)&src_addr, &addr_len);
+    if (bytes_recv != static_cast<ssize_t>(sizeof(pkt))) return false;
+
+    float coupling_gamma = 0.15f;
+    for (size_t h = 0; h < config_.num_heads; ++h) {
+        float* sh = S_memory_.data() + h * config_.dim_k * config_.dim_v;
+        for (size_t k = 0; k < config_.dim_k; ++k) {
+            float q_val = pkt.phase_q[k % 16];
+            float* srow = sh + k * config_.dim_v;
+            for (size_t v = 0; v < config_.dim_v; ++v) {
+                float v_val = pkt.phase_v[v % 32];
+                srow[v] += coupling_gamma * (q_val * v_val);
+            }
+        }
+    }
+    return true;
+}
+
+void SovereignNativeEngine::reset_state() {
+    std::fill(S_memory_.begin(), S_memory_.end(), 0.0f);
+    poincare_graph_.clear();
+}
+
+StepMetrics SovereignNativeEngine::step(uint8_t byte_in, uint8_t byte_target) {
+    StepMetrics metrics;
+    const float* emb_in = byte_emb_.data() + byte_in * config_.dim_emb;
+
+    std::vector<float> q(config_.num_heads * config_.dim_k);
+    std::vector<float> k(config_.num_heads * config_.dim_k);
+    std::vector<float> v(config_.num_heads * config_.dim_v);
+
+    matvec_mul(W_q_.data(), emb_in, q.data(), config_.num_heads * config_.dim_k, config_.dim_emb);
+    matvec_mul(W_k_.data(), emb_in, k.data(), config_.num_heads * config_.dim_k, config_.dim_emb);
+    matvec_mul(W_v_.data(), emb_in, v.data(), config_.num_heads * config_.dim_v, config_.dim_emb);
+
+    normalize_heads(q.data(), config_.num_heads, config_.dim_k);
+    normalize_heads(k.data(), config_.num_heads, config_.dim_k);
+
+    // EXP-456 Multi-Head Plastic Law Synthesizer
+    std::vector<float> head_norms(4, 0.0f);
+    size_t heads_to_norm = std::min(config_.num_heads, static_cast<size_t>(4));
+    for (size_t h = 0; h < heads_to_norm; ++h) {
+        head_norms[h] = compute_l2_norm(q.data() + h * config_.dim_k, config_.dim_k);
+    }
+
+    std::vector<float> law1_out(32);
+    matvec_mul(W_law1_.data(), head_norms.data(), law1_out.data(), 32, 4);
+    for (size_t i = 0; i < 32; ++i) law1_out[i] = std::max(0.0f, law1_out[i] + b_law1_[i]);
+
+    std::vector<float> law2_out(4);
+    matvec_mul(W_law2_.data(), law1_out.data(), law2_out.data(), 4, 32);
+    for (size_t i = 0; i < 4; ++i) law2_out[i] = 1.0f / (1.0f + std::exp(-(law2_out[i] + b_law2_[i])));
+
+    float alpha = law2_out[0];
+    float eta_delta = law2_out[1];
+    float eta_hebb = law2_out[2];
+    float beta = 1.0f + 2.0f * law2_out[3];
+
+    // Deliberative Thinking Recurrent Horizon
+    std::vector<float> y_read(config_.num_heads * config_.dim_v, 0.0f);
+    std::vector<float> q_curr = q;
+    float prev_entropy = 100.0f;
+    size_t turn = 0;
+
+    for (turn = 0; turn < config_.max_thinking_turns; ++turn) {
+        for (size_t h = 0; h < config_.num_heads; ++h) {
+            const float* sh = S_memory_.data() + h * config_.dim_k * config_.dim_v;
+            const float* qh = q_curr.data() + h * config_.dim_k;
+            float* yh = y_read.data() + h * config_.dim_v;
+
+            for (size_t v_idx = 0; v_idx < config_.dim_v; ++v_idx) {
+                float sum = 0.0f;
+                for (size_t k_idx = 0; k_idx < config_.dim_k; ++k_idx) {
+                    sum += qh[k_idx] * sh[k_idx * config_.dim_v + v_idx];
+                }
+                yh[v_idx] = sum;
+            }
+        }
+
+        std::vector<float> logits(config_.dim);
+        matvec_mul(W_out_.data(), y_read.data(), logits.data(), config_.dim, config_.num_heads * config_.dim_v);
+
+        float entropy = compute_entropy_from_logits(logits.data(), config_.dim);
+        if (entropy < config_.entropy_satisfy || std::abs(prev_entropy - entropy) < config_.eps_halt) {
+            break;
+        }
+        prev_entropy = entropy;
+
+        std::vector<float> fb(config_.dim_k, 0.0f);
+        matvec_mul(W_feedback_.data(), y_read.data(), fb.data(), config_.dim_k, config_.dim_v);
+
+        for (size_t h = 0; h < config_.num_heads; ++h) {
+            float* qh = q_curr.data() + h * config_.dim_k;
+            for (size_t k_idx = 0; k_idx < config_.dim_k; ++k_idx) {
+                qh[k_idx] = config_.gamma_dissipation * qh[k_idx] + (1.0f - config_.gamma_dissipation) * fb[k_idx];
+            }
+        }
+        normalize_heads(q_curr.data(), config_.num_heads, config_.dim_k);
+    }
+
+    std::vector<float> final_logits(config_.dim);
+    matvec_mul(W_out_.data(), y_read.data(), final_logits.data(), config_.dim, config_.num_heads * config_.dim_v);
+
+    for (size_t i = 0; i < config_.dim; ++i) final_logits[i] *= beta;
+
+    float max_l = final_logits[0];
+    uint8_t best_byte = 0;
+    for (size_t i = 1; i < config_.dim; ++i) {
+        if (final_logits[i] > max_l) {
+            max_l = final_logits[i];
+            best_byte = static_cast<uint8_t>(i);
+        }
+    }
+
+    float sum_exp = 0.0f;
+    std::vector<float> probs(config_.dim);
+    for (size_t i = 0; i < config_.dim; ++i) {
+        probs[i] = std::exp(final_logits[i] - max_l);
+        sum_exp += probs[i];
+    }
+    float inv_sum = 1.0f / sum_exp;
+    for (size_t i = 0; i < config_.dim; ++i) probs[i] *= inv_sum;
+
+    float loss = -std::log(std::max(probs[byte_target], 1e-7f));
+
+    // Update Associative Memory Matrix (JIT vs Builtin)
+    if (is_jit_patched_ && active_jit_kernel_) {
+        active_jit_kernel_(S_memory_.data(), q.data(), v.data(), config_.lr * eta_hebb, config_.num_heads, config_.dim_k, config_.dim_v);
+    } else {
+        for (size_t h = 0; h < config_.num_heads; ++h) {
+            float* sh = S_memory_.data() + h * config_.dim_k * config_.dim_v;
+            const float* kh = k.data() + h * config_.dim_k;
+            const float* vh = v.data() + h * config_.dim_v;
+
+            for (size_t k_idx = 0; k_idx < config_.dim_k; ++k_idx) {
+                for (size_t v_idx = 0; v_idx < config_.dim_v; ++v_idx) {
+                    float delta_rule = -eta_delta * sh[k_idx * config_.dim_v + v_idx];
+                    float hebb_rule = eta_hebb * (kh[k_idx] * vh[v_idx]);
+                    sh[k_idx * config_.dim_v + v_idx] = alpha * sh[k_idx * config_.dim_v + v_idx] + config_.lr * (delta_rule + hebb_rule);
+                }
+            }
+        }
+    }
+
+    // EXP-458: Sprout Poincare Node if high surprise
+    if (loss > 3.0f) {
+        sprout_poincare_node(q, v);
+    }
+
+    // EXP-461: Broadcast P2P Mesh Spike
+    bool broadcast_ok = broadcast_mesh_spike(loss, q, v);
+    bool recv_ok = receive_mesh_spike();
+
+    // EXP-459: Auto JIT Hot-Patch Trigger if loss remains high
+    if (loss > 4.5f && !is_jit_patched_) {
+        trigger_jit_hotpatch();
+    }
+
+    metrics.loss = loss;
+    metrics.pred_byte = best_byte;
+    metrics.is_correct = (best_byte == byte_target);
+    metrics.turns_taken = turn + 1;
+    metrics.entropy = compute_entropy_from_logits(final_logits.data(), config_.dim);
+    metrics.beta = beta;
+    metrics.mean_alpha = alpha;
+    metrics.mean_eta_delta = eta_delta;
+    metrics.mean_eta_hebb = eta_hebb;
+    metrics.s_norm = compute_l2_norm(S_memory_.data(), S_memory_.size());
+    metrics.poincare_nodes = poincare_graph_.size();
+    metrics.jit_hotpatched = is_jit_patched_;
+    metrics.p2p_spike_broadcast = broadcast_ok;
+    metrics.p2p_spike_received = recv_ok;
+
+    return metrics;
+}
+
+} // namespace karyon
 
 extern "C" {
     void* karyon_native_create(size_t dim, size_t num_heads, size_t dim_k, size_t dim_v) {
@@ -585,12 +485,12 @@ extern "C" {
 
     void karyon_native_step(void* handle, uint8_t byte_in, uint8_t byte_target,
                            float* out_loss, uint8_t* out_pred, size_t* out_turns, float* out_entropy) {
-        if (!handle) return;
-        auto* eng = static_cast<karyon::SovereignNativeEngine*>(handle);
-        auto m = eng->step(byte_in, byte_target);
-        if (out_loss) *out_loss = m.loss;
-        if (out_pred) *out_pred = m.pred_byte;
-        if (out_turns) *out_turns = m.turns_taken;
-        if (out_entropy) *out_entropy = m.entropy;
+        if (handle) {
+            auto m = static_cast<karyon::SovereignNativeEngine*>(handle)->step(byte_in, byte_target);
+            if (out_loss) *out_loss = m.loss;
+            if (out_pred) *out_pred = m.pred_byte;
+            if (out_turns) *out_turns = m.turns_taken;
+            if (out_entropy) *out_entropy = m.entropy;
+        }
     }
 }
