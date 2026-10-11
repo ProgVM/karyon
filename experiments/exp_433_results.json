@@ -1,0 +1,17 @@
+{
+  "exp_id": "EXP-433",
+  "final_loss": 2.5354,
+  "final_accuracy": 29.66,
+  "synthesized_operator_distribution": {
+    "O1_linear_transport": 0.0812,
+    "O2_unitary_rotation": 0.8222,
+    "O3_bilinear_interaction": 0.0405,
+    "O4_landau_attractor": 0.0205,
+    "O5_error_repeller": 0.0355
+  },
+  "second_half_low_loss_mass": 17.6,
+  "tail_retention_rate": 22.0,
+  "throughput_steps_per_sec": 172.4,
+  "mean_entropy_nats": 2.011,
+  "elapsed_time": 23.2
+}
