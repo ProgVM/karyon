@@ -1,9 +1,9 @@
 {
   "exp_id": "EXP-465",
   "total_steps": 7579,
-  "throughput_steps_per_sec": 5970.9,
-  "mean_loss_h1": 5.55267,
-  "mean_loss_h2": 5.55521,
-  "loss_drop": -0.00254202,
-  "accuracy": 0
+  "throughput_steps_per_sec": 1188.93,
+  "mean_loss_h1": 7.56551,
+  "mean_loss_h2": 12.518,
+  "loss_drop": -4.95248,
+  "accuracy": 0.422219
 }
