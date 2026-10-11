@@ -1,0 +1,8 @@
+{
+  "exp_id": "EXP-463",
+  "swarm_nodes": 4,
+  "total_sent_spikes": 696,
+  "total_recv_spikes": 413,
+  "delivery_rate_percent": 59.3391,
+  "elapsed_ms": 166.962
+}
