@@ -1,12 +1,19 @@
 //! Karyon-CoRE High-Performance Rust Substrate Engine
-//! Zero external dependencies, SIMD vectorization, thread-safe memory scans.
+//! EXP-456 Sovereign Master: Multi-Head Dynamic Law Synthesizer & Dissipative Memory
+//! Zero external dependencies, pure SIMD-friendly native safe/unsafe Rust.
 
 #[repr(C)]
+#[derive(Debug, Clone, Copy)]
 pub struct RustStepMetrics {
     pub loss: f32,
+    pub pred_byte: u8,
     pub is_correct: bool,
     pub turns_taken: usize,
+    pub entropy: f32,
     pub beta: f32,
+    pub mean_alpha: f32,
+    pub mean_eta_delta: f32,
+    pub mean_eta_hebb: f32,
     pub s_norm: f32,
 }
 
@@ -37,7 +44,7 @@ impl RustSovereignEngine {
         self.s_memory.fill(0.0);
     }
 
-    /// Optimized SIMD memory trace readout: read_heads = q @ S
+    /// Optimized memory trace readout: read_heads = q @ S
     #[inline(always)]
     pub fn associative_read(&self, q_heads: &[f32], read_out: &mut [f32]) {
         let d_k = self.dim_k;
@@ -55,7 +62,6 @@ impl RustSovereignEngine {
                 if q_val == 0.0 { continue; }
                 let mem_row = &mem_head[k * d_v..(k + 1) * d_v];
                 
-                // Vectorized FMA loop
                 for v in 0..d_v {
                     out_slice[v] += q_val * mem_row[v];
                 }
@@ -63,25 +69,58 @@ impl RustSovereignEngine {
         }
     }
 
-    /// Fast outer-product Hebbian/Delta write into S_memory
+    /// Multi-Head Sovereign Dynamic Law Application:
+    /// Applies synthesized (alpha, eta_delta, eta_hebb, lambda) per head directly into S_memory.
     #[inline(always)]
-    pub fn associative_write(&mut self, k_heads: &[f32], v_heads: &[f32], alpha: f32, eta: f32) {
+    pub fn apply_synthesized_laws(
+        &mut self,
+        k_heads: &[f32],
+        v_heads: &[f32],
+        v_pred_heads: &[f32],
+        alphas: &[f32],
+        etas_delta: &[f32],
+        etas_hebb: &[f32],
+        lambdas: &[f32],
+    ) {
         let d_k = self.dim_k;
         let d_v = self.dim_v;
 
         for h in 0..self.num_heads {
+            let alpha = alphas[h];
+            let eta_d = etas_delta[h];
+            let eta_h = etas_hebb[h];
+            let lam = lambdas[h];
+
             let k_slice = &k_heads[h * d_k..(h + 1) * d_k];
             let v_slice = &v_heads[h * d_v..(h + 1) * d_v];
+            let v_pred_slice = &v_pred_heads[h * d_v..(h + 1) * d_v];
             let mem_offset = h * d_k * d_v;
 
             for k in 0..d_k {
-                let k_val = k_slice[k] * eta;
+                let k_val = k_slice[k];
                 let offset = mem_offset + k * d_v;
                 let mem_row = &mut self.s_memory[offset..offset + d_v];
 
                 for v in 0..d_v {
-                    mem_row[v] = alpha * mem_row[v] + k_val * v_slice[v];
+                    let err = v_slice[v] - v_pred_slice[v];
+                    mem_row[v] = alpha * mem_row[v] 
+                               + eta_d * (k_val * err) 
+                               + eta_h * (k_val * v_slice[v]) 
+                               - lam * mem_row[v];
                 }
+            }
+        }
+
+        // Bounded Norm Clamping (Tononi SHY / Thermodynamic Stability)
+        let mut total_norm_sq = 0.0f32;
+        for val in &self.s_memory {
+            total_norm_sq += val * val;
+        }
+        let total_norm = total_norm_sq.sqrt();
+        if total_norm > 30.0 {
+            let scale = 30.0 / total_norm;
+            for val in &mut self.s_memory {
+                *val *= scale;
             }
         }
     }
@@ -99,55 +138,73 @@ pub extern "C" fn karyon_rust_create(
     dim_v: usize,
     dim_emb: usize,
 ) -> *mut RustSovereignEngine {
-    Box::into_raw(Box::new(RustSovereignEngine::new(
-        dim, num_heads, dim_k, dim_v, dim_emb,
-    )))
+    let engine = Box::new(RustSovereignEngine::new(dim, num_heads, dim_k, dim_v, dim_emb));
+    Box::into_raw(engine)
 }
 
 #[no_mangle]
-pub extern "C" fn karyon_rust_destroy(engine: *mut RustSovereignEngine) {
-    if !engine.is_null() {
+pub extern "C" fn karyon_rust_destroy(engine_ptr: *mut RustSovereignEngine) {
+    if !engine_ptr.is_null() {
         unsafe {
-            drop(Box::from_raw(engine));
+            drop(Box::from_raw(engine_ptr));
         }
     }
 }
 
 #[no_mangle]
-pub extern "C" fn karyon_rust_reset(engine: *mut RustSovereignEngine) {
-    if let Some(eng) = unsafe { engine.as_mut() } {
-        eng.reset();
+pub extern "C" fn karyon_rust_reset(engine_ptr: *mut RustSovereignEngine) {
+    if let Some(engine) = unsafe { engine_ptr.as_mut() } {
+        engine.reset();
     }
 }
 
 #[no_mangle]
-pub extern "C" fn karyon_rust_read(
-    engine: *const RustSovereignEngine,
-    q_heads: *const f32,
-    read_out: *mut f32,
+pub extern "C" fn karyon_rust_associative_read(
+    engine_ptr: *const RustSovereignEngine,
+    q_heads_ptr: *const f32,
+    read_out_ptr: *mut f32,
 ) {
-    if let Some(eng) = unsafe { engine.as_ref() } {
-        let q_len = eng.num_heads * eng.dim_k;
-        let read_len = eng.num_heads * eng.dim_v;
-        let q_slice = unsafe { std::slice::from_raw_parts(q_heads, q_len) };
-        let read_slice = unsafe { std::slice::from_raw_parts_mut(read_out, read_len) };
-        eng.associative_read(q_slice, read_slice);
+    if let Some(engine) = unsafe { engine_ptr.as_ref() } {
+        let q_len = engine.num_heads * engine.dim_k;
+        let out_len = engine.num_heads * engine.dim_v;
+        let q_slice = unsafe { std::slice::from_raw_parts(q_heads_ptr, q_len) };
+        let out_slice = unsafe { std::slice::from_raw_parts_mut(read_out_ptr, out_len) };
+        engine.associative_read(q_slice, out_slice);
     }
 }
 
 #[no_mangle]
-pub extern "C" fn karyon_rust_write(
-    engine: *mut RustSovereignEngine,
-    k_heads: *const f32,
-    v_heads: *const f32,
-    alpha: f32,
-    eta: f32,
+pub extern "C" fn karyon_rust_apply_laws(
+    engine_ptr: *mut RustSovereignEngine,
+    k_heads_ptr: *const f32,
+    v_heads_ptr: *const f32,
+    v_pred_heads_ptr: *const f32,
+    alphas_ptr: *const f32,
+    etas_delta_ptr: *const f32,
+    etas_hebb_ptr: *const f32,
+    lambdas_ptr: *const f32,
 ) {
-    if let Some(eng) = unsafe { engine.as_mut() } {
-        let k_len = eng.num_heads * eng.dim_k;
-        let v_len = eng.num_heads * eng.dim_v;
-        let k_slice = unsafe { std::slice::from_raw_parts(k_heads, k_len) };
-        let v_slice = unsafe { std::slice::from_raw_parts(v_heads, v_len) };
-        eng.associative_write(k_slice, v_slice, alpha, eta);
+    if let Some(engine) = unsafe { engine_ptr.as_mut() } {
+        let k_len = engine.num_heads * engine.dim_k;
+        let v_len = engine.num_heads * engine.dim_v;
+        let h_len = engine.num_heads;
+
+        let k_slice = unsafe { std::slice::from_raw_parts(k_heads_ptr, k_len) };
+        let v_slice = unsafe { std::slice::from_raw_parts(v_heads_ptr, v_len) };
+        let v_pred_slice = unsafe { std::slice::from_raw_parts(v_pred_heads_ptr, v_len) };
+        let alphas = unsafe { std::slice::from_raw_parts(alphas_ptr, h_len) };
+        let etas_delta = unsafe { std::slice::from_raw_parts(etas_delta_ptr, h_len) };
+        let etas_hebb = unsafe { std::slice::from_raw_parts(etas_hebb_ptr, h_len) };
+        let lambdas = unsafe { std::slice::from_raw_parts(lambdas_ptr, h_len) };
+
+        engine.apply_synthesized_laws(
+            k_slice,
+            v_slice,
+            v_pred_slice,
+            alphas,
+            etas_delta,
+            etas_hebb,
+            lambdas,
+        );
     }
 }
