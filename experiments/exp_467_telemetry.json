@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-467",
+  "total_steps": 7579,
+  "elapsed_ms": 419.713,
+  "throughput_steps_per_sec": 18057.6,
+  "mean_loss": 5.56689,
+  "first_half_loss": 5.56681,
+  "second_half_loss": 5.56698,
+  "loss_delta": 0.000174999,
+  "accuracy": 0.0263887
+}
