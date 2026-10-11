@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-455",
+  "static_final_loss": 3.92538,
+  "unbounded_final_loss": 3.2866,
+  "static_tail_loss": 3.3756,
+  "unbounded_tail_loss": 2.93469,
+  "unbounded_accuracy": 15.5289,
+  "unbounded_throughput": 1218.76,
+  "final_active_nodes": 16,
+  "final_mean_alpha_epi": 1.50218
+}
