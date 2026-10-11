@@ -1,0 +1,59 @@
+{
+  "experiment": "EXP-469",
+  "results": [
+    {
+      "modality": "Structured C++ Code",
+      "architecture": "Fixed-Decay (0.92)",
+      "initial_loss": 6.35807,
+      "final_loss": 3.89489,
+      "loss_delta": -2.46318,
+      "accuracy": 12.5297,
+      "steps_per_sec": 54507.6
+    },
+    {
+      "modality": "Structured C++ Code",
+      "architecture": "Multi-Scale Power-Law",
+      "initial_loss": 5.47316,
+      "final_loss": 3.90176,
+      "loss_delta": -1.5714,
+      "accuracy": 17.2181,
+      "steps_per_sec": 55609.1
+    },
+    {
+      "modality": "Machine Binary Code (.so)",
+      "architecture": "Fixed-Decay (0.92)",
+      "initial_loss": 4.26021,
+      "final_loss": 4.85105,
+      "loss_delta": 0.590843,
+      "accuracy": 33.7087,
+      "steps_per_sec": 56149
+    },
+    {
+      "modality": "Machine Binary Code (.so)",
+      "architecture": "Multi-Scale Power-Law",
+      "initial_loss": 4.44163,
+      "final_loss": 5.05714,
+      "loss_delta": 0.615513,
+      "accuracy": 35.9589,
+      "steps_per_sec": 46222.4
+    },
+    {
+      "modality": "Audio PCM Waveform",
+      "architecture": "Fixed-Decay (0.92)",
+      "initial_loss": 6.12079,
+      "final_loss": 5.54729,
+      "loss_delta": -0.573499,
+      "accuracy": 0.262516,
+      "steps_per_sec": 52924.7
+    },
+    {
+      "modality": "Audio PCM Waveform",
+      "architecture": "Multi-Scale Power-Law",
+      "initial_loss": 5.94671,
+      "final_loss": 5.54581,
+      "loss_delta": -0.400897,
+      "accuracy": 0.943809,
+      "steps_per_sec": 55224.1
+    }
+  ]
+}
