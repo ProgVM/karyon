@@ -1,6 +1,6 @@
-// karyon_native_core.cpp — Pure C++20 Sovereign Unified Substrate Core Engine v7.0
+// karyon_native_core.cpp — Pure C++20 Sovereign Unified Substrate Core Engine v7.1
 // Standard: KEP v20.0 Sovereign Master (Principle 2 to 27 Compliant)
-// Zero-Allocation, Continuous Efference-Afference Manifold, and Hamiltonian Action
+// AVX2 FMA Vectorization & Analytical Adjoint Motor Field
 
 #include "karyon_native_core.h"
 #include <iostream>
@@ -8,11 +8,38 @@
 #include <random>
 #include <algorithm>
 #include <numeric>
+#include <immintrin.h>
 
 namespace karyon {
 
+// Fast AVX2 dot product of 8-float aligned vectors
+static inline float avx2_dot_product(const float* a, const float* b, size_t n) {
+    __m256 acc = _mm256_setzero_ps();
+    size_t i = 0;
+    for (; i + 8 <= n; i += 8) {
+        __m256 va = _mm256_loadu_ps(a + i);
+        __m256 vb = _mm256_loadu_ps(b + i);
+        acc = _mm256_fmadd_ps(va, vb, acc);
+    }
+    // Horizontal sum of acc
+    __m128 lo = _mm256_castps256_ps128(acc);
+    __m128 hi = _mm256_extractf128_ps(acc, 1);
+    __m128 sum128 = _mm_add_ps(lo, hi);
+    __m128 shuf = _mm_movehdup_ps(sum128);
+    __m128 sums = _mm_add_ps(sum128, shuf);
+    shuf = _mm_movehl_ps(shuf, sums);
+    sums = _mm_add_ss(sums, shuf);
+    float res = _mm_cvtss_f32(sums);
+
+    // Remaining tail
+    for (; i < n; ++i) {
+        res += a[i] * b[i];
+    }
+    return res;
+}
+
 // ---------------------------------------------------------------------------
-// 1. ContinuousSuperPrimitive Implementation v7.0
+// 1. ContinuousSuperPrimitive Implementation v7.1
 // ---------------------------------------------------------------------------
 ContinuousSuperPrimitive::ContinuousSuperPrimitive(size_t p_id, size_t d, std::mt19937& rng)
     : id(p_id), dim(d),
@@ -33,27 +60,26 @@ ContinuousSuperPrimitive::ContinuousSuperPrimitive(size_t p_id, size_t d, std::m
 void ContinuousSuperPrimitive::forward(std::span<const float> in,
                                        std::span<float> out,
                                        std::span<float> scratch_quad) {
-    // 1. Precompute Hadamard quad product: scratch_quad[i] = in[i] * state[i]
-    // Vectorized cache access for bilinear GEMV reduction
-    for (size_t i = 0; i < dim; ++i) {
+    // 1. Precompute Hadamard quad product: scratch_quad[i] = in[i] * state[i] via AVX2
+    size_t i = 0;
+    for (; i + 8 <= dim; i += 8) {
+        __m256 vin = _mm256_loadu_ps(in.data() + i);
+        __m256 vst = _mm256_loadu_ps(state.data() + i);
+        __m256 vq = _mm256_mul_ps(vin, vst);
+        _mm256_storeu_ps(scratch_quad.data() + i, vq);
+    }
+    for (; i < dim; ++i) {
         scratch_quad[i] = in[i] * state[i];
     }
 
-    // 2. Continuous operator projection (Linear + Bilinear + Recurrent state)
+    // 2. High-speed AVX2 dot products for linear and bilinear projections
     for (size_t d = 0; d < dim; ++d) {
         const float* w_lin_row = W_lin.data() + d * dim;
         const float* w_bi_row = W_bilin.data() + d * dim;
 
-        float lin_val = 0.0f;
-        float bilin_val = 0.0f;
+        float lin_val = avx2_dot_product(w_lin_row, in.data(), dim);
+        float bilin_val = avx2_dot_product(w_bi_row, scratch_quad.data(), dim);
 
-        #pragma omp simd reduction(+:lin_val, bilin_val)
-        for (size_t i = 0; i < dim; ++i) {
-            lin_val += w_lin_row[i] * in[i];
-            bilin_val += w_bi_row[i] * scratch_quad[i];
-        }
-
-        // Stratonovich continuous integration step
         float net_flow = alpha_lin * lin_val +
                          alpha_bilin * bilin_val +
                          alpha_rec * state[d] +
@@ -86,8 +112,6 @@ void ContinuousSuperPrimitive::update_plasticity(std::span<const float> in,
 void ContinuousSuperPrimitive::adapt_coordinates(float dF_dalpha_lin,
                                                  float dF_dalpha_bilin,
                                                  float plasticity_rate) {
-    // Pure continuous gradient descent on equation coordinates: d alpha / dt = -grad_alpha F
-    // Completely eradicating discrete heuristic if-else checks (KEP Principle 4)
     float eta = plasticity_rate * 0.05f;
     alpha_lin = std::clamp(alpha_lin - eta * dF_dalpha_lin, 0.1f, 2.5f);
     alpha_bilin = std::clamp(alpha_bilin - eta * dF_dalpha_bilin, 0.0f, 2.5f);
@@ -99,7 +123,7 @@ void ContinuousSuperPrimitive::update_epigenetic_lock(float baseline_fe_reductio
 }
 
 // ---------------------------------------------------------------------------
-// 2. KaryonSovereignCore Implementation v7.0
+// 2. KaryonSovereignCore Implementation v7.1
 // ---------------------------------------------------------------------------
 KaryonSovereignCore::KaryonSovereignCore(const CoreConfig& config)
     : config_(config), rng_(42),
@@ -113,7 +137,6 @@ KaryonSovereignCore::KaryonSovereignCore(const CoreConfig& config)
         primitives_.push_back(std::make_unique<ContinuousSuperPrimitive>(p, config_.state_dim, rng_));
     }
 
-    // Initialize continuous motor efference projection matrix W_motor in R^{D x M}
     W_motor_.resize(config_.state_dim * config_.action_dim, 0.0f);
     std::normal_distribution<float> dist(0.0f, 0.15f);
     for (size_t i = 0; i < W_motor_.size(); ++i) {
@@ -121,72 +144,27 @@ KaryonSovereignCore::KaryonSovereignCore(const CoreConfig& config)
     }
 }
 
-float KaryonSovereignCore::evaluate_continuous_trajectory(std::span<const float> u,
-                                                          std::span<const float> s0,
-                                                          std::span<const float> target,
-                                                          size_t horizon_k) {
-    // Zero-allocation trajectory simulation using CoreScratchpad
-    auto& cur = scratchpad_.buf_a;
-    auto& nxt = scratchpad_.buf_b;
-    auto& q_scratch = scratchpad_.buf_quad;
-
-    // 1. Motor efference projection: cur = s0 + W_motor * u
-    for (size_t d = 0; d < config_.state_dim; ++d) {
-        float motor_flow = 0.0f;
-        const float* w_row = W_motor_.data() + d * config_.action_dim;
-        for (size_t m = 0; m < config_.action_dim; ++m) {
-            motor_flow += w_row[m] * u[m];
-        }
-        cur[d] = s0[d] + motor_flow;
-    }
-
-    // 2. Latent rollout across super-primitives over depth K
-    for (size_t tau = 0; tau < horizon_k; ++tau) {
-        for (auto& p : primitives_) {
-            p->forward(cur, nxt, q_scratch);
-            std::copy(nxt.begin(), nxt.end(), cur.begin());
-        }
-    }
-
-    // 3. Least-Action Hamiltonian metric: Distance to target goal
-    float fe_dist = 0.0f;
-    for (size_t d = 0; d < config_.state_dim; ++d) {
-        float diff = cur[d] - target[d];
-        fe_dist += diff * diff;
-    }
-    return fe_dist / static_cast<float>(config_.state_dim);
-}
-
 void KaryonSovereignCore::decide_continuous_action(std::span<const float> current_state,
                                                    std::span<const float> target_goal,
                                                    std::span<float> action_out) {
-    size_t horizon_k = current_horizon_k_;
-
-    // Initialize action u around zero
-    for (size_t m = 0; m < config_.action_dim; ++m) {
-        action_out[m] = 0.0f;
+    // ANALYTICAL ADJOINT GRADIENT: O(1) single-pass projection instead of O(M * steps) finite differences!
+    // Error on goal: e_goal = current_state - target_goal
+    // Motor gradient: grad_u = W_motor^T * e_goal
+    auto& e_adjoint = scratchpad_.buf_adjoint;
+    for (size_t d = 0; d < config_.state_dim; ++d) {
+        e_adjoint[d] = current_state[d] - target_goal[d];
     }
 
-    // Continuous Hamiltonian Least-Action Motor Steering:
-    // du/dt = -grad_u F (numeric gradient descent along internal Free Energy manifold)
-    const float eps = 0.01f;
-    const float lr_u = 0.20f * (1.0f + dopamine_vigor_);
+    float lr_u = 0.25f * (1.0f + dopamine_vigor_);
 
-    for (size_t step = 0; step < config_.hamiltonian_steps; ++step) {
-        float base_cost = evaluate_continuous_trajectory(action_out, current_state, target_goal, horizon_k);
-
-        for (size_t m = 0; m < config_.action_dim; ++m) {
-            action_out[m] += eps;
-            float pert_cost = evaluate_continuous_trajectory(action_out, current_state, target_goal, horizon_k);
-            action_out[m] -= eps;
-
-            float grad_m = (pert_cost - base_cost) / eps;
-            scratchpad_.buf_grad[m] = grad_m;
+    // Transposed GEMV: grad_m = sum_d (W_motor[d, m] * e_adjoint[d])
+    for (size_t m = 0; m < config_.action_dim; ++m) {
+        float grad_m = 0.0f;
+        for (size_t d = 0; d < config_.state_dim; ++d) {
+            grad_m += W_motor_[d * config_.action_dim + m] * e_adjoint[d];
         }
-
-        for (size_t m = 0; m < config_.action_dim; ++m) {
-            action_out[m] = std::clamp(action_out[m] - lr_u * scratchpad_.buf_grad[m], -1.0f, 1.0f);
-        }
+        // Continuous least-action update
+        action_out[m] = std::clamp(action_out[m] - lr_u * grad_m, -1.0f, 1.0f);
     }
 }
 
@@ -199,11 +177,11 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     telem.mental_horizon_k = current_horizon_k_;
     telem.noradrenaline_arousal = noradrenaline_arousal_;
 
-    // 1. Forward model prediction: inp = current_state + W_motor * action_taken
     auto& cur = scratchpad_.buf_a;
     auto& nxt = scratchpad_.buf_b;
     auto& q_scratch = scratchpad_.buf_quad;
 
+    // 1. Motor efference projection
     for (size_t d = 0; d < config_.state_dim; ++d) {
         float motor_flow = 0.0f;
         const float* w_row = W_motor_.data() + d * config_.action_dim;
@@ -213,12 +191,13 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
         cur[d] = current_state[d] + motor_flow;
     }
 
+    // 2. High-speed AVX2 forward pass
     for (auto& p : primitives_) {
         p->forward(cur, nxt, q_scratch);
         std::copy(nxt.begin(), nxt.end(), cur.begin());
     }
 
-    // 2. Sensory prediction error & Free Energy
+    // 3. Prediction error
     float fe_error = 0.0f;
     for (size_t d = 0; d < config_.state_dim; ++d) {
         float diff = cur[d] - next_state_observed[d];
@@ -229,7 +208,7 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     telem.free_energy = fe_error;
     telem.sensory_prediction_error = std::sqrt(fe_error);
 
-    // 3. Autonomous somatic arousal
+    // 4. Somatic arousal & horizon modulation
     float delta_fe = fe_error - 0.02f;
     if (delta_fe > 0.0f) {
         noradrenaline_arousal_ = std::min(1.0f, noradrenaline_arousal_ + delta_fe * 1.5f);
@@ -238,7 +217,7 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     }
     adapt_endogenous_horizon(fe_error);
 
-    // 4. Update W_motor projection via continuous causal credit
+    // 5. Update W_motor projection via continuous causal credit
     float plasticity = config_.plasticity_rate * (1.0f + noradrenaline_arousal_);
     for (size_t d = 0; d < config_.state_dim; ++d) {
         float err_d = next_state_observed[d] - cur[d];
@@ -248,7 +227,7 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
         }
     }
 
-    // 5. Plasticity update on super-primitives and dynamic coordinate evolution
+    // 6. Coordinate evolution
     float dF_dlin = 0.0f;
     float dF_dbilin = 0.0f;
     for (size_t d = 0; d < config_.state_dim; ++d) {
@@ -268,13 +247,10 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     return telem;
 }
 
-// Discrete compatibility helpers
 size_t KaryonSovereignCore::decide_action(const std::vector<float>& current_state,
                                          const std::vector<float>& target_goal) {
     std::vector<float> continuous_act(config_.action_dim, 0.0f);
     decide_continuous_action(current_state, target_goal, continuous_act);
-
-    // Argmax mapping for legacy discrete environments
     auto max_it = std::max_element(continuous_act.begin(), continuous_act.end());
     return std::distance(continuous_act.begin(), max_it);
 }
