@@ -118,7 +118,7 @@ int main() {
     cfg.min_horizon_k = 1;
     cfg.max_horizon_k = 3;
     cfg.plasticity_rate = 0.02f;
-    cfg.hamiltonian_steps = 2; // Fast 2-step gradient steering in mental sandbox
+    // cfg.hamiltonian_steps = 2; // Fast 2-step gradient steering in mental sandbox
 
     karyon::KaryonSovereignCore core(cfg);
     ContinuousPixelArena arena;

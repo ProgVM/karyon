@@ -28,6 +28,8 @@
 8. **Principle 8 (Axiom of Unshackled Flow):** Prohibits artificial dimensional bottlenecks and static size ceilings unless mathematically mandated by stability. All memory capacities, channel counts, and topological bounds must be dynamic and sovereign.
 9. **Principle 9 (Direct Module Imports & Autonomous Tool Execution):** All tests import production code directly. Git staging, committing, and remote syncing are executed autonomously via dedicated tools without conversational chatter.
 10. **Principle 10 (Master-Document Continuity Anchor):** All architectural breakthroughs and protocol updates must be immediately recorded into the master specification documents (`KEP.md`, `KARYON_PHILOSOPHICAL_MANIFESTO.md`, `KARYON_MASTER_BLUEPRINT.md`) to guarantee unbroken epistemic continuity.
+11. **Principle 27 (Anti-Hardcode Sovereignty & Absolute Substrate Freedom):** All cognitive, structural, and plastic functions must be endogenous properties of the continuous physical substrate. Zero hardcoded artificial gates or external supervisory MLPs (`budget_net`, `cost_net`, `lock_evaluator`, `genesis_potential`). The system must remain a single, unified physical entity free of structural schizophrenia.
+12. **Principle 28 (Authentic Behavioral Competence over Passive Error Saturation):** Variational Free Energy minimization must never be achieved through behavioral passivity or perceptual stagnation. Under KEP Rule #2, learning efficacy must be validated against real-world task objectives (e.g., target interception rate, evasion dynamics, next-byte predictive hit rate, and causal control quality).
 
 ---
 
@@ -37,7 +39,7 @@
 No architectural delta may be merged without empirical telemetry from an isolated diagnostic script (`experiments/exp_*.py`). Telemetry must measure causal effectiveness, throughput, and stability.
 
 ### KEP Rule #2 (Contextual Multi-Criteria Decision Engine)
-Verdicts are never judged by a single proxy metric (such as cross-entropy loss). Success requires multi-dimensional viability: predictive capability, structural stability, computational throughput, and zero degradation of epigenetically locked invariants.
+Verdicts are never judged by a single proxy metric (such as cross-entropy loss or sensory autoencoder reconstruction). Success requires multi-dimensional viability: predictive capability, real-world task mastery, structural stability, computational throughput, and zero degradation of epigenetically locked invariants.
 
 ### KEP Rule #3 (Strict Code Preservation — No Placeholders)
 All production code must be 100% complete, uncompressed, production-grade, and free of placeholders (`...` or `// TODO`). All comments must be in English.

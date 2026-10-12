@@ -1,5 +1,5 @@
 """
-karyon_agent.py — Pure Zero-Torch Sovereign Autonomous Cognitive Agent Runtime v7.3.
+karyon_agent.py — Pure Zero-Torch Sovereign Autonomous Cognitive Agent Runtime v7.4.
 Created for Bazilevs (ProgVM) | Standard: KEP v20.0 Sovereign Master (Principles 2 to 27 Compliant).
 
 Operates with ZERO dependencies on torch or libtorch.
@@ -19,7 +19,7 @@ from typing import Dict, List, Tuple
 
 
 class KaryonNativeWrapper:
-    """Zero-overhead ctypes wrapper around libkaryon_native.so (C++20 Core v7.3)."""
+    """Zero-overhead ctypes wrapper around libkaryon_native.so (C++20 Core v7.4)."""
     def __init__(self, so_path: str = "./libkaryon_native.so",
                  sensory_dim: int = 256, latent_dim: int = 32, action_dim: int = 4):
         if not os.path.exists(so_path):
@@ -63,7 +63,7 @@ class KaryonNativeWrapper:
              sensory_next: np.ndarray,
              action_init: np.ndarray = None) -> Tuple[np.ndarray, float, float, int]:
         """
-        Executes a closed-loop step through C++20 Core v7.3:
+        Executes a closed-loop step through C++20 Core v7.4:
         Returns: (action_taken, free_energy, noradrenaline, active_primitives_count)
         """
         s_curr = np.ascontiguousarray(sensory_curr, dtype=np.float32)
@@ -95,7 +95,7 @@ class KaryonNativeWrapper:
 
 class CoREAgent:
     """
-    Sovereign Karyon-CoRE Agent v7.3.
+    Sovereign Karyon-CoRE Agent v7.4.
     Universal Continuous Multimodal Substrate with Zero PyTorch overhead.
     """
     def __init__(self, so_path: str = "./libkaryon_native.so",
@@ -124,7 +124,7 @@ class CoREAgent:
 
 if __name__ == "__main__":
     import time
-    print("=== Testing Sovereign Zero-Torch CoREAgent v7.3 ===")
+    print("=== Testing Sovereign Zero-Torch CoREAgent v7.4 ===")
     agent = CoREAgent(sensory_dim=256, latent_dim=32, action_dim=4)
 
     s_c = np.random.randn(256).astype(np.float32)
