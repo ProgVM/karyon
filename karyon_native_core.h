@@ -1,11 +1,11 @@
-// karyon_native_core.h — Pure C++20 Sovereign Unified Substrate Core Engine v7.1
-// Standard: KEP v20.0 Sovereign Master (Principle 2 to 27 Compliant)
+// karyon_native_core.h — Pure C++20 Sovereign Unified Substrate Core Engine v7.2
+// Standard: KEP v20.0 Sovereign Master (Principles 2 to 27 Compliant)
 //
-// Advancements in v7.1 (Supersonic Analytical Architecture):
-// 1. Explicit AVX2 SIMD FMA intrinsics for dense linear & bilinear GEMV (_mm256_fmadd_ps)
-// 2. Analytical Adjoint Gradient for continuous motor actuation (replacing numerical finite-difference perturbations)
-// 3. Reflex-Modulated Thinking: Mental rollout triggered on high Free Energy, fast reflex on stable flow
-// 4. Zero-allocation memory layout across all operations
+// Advancements in v7.2 (Autonomous Morphogenesis & Net2Net Smooth Sprouting):
+// 1. In-flight Endogenous Sprouting of Continuous Super-Primitives triggered on FE plateau + High Stress
+// 2. Net2Net Zero-Shock Identity Sprouting (tanh(alpha_epi) -> 0 at birth)
+// 3. Epigenetic Utility Tracking & Autonomous Causal Pruning of decaying branches
+// 4. Vectorized AVX2 FMA & Analytical Adjoint Motor Field preserved
 
 #pragma once
 
@@ -25,13 +25,16 @@ namespace karyon {
 struct CoreConfig {
     size_t state_dim = 256;             // Dimension of unified continuous state x_t in R^D
     size_t action_dim = 4;              // Dimension of continuous motor control u_t in R^M
-    size_t num_primitives = 2;          // Number of continuous super-primitives in stack
+    size_t initial_primitives = 2;       // Initial continuous super-primitives in stack
+    size_t max_primitives = 8;          // Sovereign ceiling for dynamic sprouting
     size_t min_horizon_k = 1;           // Minimum mental trajectory simulation depth
     size_t max_horizon_k = 4;           // Maximum mental trajectory simulation depth
     float plasticity_rate = 0.02f;      // Baseline rate of autonomous structural plasticity
     float noradrenaline_decay = 0.03f;  // Decay rate of somatic arousal
     float da_baseline = 0.50f;          // Baseline dopaminergic gain
     size_t hamiltonian_steps = 2;       // Analytical gradient descent steps along motor field
+    float sprouting_fe_threshold = 0.80f; // Stress threshold triggering morphogenetic sprouting
+    size_t sprouting_cooldown_ticks = 1000; // Refractory period between sprouting events
 };
 
 class CoreScratchpad {
@@ -65,14 +68,15 @@ public:
 
     float epigenetic_lock;
     float cumulative_causal_utility;
+    float birth_gain; // Smooth Net2Net identity scaling factor
 
     alignas(32) std::vector<float> W_lin;
     alignas(32) std::vector<float> W_bilin;
     alignas(32) std::vector<float> state;
 
-    ContinuousSuperPrimitive(size_t p_id, size_t d, std::mt19937& rng);
+    ContinuousSuperPrimitive(size_t p_id, size_t d, std::mt19937& rng, bool sprouted_zero_shock = false);
 
-    // AVX2 vectorized forward pass
+    // AVX2 vectorized forward pass with Net2Net smooth birth gain
     void forward(std::span<const float> in, std::span<float> out, std::span<float> scratch_quad);
 
     void update_plasticity(std::span<const float> in,
@@ -81,6 +85,7 @@ public:
 
     void adapt_coordinates(float dF_dalpha_lin, float dF_dalpha_bilin, float plasticity_rate);
     void update_epigenetic_lock(float baseline_fe_reduction);
+    void mature_birth_gain(float rate = 0.005f);
 };
 
 struct CoreTelemetry {
@@ -90,13 +95,16 @@ struct CoreTelemetry {
     float noradrenaline_arousal;
     size_t mental_horizon_k;
     float lock_ratio;
+    size_t active_primitives_count;
+    bool event_sprouted;
+    bool event_pruned;
 };
 
 class KaryonSovereignCore {
 public:
     explicit KaryonSovereignCore(const CoreConfig& config = CoreConfig());
 
-    // Analytical Adjoint Least-Action motor control (O(1) simulation instead of O(M * steps))
+    // Analytical Adjoint Least-Action motor control
     void decide_continuous_action(std::span<const float> current_state,
                                   std::span<const float> target_goal,
                                   std::span<float> action_out);
@@ -117,6 +125,11 @@ public:
     float get_noradrenaline() const { return noradrenaline_arousal_; }
     size_t get_current_horizon() const { return current_horizon_k_; }
     float get_average_epigenetic_lock() const;
+    size_t get_primitives_count() const { return primitives_.size(); }
+
+    // Sovereign Autopoietic Morphogenesis API
+    bool trigger_morphogenetic_sprout();
+    bool prune_least_causal_primitive();
 
 private:
     CoreConfig config_;
@@ -130,9 +143,13 @@ private:
     float somatic_energy_;
     size_t current_horizon_k_;
 
+    size_t ticks_since_last_sprout_;
+    float moving_fe_ema_;
+
     CoreScratchpad scratchpad_;
 
     void adapt_endogenous_horizon(float fe_error);
+    void evaluate_autopoietic_morphogenesis(float fe_error);
 };
 
 } // namespace karyon
