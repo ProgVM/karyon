@@ -1,12 +1,6 @@
 // experiments/exp_485_v7_supersonic_pixel_vision.cpp
-// EXP-485: Supersonic Continuous Pixel Vision Agency on Karyon Native Core v7.0
-// Standard: KEP v20.0 Sovereign Master (Principles 2, 3, 7, 27)
-//
-// Advancements evaluated:
-// 1. Zero-Allocation Scratchpad on 256D continuous pixel field
-// 2. Continuous Hamiltonian least-action motor control u in [-1, 1]^4 (analog thrusters)
-// 3. Ultra-high FPS benchmark (> 1000 FPS target on pure C++20 CPU)
-// 4. Smooth continuous orbital tracking & physical interception
+// EXP-485: Karyon Native Core v7.0 Continuous Pixel Vision & Supersonic FPS Verification
+// Standard: KEP v20.0 Sovereign Master (Principles 2, 5, 7, 27)
 
 #include "karyon_native_core.h"
 #include <iostream>
@@ -14,14 +8,14 @@
 #include <cmath>
 #include <chrono>
 #include <iomanip>
-#include <algorithm>
+#include <numeric>
+#include <span>
 
 class ContinuousPixelArena {
 public:
     static constexpr size_t grid_w = 16;
     static constexpr size_t grid_h = 16;
-    static constexpr size_t pixel_dim = grid_w * grid_h; // 256 continuous floats
-    static constexpr size_t action_dim = 4;
+    static constexpr size_t total_pixels = grid_w * grid_h;
 
     float px = 0.0f, py = 0.0f;
     float vx = 0.0f, vy = 0.0f;
@@ -29,15 +23,14 @@ public:
     float orbit_angle = 0.0f;
     size_t catches = 0;
 
-    // Preallocated buffers to ensure ZERO heap allocation in physics/rendering
     std::vector<float> fb_current;
     std::vector<float> fb_goal;
     std::vector<float> fb_next;
 
-    ContinuousPixelArena()
-        : fb_current(pixel_dim, 0.0f),
-          fb_goal(pixel_dim, 0.0f),
-          fb_next(pixel_dim, 0.0f) {
+    ContinuousPixelArena() {
+        fb_current.resize(total_pixels, 0.0f);
+        fb_goal.resize(total_pixels, 0.0f);
+        fb_next.resize(total_pixels, 0.0f);
         update_target();
     }
 
@@ -76,12 +69,9 @@ public:
     }
 
     void render_goal() {
-        // Goal state: self aligned perfectly with target
         render_into(fb_goal, tx, ty, tx, ty);
     }
 
-    // Step continuous physics with analog continuous thrusters u in [-1, 1]^4
-    // u[0] = +X, u[1] = -X, u[2] = +Y, u[3] = -Y
     bool step_continuous(std::span<const float> u) {
         update_target();
         float force_scale = 0.09f;
@@ -114,16 +104,17 @@ public:
 };
 
 int main() {
-    std::cout << "=== EXP-485: Supersonic Continuous Pixel Vision Agency (Core v7.0) ===" << std::endl;
-    std::cout << "Substrate: Karyon Native Core v7.0 Sovereign\n";
-    std::cout << "Sensory: 16x16 Raw Continuous Pixel Framebuffer (256D)\n";
+    std::cout << "=== EXP-485: Karyon Native Core v7.3 Continuous Pixel Vision Benchmark ===\n";
+    std::cout << "Sensory: 256D Optical Pixel Retina (16x16 Raw Framebuffer)\n";
     std::cout << "Motor: 4D Continuous Analog Thrusters via Hamiltonian Least-Action\n";
     std::cout << "Memory Policy: 100% Zero-Allocation Scratchpad\n\n";
 
     karyon::CoreConfig cfg;
-    cfg.state_dim = 256;      // Full 16x16 pixel retina
-    cfg.action_dim = 4;       // 4D analog continuous actuation
-    cfg.num_primitives = 2;
+    cfg.sensory_dim = 256;      // Full 16x16 pixel retina
+    cfg.latent_dim = 32;       // Compressed latent manifold
+    cfg.action_dim = 4;        // 4D analog continuous actuation
+    cfg.initial_primitives = 2;
+    cfg.max_primitives = 6;
     cfg.min_horizon_k = 1;
     cfg.max_horizon_k = 3;
     cfg.plasticity_rate = 0.02f;
@@ -140,23 +131,19 @@ int main() {
     size_t window_catches = 0;
     float window_fe = 0.0f;
 
-    std::cout << "Streaming " << total_frames << " frames through Core v7.0 zero-allocation pipeline...\n\n";
+    std::cout << "Streaming " << total_frames << " frames through Core v7.3 zero-allocation pipeline...\n\n";
 
     for (size_t f = 1; f <= total_frames; ++f) {
-        // 1. Render optical frames directly into zero-allocation preallocated spans
         arena.render_current();
         arena.render_goal();
 
-        // 2. Continuous Hamiltonian least-action motor decision
         core.decide_continuous_action(arena.fb_current, arena.fb_goal, continuous_action);
 
-        // 3. Step physics engine with continuous analog vector u
         bool caught = arena.step_continuous(continuous_action);
         if (caught) window_catches++;
 
         arena.render_next();
 
-        // 4. Closed-loop sensory prediction update & continuous coordinate plasticity
         auto telem = core.step_environment(arena.fb_current, arena.fb_goal, arena.fb_next, continuous_action);
         window_fe += telem.free_energy;
 
@@ -179,7 +166,7 @@ int main() {
     double elapsed_sec = std::chrono::duration<double>(t1 - t0).count();
     double fps = static_cast<double>(total_frames) / (elapsed_sec + 1e-6);
 
-    std::cout << "\n=== FINAL TELEMETRY (EXP-485 SUPERSONIC VISION v7.0) ===\n";
+    std::cout << "\n=== FINAL TELEMETRY (EXP-485 SUPERSONIC VISION v7.3) ===\n";
     std::cout << "Visual Throughput: " << std::fixed << std::setprecision(1) << fps << " Frames/Sec (FPS)\n";
     std::cout << "Target 60 FPS Standard: " << (fps >= 60.0 ? "PASSED (SUPER-REALTIME)" : "FAILED") << "\n";
     std::cout << "Realtime Speedup Factor: " << std::fixed << std::setprecision(1) << (fps / 60.0) << "x\n";

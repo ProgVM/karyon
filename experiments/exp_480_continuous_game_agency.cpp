@@ -1,21 +1,6 @@
 // experiments/exp_480_continuous_game_agency.cpp
 // EXP-480: Closed-Loop Active Inference & Real-Time Continuous Game Agency
 // Standard: KEP v20.0 Sovereign Master (Principle 7: Action in Continuous Time & Real-World Agency)
-//
-// Task: Continuous 2D Physics Arena ("Gravity, Momentum, Moving Target & Hazard")
-// - State vector (8D):
-//   s[0..1]: Agent position (x, y) in [-1.0, 1.0]
-//   s[2..3]: Agent velocity (vx, vy)
-//   s[4..5]: Dynamic target position (tx, ty) moving on an orbital trajectory
-//   s[6..7]: Repulsive hazard attractor position (hx, hy)
-// - Actions (4 discrete directional thrusters: +X, -X, +Y, -Y):
-//   Modulate force vectors in continuous 2D space under inertia and drag.
-// - Dynamics:
-//   Agent receives raw continuous sensory telemetry (8D float vector).
-//   Target: +1.0 Free Energy reward (attractor convergence).
-//   Hazard: strong negative potential (repulsor).
-//   Organism must learn to navigate, intercept dynamic orbital target, and evade hazard
-//   purely via Active Inference, Endogenous Horizon K(t), and Causal Super-Primitives!
 
 #include "karyon_native_core.h"
 #include <iostream>
@@ -67,7 +52,6 @@ public:
     }
 
     std::vector<float> get_goal_attractor() const {
-        // Natural homeostatic goal: align agent position with target, zero velocity
         return {tx, ty, 0.0f, 0.0f, tx, ty, hx, hy};
     }
 
@@ -81,7 +65,7 @@ public:
         else if (action == 2) vy += force; // +Y
         else if (action == 3) vy -= force; // -Y
 
-        // Inertia & Air Resistance
+        // Friction / Inertia
         vx *= 0.92f;
         vy *= 0.92f;
 
@@ -116,22 +100,23 @@ public:
             update_target_orbit();
             return true;
         }
-
         return false;
     }
 };
 
 int main() {
     std::cout << "=== EXP-480: Closed-Loop Active Inference & Real-Time Game Agency ===" << std::endl;
-    std::cout << "Substrate: Karyon Native Core v6.0 Sovereign\n";
+    std::cout << "Substrate: Karyon Native Core v7.3 Sovereign\n";
     std::cout << "Game Arena: Continuous 2D Physics (Inertia, Moving Orbital Target, Repulsive Hazard)\n\n";
 
     karyon::CoreConfig cfg;
-    cfg.state_dim = 8;
-    cfg.num_primitives = 2;
-    cfg.num_actions = 4;
+    cfg.sensory_dim = 8;
+    cfg.latent_dim = 8;
+    cfg.action_dim = 4;
+    cfg.initial_primitives = 2;
+    cfg.max_primitives = 4;
     cfg.min_horizon_k = 1;
-    cfg.max_horizon_k = 8;
+    cfg.max_horizon_k = 4;
     cfg.plasticity_rate = 0.03f;
 
     karyon::KaryonSovereignCore core(cfg);
@@ -159,7 +144,7 @@ int main() {
 
         auto obs_tp1 = arena.get_observation();
 
-        // 3. Sensorimotor predictive coding and causal plasticity update
+        // 3. Somatic active inference update
         auto telem = core.step_environment(obs_t, goal_t, obs_tp1, action);
         period_fe += telem.free_energy;
 
@@ -171,7 +156,7 @@ int main() {
                       << " (+" << std::setw(3) << period_catches << " in window)"
                       << " | Hazard Hits: " << std::setw(3) << arena.hazard_collisions
                       << " | Avg FE: " << std::fixed << std::setprecision(4) << avg_fe
-                      << " | Horizon K(t): " << core.get_current_horizon()
+                      << " | Horizon K: " << core.get_current_horizon()
                       << " | Noradrenaline: " << std::fixed << std::setprecision(3) << core.get_noradrenaline()
                       << "\n";
 
