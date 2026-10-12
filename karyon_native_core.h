@@ -1,11 +1,12 @@
-// karyon_native_core.h — Pure C++20 Sovereign Unified Substrate Core Engine v7.2
+// karyon_native_core.h — Pure C++20 Sovereign Unified Substrate Core Engine v7.3
 // Standard: KEP v20.0 Sovereign Master (Principles 2 to 27 Compliant)
 //
-// Advancements in v7.2 (Autonomous Morphogenesis & Net2Net Smooth Sprouting):
-// 1. In-flight Endogenous Sprouting of Continuous Super-Primitives triggered on FE plateau + High Stress
-// 2. Net2Net Zero-Shock Identity Sprouting (tanh(alpha_epi) -> 0 at birth)
-// 3. Epigenetic Utility Tracking & Autonomous Causal Pruning of decaying branches
-// 4. Vectorized AVX2 FMA & Analytical Adjoint Motor Field preserved
+// Advancements in v7.3 (Laminar Field Compression & Full AVX2-FMA Plasticity):
+// 1. Fully Vectorized AVX2-FMA Plasticity Engine (eliminating scalar O(D^2) bottleneck)
+// 2. Laminar Field Compression: Sensory field (D_sensory=256) projected to latent field (D_latent=32/64)
+//    and back, cutting primitive weight footprint from 786k down to ultra-compact, high-speed representations.
+// 3. Autonomous in-flight Morphogenesis & Net2Net Zero-Shock Identity Sprouting preserved
+// 4. Analytical Adjoint Motor Steering with zero heap allocations
 
 #pragma once
 
@@ -23,36 +24,39 @@
 namespace karyon {
 
 struct CoreConfig {
-    size_t state_dim = 256;             // Dimension of unified continuous state x_t in R^D
-    size_t action_dim = 4;              // Dimension of continuous motor control u_t in R^M
+    size_t sensory_dim = 256;           // Continuous input/output sensory dimension (e.g. 16x16 video framebuffer)
+    size_t latent_dim = 32;             // High-speed compressed continuous manifold dimension
+    size_t action_dim = 4;              // Continuous motor control u_t in R^M
     size_t initial_primitives = 2;       // Initial continuous super-primitives in stack
-    size_t max_primitives = 8;          // Sovereign ceiling for dynamic sprouting
+    size_t max_primitives = 6;          // Sovereign ceiling for dynamic sprouting
     size_t min_horizon_k = 1;           // Minimum mental trajectory simulation depth
     size_t max_horizon_k = 4;           // Maximum mental trajectory simulation depth
     float plasticity_rate = 0.02f;      // Baseline rate of autonomous structural plasticity
     float noradrenaline_decay = 0.03f;  // Decay rate of somatic arousal
     float da_baseline = 0.50f;          // Baseline dopaminergic gain
     size_t hamiltonian_steps = 2;       // Analytical gradient descent steps along motor field
-    float sprouting_fe_threshold = 0.80f; // Stress threshold triggering morphogenetic sprouting
+    float sprouting_fe_threshold = 0.15f; // Stress threshold triggering morphogenetic sprouting
     size_t sprouting_cooldown_ticks = 1000; // Refractory period between sprouting events
 };
 
 class CoreScratchpad {
 public:
-    std::vector<float> buf_a;
-    std::vector<float> buf_b;
-    std::vector<float> buf_sim;
-    std::vector<float> buf_grad;
+    std::vector<float> buf_sensory_in;
+    std::vector<float> buf_sensory_out;
+    std::vector<float> buf_latent_a;
+    std::vector<float> buf_latent_b;
     std::vector<float> buf_quad;
-    std::vector<float> buf_adjoint;
+    std::vector<float> buf_adjoint_sensory;
+    std::vector<float> buf_adjoint_latent;
 
-    explicit CoreScratchpad(size_t state_dim = 256, size_t action_dim = 16) {
-        buf_a.resize(state_dim, 0.0f);
-        buf_b.resize(state_dim, 0.0f);
-        buf_sim.resize(state_dim, 0.0f);
-        buf_grad.resize(action_dim, 0.0f);
-        buf_quad.resize(state_dim, 0.0f);
-        buf_adjoint.resize(state_dim, 0.0f);
+    explicit CoreScratchpad(size_t s_dim = 256, size_t l_dim = 32) {
+        buf_sensory_in.resize(s_dim, 0.0f);
+        buf_sensory_out.resize(s_dim, 0.0f);
+        buf_latent_a.resize(l_dim, 0.0f);
+        buf_latent_b.resize(l_dim, 0.0f);
+        buf_quad.resize(l_dim, 0.0f);
+        buf_adjoint_sensory.resize(s_dim, 0.0f);
+        buf_adjoint_latent.resize(l_dim, 0.0f);
     }
 };
 
@@ -79,9 +83,11 @@ public:
     // AVX2 vectorized forward pass with Net2Net smooth birth gain
     void forward(std::span<const float> in, std::span<float> out, std::span<float> scratch_quad);
 
-    void update_plasticity(std::span<const float> in,
-                           std::span<const float> target,
-                           float plasticity_rate);
+    // AVX2 vectorized plasticity update (8-way parallel FMA)
+    void update_plasticity_avx2(std::span<const float> in,
+                                std::span<const float> target,
+                                float plasticity_rate,
+                                std::span<const float> scratch_quad);
 
     void adapt_coordinates(float dF_dalpha_lin, float dF_dalpha_bilin, float plasticity_rate);
     void update_epigenetic_lock(float baseline_fe_reduction);
@@ -127,7 +133,6 @@ public:
     float get_average_epigenetic_lock() const;
     size_t get_primitives_count() const { return primitives_.size(); }
 
-    // Sovereign Autopoietic Morphogenesis API
     bool trigger_morphogenetic_sprout();
     bool prune_least_causal_primitive();
 
@@ -136,7 +141,10 @@ private:
     std::mt19937 rng_;
     std::vector<std::unique_ptr<ContinuousSuperPrimitive>> primitives_;
 
-    alignas(32) std::vector<float> W_motor_;
+    // Laminar encoders/decoders between sensory and latent manifold
+    alignas(32) std::vector<float> W_sensory_down_;  // [latent_dim x sensory_dim]
+    alignas(32) std::vector<float> W_sensory_up_;    // [sensory_dim x latent_dim]
+    alignas(32) std::vector<float> W_motor_;         // [sensory_dim x action_dim]
 
     float noradrenaline_arousal_;
     float dopamine_vigor_;
