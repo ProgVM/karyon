@@ -1,7 +1,12 @@
-// karyon_native_core.h — Pure C++20 Sovereign Substrate Core Engine Interface v5.0
-// Standard: KEP v16.0 Sovereign Master & Principle 27 (Anti-Hardcode Sovereignty / Absolute Substrate Freedom)
-// Zero-AdamW / Zero-Backprop / Pure Continuous Physics-Driven State Dynamics
-// EXP-472 Integrated: Unbounded Sovereign Attractor Manifold & Self-Organizing Head Dynamics
+// karyon_native_core.h — Pure C++20 Sovereign Unified Substrate Core Engine v6.0
+// Standard: KEP v20.0 Sovereign Master (Principle 2 to 27 Compliant)
+// Fully Integrated Breakthroughs (EXP-470 to EXP-479):
+// 1. Continuous Tensor-Field Super-Primitives with 6 Coordinate Vector Dynamics
+// 2. Continuous Causal Credit Assignment & Self-Synthesizing Plasticity
+// 3. Epigenetic Smooth Sprouting & Invariant Locking (tanh(alpha_epi) -> 0 at birth)
+// 4. Closed-Loop Sensorimotor Coupled Agency & Unified Efference-Afference Manifold
+// 5. Hamiltonian Principle of Least Action in Latent Space (Mental Sandbox Rollout)
+// 6. Dynamic Endogenous Horizon Scaling K(t) ~ Ashby Somatic Arousal (NA_t, F_t)
 
 #pragma once
 
@@ -9,159 +14,127 @@
 #include <cstddef>
 #include <vector>
 #include <string>
-#include <mutex>
 #include <memory>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/stat.h>
+#include <cmath>
+#include <random>
+#include <algorithm>
 #include <immintrin.h>
-#include <omp.h>
 
 namespace karyon {
 
-struct NativeConfig {
-    size_t dim = 258;                // Byte vocabulary size (0..255 + pad + eos)
-    size_t num_heads = 4;            // Sovereign memory heads
-    size_t dim_k = 16;               // Key dimension per head
-    size_t dim_v = 16;               // Value dimension per head (num_heads * dim_v = dim_emb)
-    size_t dim_emb = 64;             // Continuous state embedding & dual-tied manifold dimension
+// ---------------------------------------------------------------------------
+// 1. Unified Substrate Core Configuration
+// ---------------------------------------------------------------------------
+struct CoreConfig {
+    size_t state_dim = 16;              // Continuous hidden state dimension
+    size_t num_primitives = 2;          // Dynamic continuous super-primitives count
+    size_t num_actions = 4;             // Discrete action efference space
+    size_t min_horizon_k = 1;           // Minimum mental rollout depth (reflex)
+    size_t max_horizon_k = 8;           // Maximum mental rollout depth (deep reflection)
 
-    float beta_scale = 12.0f;        // Base attractor sharpness / inverse temperature
-    float eta_mem = 0.45f;           // Local physical learning rate for memory trace
-    float mu_emb = 0.05f;            // Local embedding manifold plasticity
-    float gamma_dissipation = 0.70f; // Deliberation impulse decay
-    size_t max_thinking_turns = 8;   // Maximum deliberative thinking turns
-    float entropy_satisfy = 0.35f;   // Target surprise entropy cutoff
-    float eps_halt = 0.01f;          // Momentum equilibrium cutoff
+    float base_alpha_lin = 0.80f;       // Linear transformation weight
+    float base_alpha_bilin = 0.20f;     // Bilinear gating weight
+    float base_alpha_rec = 0.85f;       // Temporal integration timescale
+    float base_alpha_res = 0.30f;       // Residual highway weight
 
-    // EXP-470: Sovereign Self-Organizing Head Dynamics
-    float eta_theta = 0.01f;         // Plasticity rate for head timescale coordinates
-
-    // EXP-472: Unbounded Sovereign Attractor Manifold
-    bool use_unbounded_memory = true;
-    float surprise_threshold = 2.0f;
-    float beta_attractor = 16.0f;
-
-    // EXP-458 & EXP-462: Poincare Hyperbolic Memory Graph & Geodesic Retrieval
-    size_t poincare_dim = 16;
-    float max_poincare_curvature = -1.0f;
-    float geodesic_gamma = 0.5f;
-    size_t geodesic_k = 3;
-
-    // EXP-461 & EXP-463: Synaptic Mesh P2P & Multi-Node Swarm
-    uint32_t node_id = 101;
-    int p2p_port = 19001;
-    int target_peer_port = 19002;
-    bool p2p_enabled = true;
+    float epigenetic_threshold = 0.02f; // Causal utility threshold to trigger epigenetic invariant lock
+    float plasticity_rate = 0.02f;      // Structural and parameter adaptation rate
+    float discount_gamma = 0.85f;       // Trajectory free energy temporal discount
 };
 
-struct StepMetrics {
-    float loss = 0.0f;
-    uint8_t pred_byte = 0;
-    bool is_correct = false;
-    size_t turns_taken = 0;
-    float entropy = 0.0f;
-    float beta = 1.0f;
-    float mean_alpha = 0.0f;
-    float mean_eta_delta = 0.0f;
-    float mean_eta_hebb = 0.0f;
-    float error_norm = 0.0f;
-    float h_norm = 0.0f;
-    size_t memory_nodes = 0;
-    size_t poincare_nodes = 0;
-    size_t geodesic_recalls = 0;
-    bool p2p_spike_sent = false;
-    bool p2p_spike_received = false;
-    size_t swarm_delivered = 0;
-    bool jit_patch_triggered = false;
+// ---------------------------------------------------------------------------
+// 2. Comprehensive Step Telemetry
+// ---------------------------------------------------------------------------
+struct CoreTelemetry {
+    float free_energy = 0.0f;
+    float rolling_free_energy = 0.0f;
+    float noradrenaline_arousal = 0.0f;
+    size_t mental_horizon_k = 1;
+    size_t action_executed = 0;
+    float goal_distance = 0.0f;
+    bool goal_reached = false;
+    size_t goals_achieved = 0;
+    float primary_primitive_lock = 0.0f;
+    float primary_causal_utility = 0.0f;
 };
 
-// EXP-472: Unbounded Sovereign Attractor Node
-struct AttractorNode {
-    std::vector<float> key;    // Trigger context pattern in R^dim_emb
-    uint8_t target_byte = 0;   // Target transition byte
-    float usage_count = 1.0f;  // Synaptic consolidation strength
+// ---------------------------------------------------------------------------
+// 3. Continuous Tensor-Field Super-Primitive (KEP Principle 3 & 4)
+// ---------------------------------------------------------------------------
+struct ContinuousSuperPrimitive {
+    size_t id;
+    size_t dim;
+
+    // Continuous Equation Coordinates
+    float alpha_lin;
+    float alpha_bilin;
+    float alpha_rec;
+    float alpha_res;
+
+    // Epigenetic Protection & Causal History (Principle 5 & 6)
+    float epigenetic_lock;
+    float cumulative_causal_utility;
+
+    // Parameter Tensors
+    std::vector<float> W_lin;
+    std::vector<float> W_bilin;
+    std::vector<float> bias;
+    std::vector<float> state;
+
+    // Transient Cache
+    std::vector<float> last_x;
+    std::vector<float> last_out;
+
+    ContinuousSuperPrimitive(size_t p_id, size_t d, std::mt19937& rng);
+
+    std::vector<float> forward(const std::vector<float>& x);
+    void causal_update(const std::vector<float>& error, float global_fe_reduction, float plasticity_rate);
 };
 
-struct PoincareMemoryNode {
-    std::vector<float> center; // Inside unit disk |x| < 1
-    std::vector<float> value;
-    float access_count = 1.0f;
-    float curvature = -1.0f;
-};
-
-typedef void (*JitKernelFn)(float* S, const float* q, const float* v, float lr, size_t num_heads, size_t dim_k, size_t dim_v);
-
-class SovereignNativeEngine {
+// ---------------------------------------------------------------------------
+// 4. Karyon-CoRE Sovereign Autonomous Agent Engine (v6.0 Sovereign)
+// ---------------------------------------------------------------------------
+class KaryonSovereignCore {
 public:
-    explicit SovereignNativeEngine(const NativeConfig& config = NativeConfig());
-    ~SovereignNativeEngine();
+    explicit KaryonSovereignCore(const CoreConfig& config = CoreConfig());
+    ~KaryonSovereignCore() = default;
 
     void reset();
-    StepMetrics step(uint8_t byte_in, uint8_t byte_target);
 
-    // High-Throughput Stream Ingestion
-    size_t stream_from_file(const std::string& filepath, size_t max_bytes);
+    // Endogenous Mental Rollout & Action Selection (EXP-478 & EXP-479)
+    size_t decide_action(const std::vector<float>& current_state,
+                         const std::vector<float>& target_goal);
 
-    // EXP-461 & EXP-463: Synaptic Mesh P2P UDP Broadcast & Swarm Multicast
-    bool broadcast_mesh_spike(float error, const std::vector<float>& key, const std::vector<float>& value);
-    size_t broadcast_to_swarm(float error, const std::vector<float>& key, const std::vector<float>& value);
-    bool receive_mesh_spike();
+    // Online Closed-Loop Perception-Action Learning Step
+    CoreTelemetry step_environment(const std::vector<float>& current_state,
+                                   const std::vector<float>& target_goal,
+                                   const std::vector<float>& next_state_observed,
+                                   size_t action_taken);
 
-    // EXP-458 & EXP-462: Poincare Geodesic Retrieval
-    size_t retrieve_geodesic_memories(const std::vector<float>& query_key, size_t top_k, float gamma);
+    // Mental Sandbox Simulation
+    float evaluate_trajectory(size_t action_id,
+                              const std::vector<float>& s0,
+                              const std::vector<float>& target_goal,
+                              size_t horizon_k);
 
-    // EXP-459: JIT Hot-Patching Engine
-    bool trigger_jit_hotpatch();
-
-    const NativeConfig& config() const { return config_; }
-    size_t poincare_node_count() const { return poincare_graph_.size(); }
-    size_t attractor_node_count() const { return unbounded_memory_.size(); }
+    const CoreConfig& config() const { return config_; }
+    float get_noradrenaline() const { return noradrenaline_arousal_; }
+    size_t get_current_horizon() const { return current_horizon_k_; }
 
 private:
-    NativeConfig config_;
+    CoreConfig config_;
+    std::mt19937 rng_{42};
 
-    // Dual-Tied Continuous Coordinate Manifold (Input Embedding + Output Resonance Basis)
-    std::vector<float> byte_emb_; // [dim x dim_emb]
-    std::vector<float> S_memory_; // [num_heads x dim_k x dim_v] Associative field
-    std::vector<float> theta_heads_; // [num_heads] Endogenous timescale coordinates (EXP-470)
+    std::vector<std::unique_ptr<ContinuousSuperPrimitive>> primitives_;
+    std::vector<float> action_delta_table_; // [num_actions x dim] Physical efference manifold
 
-    // EXP-472: Unbounded Sovereign Attractor Manifold (Zero artificial limits)
-    std::vector<AttractorNode> unbounded_memory_;
+    // Ashby Somatic Interoception
+    float rolling_free_energy_ = 0.10f;
+    float noradrenaline_arousal_ = 0.05f;
+    size_t current_horizon_k_ = 1;
+    size_t total_goals_achieved_ = 0;
 
-    // EXP-458 & EXP-462: Poincare Hyperbolic Memory Graph
-    std::vector<PoincareMemoryNode> poincare_graph_;
-
-    // JIT Hot-Patching
-    void* jit_dl_handle_ = nullptr;
-    JitKernelFn active_jit_kernel_ = nullptr;
-    bool is_jit_patched_ = false;
-
-    // Synaptic UDP Mesh Socket
-    int p2p_sock_fd_ = -1;
-
-    void init_parameters();
-    void init_p2p_socket();
-
-    void normalize_vector(float* ptr, size_t n);
-    float compute_l2_norm(const float* ptr, size_t n);
-    float dot_product(const float* a, const float* b, size_t n);
-    float compute_entropy_from_logits(const float* logits, size_t n);
-
-    float poincare_distance(const std::vector<float>& u, const std::vector<float>& v_vec);
-    void sprout_poincare_node(const std::vector<float>& key, const std::vector<float>& value);
+    size_t compute_endogenous_horizon();
 };
 
 } // namespace karyon
-
-extern "C" {
-    void* karyon_native_create(size_t dim, size_t num_heads, size_t dim_k, size_t dim_v);
-    void karyon_native_destroy(void* handle);
-    void karyon_native_reset(void* handle);
-    void karyon_native_step(void* handle, uint8_t byte_in, uint8_t byte_target,
-                           float* out_loss, uint8_t* out_pred, size_t* out_turns, float* out_entropy);
-    size_t karyon_native_get_memory_nodes(void* handle);
-}
