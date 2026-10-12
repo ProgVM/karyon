@@ -1,153 +1,143 @@
 """
-karyon_agent.py — Pure Zero-Torch Sovereign Autonomous Cognitive Agent Runtime.
-Created for Bazilevs (ProgVM) | Standard: KEP v16.0 Sovereign Master.
+karyon_agent.py — Pure Zero-Torch Sovereign Autonomous Cognitive Agent Runtime v7.3.
+Created for Bazilevs (ProgVM) | Standard: KEP v20.0 Sovereign Master (Principles 2 to 27 Compliant).
 
 Operates with ZERO dependencies on torch or libtorch.
 Communicates directly with the compiled native C++20 engine (`libkaryon_native.so`)
-via zero-overhead C-ABI ctypes bindings, or falls back to pure vector arithmetic.
+via zero-overhead C-ABI ctypes bindings.
+Supports:
+- 256D Optical Pixel Vision
+- 32D Laminar Compressed Substrate
+- Autonomous in-flight Morphogenesis Sprouting
+- 100% Vectorized AVX2-FMA Plasticity Engine
 """
 
 import os
 import ctypes
 import numpy as np
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 
 class KaryonNativeWrapper:
-    """Zero-overhead ctypes wrapper around libkaryon_native.so (C++20)."""
+    """Zero-overhead ctypes wrapper around libkaryon_native.so (C++20 Core v7.3)."""
     def __init__(self, so_path: str = "./libkaryon_native.so",
-                 dim: int = 258, num_heads: int = 8, dim_k: int = 64, dim_v: int = 64):
+                 sensory_dim: int = 256, latent_dim: int = 32, action_dim: int = 4):
         if not os.path.exists(so_path):
             raise FileNotFoundError(f"Native core library not found at: {so_path}")
 
+        self.sensory_dim = sensory_dim
+        self.latent_dim = latent_dim
+        self.action_dim = action_dim
+
         self.lib = ctypes.CDLL(so_path)
 
-        # Declare signatures
-        self.lib.karyon_native_create.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t]
-        self.lib.karyon_native_create.restype = ctypes.c_void_p
+        # C-ABI signatures
+        self.lib.karyon_cabi_create.argtypes = [ctypes.c_size_t, ctypes.c_size_t, ctypes.c_size_t]
+        self.lib.karyon_cabi_create.restype = ctypes.c_void_p
 
-        self.lib.karyon_native_destroy.argtypes = [ctypes.c_void_p]
-        self.lib.karyon_native_destroy.restype = None
+        self.lib.karyon_cabi_destroy.argtypes = [ctypes.c_void_p]
+        self.lib.karyon_cabi_destroy.restype = None
 
-        self.lib.karyon_native_reset.argtypes = [ctypes.c_void_p]
-        self.lib.karyon_native_reset.restype = None
-
-        self.lib.karyon_native_step.argtypes = [
-            ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint8,
-            ctypes.POINTER(ctypes.c_float), ctypes.POINTER(ctypes.c_uint8),
-            ctypes.POINTER(ctypes.c_size_t), ctypes.POINTER(ctypes.c_float)
+        self.lib.karyon_cabi_step.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.POINTER(ctypes.c_size_t)
         ]
-        self.lib.karyon_native_step.restype = None
+        self.lib.karyon_cabi_step.restype = None
 
-        self.lib.karyon_native_sample.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_float]
-        self.lib.karyon_native_sample.restype = ctypes.c_uint8
-
-        self.lib.karyon_native_save_kcore.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
-        self.lib.karyon_native_save_kcore.restype = ctypes.c_size_t
-
-        self.lib.karyon_native_load_kcore.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t]
-        self.lib.karyon_native_load_kcore.restype = ctypes.c_bool
-
-        self.handle = self.lib.karyon_native_create(dim, num_heads, dim_k, dim_v)
+        self.handle = self.lib.karyon_cabi_create(sensory_dim, latent_dim, action_dim)
 
     def __del__(self):
         if hasattr(self, 'handle') and self.handle:
-            self.lib.karyon_native_destroy(self.handle)
+            self.lib.karyon_cabi_destroy(self.handle)
             self.handle = None
 
-    def reset(self):
-        self.lib.karyon_native_reset(self.handle)
+    def step(self,
+             sensory_curr: np.ndarray,
+             sensory_target: np.ndarray,
+             sensory_next: np.ndarray,
+             action_init: np.ndarray = None) -> Tuple[np.ndarray, float, float, int]:
+        """
+        Executes a closed-loop step through C++20 Core v7.3:
+        Returns: (action_taken, free_energy, noradrenaline, active_primitives_count)
+        """
+        s_curr = np.ascontiguousarray(sensory_curr, dtype=np.float32)
+        s_tgt = np.ascontiguousarray(sensory_target, dtype=np.float32)
+        s_nxt = np.ascontiguousarray(sensory_next, dtype=np.float32)
 
-    def step(self, byte_in: int, byte_target: int) -> Tuple[float, int, int, float]:
-        loss = ctypes.c_float(0.0)
-        pred = ctypes.c_uint8(0)
-        turns = ctypes.c_size_t(0)
-        entropy = ctypes.c_float(0.0)
+        if action_init is None:
+            act = np.zeros(self.action_dim, dtype=np.float32)
+        else:
+            act = np.ascontiguousarray(action_init, dtype=np.float32)
 
-        self.lib.karyon_native_step(
+        fe = ctypes.c_float(0.0)
+        na = ctypes.c_float(0.0)
+        prims = ctypes.c_size_t(0)
+
+        self.lib.karyon_cabi_step(
             self.handle,
-            ctypes.c_uint8(byte_in),
-            ctypes.c_uint8(byte_target),
-            ctypes.byref(loss),
-            ctypes.byref(pred),
-            ctypes.byref(turns),
-            ctypes.byref(entropy)
+            s_curr.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            s_tgt.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            s_nxt.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            act.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            ctypes.byref(fe),
+            ctypes.byref(na),
+            ctypes.byref(prims)
         )
-        return float(loss.value), int(pred.value), int(turns.value), float(entropy.value)
 
-    def save_kcore(self, filepath: str):
-        # Query buffer size
-        needed = self.lib.karyon_native_save_kcore(self.handle, None, 0)
-        buf = ctypes.create_string_buffer(needed)
-        self.lib.karyon_native_save_kcore(self.handle, buf, needed)
-        with open(filepath, "wb") as f:
-            f.write(buf.raw)
-
-    def load_kcore(self, filepath: str) -> bool:
-        with open(filepath, "rb") as f:
-            data = f.read()
-        buf = ctypes.create_string_buffer(data, len(data))
-        return bool(self.lib.karyon_native_load_kcore(self.handle, buf, len(data)))
+        return act, float(fe.value), float(na.value), int(prims.value)
 
 
 class CoREAgent:
     """
-    Sovereign Karyon-CoRE Agent.
-    Operates at raw byte level V=258 with zero PyTorch dependencies.
+    Sovereign Karyon-CoRE Agent v7.3.
+    Universal Continuous Multimodal Substrate with Zero PyTorch overhead.
     """
     def __init__(self, so_path: str = "./libkaryon_native.so",
-                 dim: int = 258, num_heads: int = 8, dim_k: int = 64, dim_v: int = 64):
-        self.dim = dim
-        self.num_heads = num_heads
-        self.dim_k = dim_k
-        self.dim_v = dim_v
-        self.native_core = KaryonNativeWrapper(so_path, dim, num_heads, dim_k, dim_v)
+                 sensory_dim: int = 256, latent_dim: int = 32, action_dim: int = 4):
+        self.sensory_dim = sensory_dim
+        self.latent_dim = latent_dim
+        self.action_dim = action_dim
+        self.native_core = KaryonNativeWrapper(so_path, sensory_dim, latent_dim, action_dim)
 
-    def reset_state(self):
-        self.native_core.reset()
-
-    def process_byte(self, byte_in: int, byte_target: int) -> Dict:
-        loss, pred, turns, entropy = self.native_core.step(byte_in, byte_target)
+    def step_embodied(self,
+                      sensory_curr: np.ndarray,
+                      sensory_target: np.ndarray,
+                      sensory_next: np.ndarray,
+                      action_init: np.ndarray = None) -> Dict:
+        """Single closed-loop embodied active inference step."""
+        act, fe, na, prims = self.native_core.step(
+            sensory_curr, sensory_target, sensory_next, action_init
+        )
         return {
-            "loss": loss,
-            "pred": pred,
-            "is_correct": (pred == byte_target),
-            "turns_taken": turns,
-            "entropy": entropy
+            "action": act,
+            "free_energy": fe,
+            "noradrenaline": na,
+            "active_primitives": prims
         }
-
-    def perceive_stream(self, stream_bytes: bytes) -> Dict:
-        """Processes an online streaming sequence of bytes (Single-Pass N=1)."""
-        losses = []
-        correct = 0
-        total_turns = 0
-
-        for t in range(len(stream_bytes) - 1):
-            res = self.process_byte(stream_bytes[t], stream_bytes[t + 1])
-            losses.append(res["loss"])
-            if res["is_correct"]:
-                correct += 1
-            total_turns += res["turns_taken"]
-
-        return {
-            "mean_loss": float(np.mean(losses)),
-            "accuracy": (correct / max(1, len(stream_bytes) - 1)) * 100.0,
-            "avg_turns": total_turns / max(1, len(stream_bytes) - 1),
-            "total_bytes": len(stream_bytes)
-        }
-
-    def save_soul(self, filepath: str = "karyon_soul.kcore"):
-        self.native_core.save_kcore(filepath)
-
-    def load_soul(self, filepath: str = "karyon_soul.kcore") -> bool:
-        return self.native_core.load_kcore(filepath)
 
 
 if __name__ == "__main__":
-    print("=== Testing Sovereign Zero-Torch CoREAgent ===")
-    agent = CoREAgent()
-    sample_text = b"Hello world! Sovereign autopoiesis without PyTorch."
-    stats = agent.perceive_stream(sample_text)
-    print(f"Stats: Loss={stats['mean_loss']:.4f}, Accuracy={stats['accuracy']:.2f}%, Turns={stats['avg_turns']:.2f}")
-    agent.save_soul("test_soul.kcore")
-    print(f"Saved test_soul.kcore successfully ({os.path.getsize('test_soul.kcore')} bytes).")
+    import time
+    print("=== Testing Sovereign Zero-Torch CoREAgent v7.3 ===")
+    agent = CoREAgent(sensory_dim=256, latent_dim=32, action_dim=4)
+
+    s_c = np.random.randn(256).astype(np.float32)
+    s_t = np.random.randn(256).astype(np.float32)
+    s_n = np.random.randn(256).astype(np.float32)
+
+    t0 = time.time()
+    steps = 10000
+    for _ in range(steps):
+        res = agent.step_embodied(s_c, s_t, s_n)
+    t1 = time.time()
+
+    elapsed = t1 - t0
+    rate = steps / elapsed
+    print(f"Executed {steps} steps in {elapsed:.3f}s -> {rate:.1f} steps/s!")
+    print(f"Telemetry: FE={res['free_energy']:.5f}, NA={res['noradrenaline']:.3f}, Primitives={res['active_primitives']}")
