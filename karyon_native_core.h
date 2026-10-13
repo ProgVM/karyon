@@ -1,17 +1,18 @@
 // karyon_native_core.h
-// Karyon Native Core v7.6 - Zero-Allocation Autonomous C++20 Cybernetic Substrate
+// Karyon Native Core v7.7 - Zero-Allocation Autonomous C++20 Cybernetic Substrate
 // Standard: KEP v20.0 Sovereign Master (Principles 2, 3, 4, 5, 6, 7, 27, 28)
 //
-// Key Advancements in v7.6:
-// 1. Direct Aversive Reflex Loop & Action-Valence Landscape:
-//    - Action-specific continuous pain/threat expectation vector: Q_valence_[action_dim x sensory_dim].
-//    - Real-time inhibitory synaptic depression on actions causing negative valence.
-// 2. Valence-Coupled Mental Trajectory Evaluation:
-//    - evaluate_trajectory incorporates predicted valence penalty:
-//      Cost = Pragmatic_Dist - Epistemic_Novelty + Lambda_Pain * Expected_Aversion(a, s)
-//    - Direct reflex veto prevents taking actions with high predicted pain in given sensory context!
-// 3. Positive Reinforcement Hebbian Motor Facilitation:
-//    - Actions with positive valence (+1.0) are amplified and epigenetically protected.
+// Key Advancements in v7.7 (Predictive Threat Trajectory & Non-Linear Peril Barrier):
+// 1. Non-Linear Peril Network & Predictive Hazard Latent Field:
+//    - Evaluates danger non-linearly through latent primitives: Peril(s) = tanh(W_peril * h_latent).
+// 2. Predictive Rollout Branch Veto (Predictive Avoidance of Bad Paths):
+//    - Evaluates future trajectory branches: if any future step tau in [1..K] enters a peril basin,
+//      the branch cost shoots to infinity (Hard Epistemic Veto).
+// 3. Temporal Credit Assignment (TD-Valence Eligibility Traces):
+//    - Past action sequence eligibility trace E_trace(t) spreads negative reinforcement backwards,
+//      allowing the agent to brake and turn BEFORE hitting the collision boundary!
+// 4. Numerically Bounded Synaptic Plasticity:
+//    - Hard norm-clamping on sensory reconstruction matrices prevents gradient blowups.
 
 #pragma once
 
@@ -38,10 +39,12 @@ struct CoreConfig {
     float noradrenaline_decay = 0.02f;    // Somatic arousal decay
     float da_baseline = 0.50f;            // Baseline dopaminergic vigor
     float discount_gamma = 0.90f;         // Horizon temporal discounting
+    float td_lambda = 0.70f;              // Eligibility trace decay for predictive threat assignment
     float sprouting_fe_threshold = 0.15f; // Stress threshold triggering morphogenetic sprouting
     size_t sprouting_cooldown_ticks = 1000;
     float stagnation_decay = 0.03f;       // Continuous exponential decay of stagnation field
-    float aversive_weight = 5.0f;         // Weight of pain expectation in mental simulation
+    float aversive_weight = 20.0f;        // Weight of predicted threat in mental simulation
+    float peril_threshold = 0.35f;        // Threshold of non-linear peril triggering trajectory veto
 };
 
 class ContinuousSuperPrimitive {
@@ -78,6 +81,7 @@ struct CoreTelemetry {
     float somatic_energy = 0.0f;
     float stagnation_potential = 0.0f;
     float expected_valence = 0.0f;
+    float max_predicted_peril = 0.0f;
     size_t active_primitives_count = 0;
     size_t horizon_k = 1;
     float lock_ratio = 0.0f;
@@ -96,7 +100,7 @@ public:
                                   std::span<const float> target_goal,
                                   std::span<float> action_out);
 
-    // 2. Discrete Action Decision via Mental Trajectory Rollout Sandbox with Epistemic & Valence Fields
+    // 2. Discrete Action Decision via Mental Trajectory Rollout Sandbox with Epistemic & Predictive Peril Veto
     size_t decide_action(const std::vector<float>& current_state,
                          const std::vector<float>& target_goal);
 
@@ -133,7 +137,11 @@ private:
     alignas(32) std::vector<float> W_sensory_up_;
     alignas(32) std::vector<float> W_motor_;
     std::vector<float> action_delta_table_; // [action_dim x sensory_dim] for trajectory rollout
-    std::vector<float> W_action_valence_;   // [action_dim x sensory_dim] associative pain/threat landscape
+    std::vector<float> W_action_valence_;   // [action_dim x sensory_dim] linear direct reflex
+    alignas(32) std::vector<float> W_peril_latent_; // [action_dim x latent_dim] Non-linear Peril Field
+
+    // Temporal Eligibility Traces for Backward Threat Attribution
+    std::vector<float> action_eligibility_trace_; // [action_dim x sensory_dim]
 
     float noradrenaline_arousal_;
     float dopamine_vigor_;
@@ -156,6 +164,10 @@ private:
 
     void adapt_endogenous_horizon(float fe_error);
     void evaluate_autopoietic_morphogenesis(float fe_error);
+    
+    // Non-linear Peril Predictor in Latent Space
+    float compute_latent_peril(size_t action_id, const std::vector<float>& h_latent);
+
     float evaluate_trajectory(size_t action_id,
                               const std::vector<float>& s0,
                               const std::vector<float>& target_goal,
