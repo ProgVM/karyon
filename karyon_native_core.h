@@ -1,17 +1,17 @@
 // karyon_native_core.h
-// Karyon Native Core v7.5 - Zero-Allocation Autonomous C++20 Cybernetic Substrate
+// Karyon Native Core v7.6 - Zero-Allocation Autonomous C++20 Cybernetic Substrate
 // Standard: KEP v20.0 Sovereign Master (Principles 2, 3, 4, 5, 6, 7, 27, 28)
 //
-// Key Enhancements in v7.5:
-// 1. Endogenous Valence & Intent Coupling:
-//    - Mentorship feedback scalar (external valence / reward / error signal in [-1.0, 1.0]).
-//    - Real-time modulation of Dopamine Vigor (positive reinforcement) and Noradrenaline Shock (pain/veto).
-// 2. Continuous Epistemic Drive (No Static N):
-//    - Endogenous stagnation potential phi_stagnation tracked via continuous exponential trace:
-//      d(phi_stagnation)/dt = -lambda * phi_stagnation + max(0, epsilon - ||Delta s||)
-//    - Non-linear repulsive novelty gradient in mental sandbox rollout:
-//      G(a) = Pragmatic_Cost(a) - phi_stagnation * Novelty(a) + Pain(a)
-//    - Automatic stochastic escape when trapped without arbitrary window sizes or discrete buffers!
+// Key Advancements in v7.6:
+// 1. Direct Aversive Reflex Loop & Action-Valence Landscape:
+//    - Action-specific continuous pain/threat expectation vector: Q_valence_[action_dim x sensory_dim].
+//    - Real-time inhibitory synaptic depression on actions causing negative valence.
+// 2. Valence-Coupled Mental Trajectory Evaluation:
+//    - evaluate_trajectory incorporates predicted valence penalty:
+//      Cost = Pragmatic_Dist - Epistemic_Novelty + Lambda_Pain * Expected_Aversion(a, s)
+//    - Direct reflex veto prevents taking actions with high predicted pain in given sensory context!
+// 3. Positive Reinforcement Hebbian Motor Facilitation:
+//    - Actions with positive valence (+1.0) are amplified and epigenetically protected.
 
 #pragma once
 
@@ -41,6 +41,7 @@ struct CoreConfig {
     float sprouting_fe_threshold = 0.15f; // Stress threshold triggering morphogenetic sprouting
     size_t sprouting_cooldown_ticks = 1000;
     float stagnation_decay = 0.03f;       // Continuous exponential decay of stagnation field
+    float aversive_weight = 5.0f;         // Weight of pain expectation in mental simulation
 };
 
 class ContinuousSuperPrimitive {
@@ -76,6 +77,7 @@ struct CoreTelemetry {
     float dopamine = 0.0f;
     float somatic_energy = 0.0f;
     float stagnation_potential = 0.0f;
+    float expected_valence = 0.0f;
     size_t active_primitives_count = 0;
     size_t horizon_k = 1;
     float lock_ratio = 0.0f;
@@ -98,14 +100,14 @@ public:
     size_t decide_action(const std::vector<float>& current_state,
                          const std::vector<float>& target_goal);
 
-    // Step with Continuous Action (with optional external valence / mentorship scalar)
+    // Step with Continuous Action (with external valence / mentorship scalar)
     CoreTelemetry step_environment(std::span<const float> current_state,
                                    std::span<const float> target_goal,
                                    std::span<const float> next_state_observed,
                                    std::span<const float> action_taken,
                                    float external_valence = 0.0f);
 
-    // Step with Discrete Action (with optional external valence / mentorship scalar)
+    // Step with Discrete Action (with external valence / mentorship scalar)
     CoreTelemetry step_environment(const std::vector<float>& current_state,
                                    const std::vector<float>& target_goal,
                                    const std::vector<float>& next_state_observed,
@@ -131,6 +133,7 @@ private:
     alignas(32) std::vector<float> W_sensory_up_;
     alignas(32) std::vector<float> W_motor_;
     std::vector<float> action_delta_table_; // [action_dim x sensory_dim] for trajectory rollout
+    std::vector<float> W_action_valence_;   // [action_dim x sensory_dim] associative pain/threat landscape
 
     float noradrenaline_arousal_;
     float dopamine_vigor_;

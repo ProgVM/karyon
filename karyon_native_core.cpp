@@ -1,5 +1,5 @@
 // karyon_native_core.cpp
-// Karyon Native Core v7.5 - Zero-Allocation Autonomous C++20 Cybernetic Substrate
+// Karyon Native Core v7.6 - Zero-Allocation Autonomous C++20 Cybernetic Substrate
 // Standard: KEP v20.0 Sovereign Master (Principles 2, 3, 4, 5, 6, 7, 27, 28)
 
 #include "karyon_native_core.h"
@@ -130,6 +130,7 @@ KaryonSovereignCore::KaryonSovereignCore(const CoreConfig& config)
     W_sensory_up_.resize(config_.sensory_dim * config_.latent_dim);
     W_motor_.resize(config_.sensory_dim * config_.action_dim, 0.0f);
     action_delta_table_.resize(config_.action_dim * config_.sensory_dim, 0.0f);
+    W_action_valence_.resize(config_.action_dim * config_.sensory_dim, 0.0f);
     continuous_sensory_ema_.resize(config_.sensory_dim, 0.0f);
 
     std::normal_distribution<float> dist_down(0.0f, 1.0f / std::sqrt(static_cast<float>(config_.sensory_dim)));
@@ -214,6 +215,12 @@ void KaryonSovereignCore::decide_continuous_action(std::span<const float> curren
             float w = W_motor_[d * config_.action_dim + a];
             motor_drive += w * buf_adjoint_sensory_[d];
         }
+
+        // Subtract predicted pain/threat for this continuous action in current sensory context
+        const float* v_row = W_action_valence_.data() + a * config_.sensory_dim;
+        float expected_pain = avx2_dot_product(v_row, current_state.data(), config_.sensory_dim);
+        motor_drive -= config_.aversive_weight * std::max(0.0f, -expected_pain);
+
         // Dopaminergic motor vigor scaling
         action_out[a] = std::tanh(motor_drive * (1.0f + 1.5f * dopamine_vigor_));
     }
@@ -225,6 +232,13 @@ float KaryonSovereignCore::evaluate_trajectory(size_t action_id,
                                                size_t horizon_k) {
     std::vector<float> sim = s0;
     float total_cost = 0.0f;
+
+    // Direct Aversive Reflex Check at Step 0:
+    // How much pain has this action produced from the immediate sensory state s0?
+    const float* v_row = W_action_valence_.data() + action_id * config_.sensory_dim;
+    float expected_valence = avx2_dot_product(v_row, s0.data(), config_.sensory_dim);
+    // If expected valence is strongly negative (pain/collision), inject massive penalty!
+    float immediate_pain_cost = config_.aversive_weight * 10.0f * std::max(0.0f, -expected_valence);
 
     for (size_t tau = 1; tau <= horizon_k; ++tau) {
         // Delta prediction rollout
@@ -259,23 +273,24 @@ float KaryonSovereignCore::evaluate_trajectory(size_t action_id,
         }
 
         // 2. Epistemic Novelty Drive (Anti-Stagnation):
-        // Distance from current continuous sensory EMA trace
         float novelty_sq = 0.0f;
         for (size_t d = 0; d < config_.sensory_dim; ++d) {
             float diff = sim[d] - continuous_sensory_ema_[d];
             novelty_sq += diff * diff;
         }
 
-        // 3. Expected Free Energy = Pragmatic Cost - Epistemic Drive
-        // When stagnation_potential_ is high (agent trapped in repetitive state),
-        // epistemic novelty drive dominates, forcing the agent out of the local basin!
-        float step_cost = pragmatic_dist_sq - (stagnation_potential_ * 2.5f) * std::sqrt(novelty_sq + 1e-6f);
+        // 3. Anticipated pain along the simulated trajectory
+        float sim_val = avx2_dot_product(v_row, sim.data(), config_.sensory_dim);
+        float sim_pain = config_.aversive_weight * std::max(0.0f, -sim_val);
+
+        // 4. Expected Free Energy = Pragmatic Cost - Epistemic Drive + Anticipated Pain
+        float step_cost = pragmatic_dist_sq - (stagnation_potential_ * 2.5f) * std::sqrt(novelty_sq + 1e-6f) + sim_pain;
 
         float discount = std::pow(config_.discount_gamma, static_cast<float>(tau - 1));
         total_cost += discount * step_cost;
     }
 
-    return total_cost;
+    return total_cost + immediate_pain_cost;
 }
 
 size_t KaryonSovereignCore::decide_action(const std::vector<float>& current_state,
@@ -291,8 +306,7 @@ size_t KaryonSovereignCore::decide_action(const std::vector<float>& current_stat
         }
     }
 
-    // Dynamic Epistemic Exploration Probability:
-    // When stagnation_potential_ grows, exploration increases smoothly up to 35% without static thresholds
+    // Dynamic Epistemic Exploration Probability
     float exploration_prob = 0.01f + 0.35f * std::min(1.0f, stagnation_potential_);
     std::uniform_real_distribution<float> u(0.0f, 1.0f);
     if (u(rng_) < exploration_prob) {
@@ -320,9 +334,7 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     }
     float sensory_velocity = std::sqrt(sensory_delta_sq);
 
-    // Continuous differential stagnation law:
-    // If sensory velocity is near zero (agent stuck / standing still), stagnation potential charges up.
-    // If agent is moving dynamically, stagnation potential exponentially decays.
+    // Continuous differential stagnation law (no static N)
     if (sensory_velocity < 0.02f) {
         stagnation_potential_ = std::min(2.0f, stagnation_potential_ + 0.08f);
     } else {
@@ -370,9 +382,21 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     telem.sensory_prediction_error = std::sqrt(fe_error);
     telem.stagnation_potential = stagnation_potential_;
 
-    // 6. Endogenous Valence Modulation (Reward / Pain Integration):
-    // Positive valence (reward / success) surges Dopamine and cements epigenetic locks.
-    // Negative valence (pain / collision / penalty) surges Noradrenaline and triggers trajectory remodeling.
+    // 6. Direct Associative Valence Learning:
+    // Update W_action_valence_ table so actions learn to predict external_valence from sensory context
+    for (size_t a = 0; a < config_.action_dim; ++a) {
+        float a_weight = action_taken[a];
+        if (std::abs(a_weight) > 1e-4f) {
+            float* v_row = W_action_valence_.data() + a * config_.sensory_dim;
+            float pred_v = avx2_dot_product(v_row, current_state.data(), config_.sensory_dim);
+            float v_error = external_valence - pred_v;
+            for (size_t d = 0; d < config_.sensory_dim; ++d) {
+                v_row[d] += config_.plasticity_rate * 5.0f * a_weight * v_error * current_state[d];
+            }
+        }
+    }
+
+    // 7. Endogenous Neuromodulator Coupling:
     if (external_valence > 0.0f) {
         dopamine_vigor_ = std::min(1.0f, dopamine_vigor_ + external_valence * 0.4f);
         noradrenaline_arousal_ = std::max(0.01f, noradrenaline_arousal_ - external_valence * 0.2f);
@@ -395,7 +419,7 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     telem.event_sprouted = (primitives_.size() > count_before);
     telem.event_pruned = (primitives_.size() < count_before);
 
-    // 7. Plasticity updates modulated by Neuromodulators & Valence
+    // 8. Plasticity updates modulated by Neuromodulators & Valence
     float plasticity = config_.plasticity_rate * (1.0f + noradrenaline_arousal_) * (1.0f + dopamine_vigor_);
 
     for (size_t s = 0; s < config_.sensory_dim; ++s) {
@@ -409,17 +433,24 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     for (auto& p : primitives_) {
         p->update_plasticity_avx2(buf_latent_a_, buf_latent_a_, plasticity, buf_quad_);
         p->adapt_coordinates(0.01f, 0.01f, plasticity);
-        // Epigenetic lock locks on positive valence / low Free Energy
         float lock_utility = (external_valence * 0.10f) + (0.05f - fe_error);
         p->update_epigenetic_lock(lock_utility);
     }
 
-    // Motor plasticity: reinforce connection in direction of external valence
+    // Direct Motor Synaptic Rewiring:
+    // When valence is negative (pain), directly DEPRESS the motor connections that led to this action!
+    // When valence is positive (reward), FACILITATE the motor connections!
     for (size_t d = 0; d < config_.sensory_dim; ++d) {
         float motor_gradient = (target_goal[d] - current_state[d]);
         float* w_row = W_motor_.data() + d * config_.action_dim;
         for (size_t m = 0; m < config_.action_dim; ++m) {
-            float delta = plasticity * (external_valence * 2.0f + 0.1f) * motor_gradient * action_taken[m];
+            float delta = 0.0f;
+            if (external_valence < 0.0f) {
+                // Strong inhibitory depression on this action
+                delta = -plasticity * 3.0f * std::abs(external_valence) * action_taken[m] * current_state[d];
+            } else {
+                delta = plasticity * (external_valence * 2.0f + 0.1f) * motor_gradient * action_taken[m];
+            }
             w_row[m] += delta;
         }
     }
