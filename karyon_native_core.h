@@ -1,26 +1,28 @@
-// karyon_native_core.h — Pure C++20 Sovereign Unified Substrate Core Engine v7.4
-// Standard: KEP v20.0 Sovereign Master (Principles 2 to 27 Compliant)
+// karyon_native_core.h
+// Karyon Native Core v7.5 - Zero-Allocation Autonomous C++20 Cybernetic Substrate
+// Standard: KEP v20.0 Sovereign Master (Principles 2, 3, 4, 5, 6, 7, 27, 28)
 //
-// Advancements in v7.4 (Mental Sandbox Trajectory Rollout & True Quality):
-// 1. Dual Control Modality:
-//    - Real-world discrete action planning via Endogenous Mental Horizon Rollout (evaluate_trajectory)
-//    - High-speed continuous analog adjoint steering for high-dim video manifolds
-// 2. Continuous Super-Primitives with AVX2-FMA Vectorized Plasticity and Net2Net Smooth Sprouting
-// 3. Bidirectional Laminar Field Compression (256D <-> 32D)
-// 4. Ground-truth Goal Attraction & Active Inference Trajectory Selection
+// Key Enhancements in v7.5:
+// 1. Endogenous Valence & Intent Coupling:
+//    - Mentorship feedback scalar (external valence / reward / error signal in [-1.0, 1.0]).
+//    - Real-time modulation of Dopamine Vigor (positive reinforcement) and Noradrenaline Shock (pain/veto).
+// 2. Continuous Epistemic Drive (No Static N):
+//    - Endogenous stagnation potential phi_stagnation tracked via continuous exponential trace:
+//      d(phi_stagnation)/dt = -lambda * phi_stagnation + max(0, epsilon - ||Delta s||)
+//    - Non-linear repulsive novelty gradient in mental sandbox rollout:
+//      G(a) = Pragmatic_Cost(a) - phi_stagnation * Novelty(a) + Pain(a)
+//    - Automatic stochastic escape when trapped without arbitrary window sizes or discrete buffers!
 
 #pragma once
 
-#include <cstdint>
-#include <cstddef>
 #include <vector>
-#include <string>
 #include <memory>
-#include <cmath>
 #include <random>
-#include <algorithm>
 #include <span>
 #include <immintrin.h>
+#include <cstddef>
+#include <cmath>
+#include <algorithm>
 
 namespace karyon {
 
@@ -38,6 +40,7 @@ struct CoreConfig {
     float discount_gamma = 0.90f;         // Horizon temporal discounting
     float sprouting_fe_threshold = 0.15f; // Stress threshold triggering morphogenetic sprouting
     size_t sprouting_cooldown_ticks = 1000;
+    float stagnation_decay = 0.03f;       // Continuous exponential decay of stagnation field
 };
 
 class ContinuousSuperPrimitive {
@@ -48,67 +51,70 @@ public:
     float alpha_lin;
     float alpha_bilin;
     float alpha_rec;
-    float alpha_res;
-
+    float tau_time;
     float epigenetic_lock;
-    float cumulative_causal_utility;
     float birth_gain;
 
     alignas(32) std::vector<float> W_lin;
     alignas(32) std::vector<float> W_bilin;
-    alignas(32) std::vector<float> state;
+    alignas(32) std::vector<float> W_rec;
+    std::vector<float> state_trace;
 
-    ContinuousSuperPrimitive(size_t p_id, size_t d, std::mt19937& rng, bool sprouted_zero_shock = false);
+    ContinuousSuperPrimitive(size_t pid, size_t d, std::mt19937& rng);
 
-    void forward(std::span<const float> in, std::span<float> out, std::span<float> scratch_quad);
-    void update_plasticity_avx2(std::span<const float> in,
-                                std::span<const float> target,
-                                float plasticity_rate,
-                                std::span<const float> scratch_quad);
-    void adapt_coordinates(float dF_dalpha_lin, float dF_dalpha_bilin, float plasticity_rate);
-    void update_epigenetic_lock(float baseline_fe_reduction);
+    void forward(std::span<const float> x_in, std::span<float> h_out, std::span<float> quad_buf);
+    void update_plasticity_avx2(std::span<const float> pre, std::span<const float> post, float lr, std::span<float> quad_buf);
     void mature_birth_gain(float rate = 0.005f);
+    void update_epigenetic_lock(float utility);
+    void adapt_coordinates(float d_lin, float d_bilin, float d_rec);
 };
 
 struct CoreTelemetry {
-    std::vector<float> action_vector;
-    size_t action_discrete_chosen = 0;
     float free_energy = 0.0f;
     float sensory_prediction_error = 0.0f;
-    float noradrenaline_arousal = 0.0f;
-    size_t mental_horizon_k = 1;
-    float lock_ratio = 0.0f;
+    float noradrenaline = 0.0f;
+    float dopamine = 0.0f;
+    float somatic_energy = 0.0f;
+    float stagnation_potential = 0.0f;
     size_t active_primitives_count = 0;
+    size_t horizon_k = 1;
+    float lock_ratio = 0.0f;
     bool event_sprouted = false;
     bool event_pruned = false;
+    size_t action_discrete_chosen = 0;
 };
 
 class KaryonSovereignCore {
 public:
-    explicit KaryonSovereignCore(const CoreConfig& config = CoreConfig());
+    explicit KaryonSovereignCore(const CoreConfig& config);
+    ~KaryonSovereignCore() = default;
 
     // 1. Continuous Analog Motor Control
     void decide_continuous_action(std::span<const float> current_state,
                                   std::span<const float> target_goal,
                                   std::span<float> action_out);
 
-    // 2. Discrete Action Decision via Mental Trajectory Rollout Sandbox
+    // 2. Discrete Action Decision via Mental Trajectory Rollout Sandbox with Epistemic & Valence Fields
     size_t decide_action(const std::vector<float>& current_state,
                          const std::vector<float>& target_goal);
 
-    // Step with Continuous Action
+    // Step with Continuous Action (with optional external valence / mentorship scalar)
     CoreTelemetry step_environment(std::span<const float> current_state,
                                    std::span<const float> target_goal,
                                    std::span<const float> next_state_observed,
-                                   std::span<const float> action_taken);
+                                   std::span<const float> action_taken,
+                                   float external_valence = 0.0f);
 
-    // Step with Discrete Action
+    // Step with Discrete Action (with optional external valence / mentorship scalar)
     CoreTelemetry step_environment(const std::vector<float>& current_state,
                                    const std::vector<float>& target_goal,
                                    const std::vector<float>& next_state_observed,
-                                   size_t discrete_action);
+                                   size_t discrete_action,
+                                   float external_valence = 0.0f);
 
     float get_noradrenaline() const { return noradrenaline_arousal_; }
+    float get_dopamine() const { return dopamine_vigor_; }
+    float get_stagnation_potential() const { return stagnation_potential_; }
     size_t get_current_horizon() const { return current_horizon_k_; }
     float get_average_epigenetic_lock() const;
     size_t get_primitives_count() const { return primitives_.size(); }
@@ -129,9 +135,13 @@ private:
     float noradrenaline_arousal_;
     float dopamine_vigor_;
     float somatic_energy_;
+    float stagnation_potential_;           // Continuous non-static stagnation field trace
     size_t current_horizon_k_;
     size_t ticks_since_last_sprout_;
     float moving_fe_ema_;
+
+    // Continuous running barycenter / velocity trace of sensory manifold
+    std::vector<float> continuous_sensory_ema_;
 
     // Internal scratchpad
     std::vector<float> buf_sensory_in_;
@@ -148,5 +158,20 @@ private:
                               const std::vector<float>& target_goal,
                               size_t horizon_k);
 };
+
+// C-ABI Export Functions
+extern "C" {
+    void* karyon_core_create(const CoreConfig* cfg);
+    void karyon_core_destroy(void* handle);
+    void karyon_core_decide_action(void* handle, const float* current_state, const float* target_goal, float* action_out);
+    size_t karyon_core_decide_discrete(void* handle, const float* current_state, const float* target_goal);
+    void karyon_core_step(void* handle,
+                          const float* current_state,
+                          const float* target_goal,
+                          const float* next_state_observed,
+                          const float* action_taken,
+                          float external_valence,
+                          CoreTelemetry* telem_out);
+}
 
 } // namespace karyon
