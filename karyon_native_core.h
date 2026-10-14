@@ -31,7 +31,8 @@ namespace karyon {
 
 struct CoreConfig {
     size_t sensory_dim = 256;             // Sensory observation dimension
-    size_t latent_dim = 32;               // High-speed compressed manifold dimension
+    size_t initial_latent_dim = 16;       // Starting latent dimensionality
+    size_t max_latent_dim = 64;           // Dimensional morphogenesis ceiling
     size_t action_dim = 4;                // Action count (discrete actions or continuous thrusters)
     size_t initial_primitives = 2;         // Initial super-primitives in stack
     size_t max_primitives = 6;            // Ceiling for dynamic autopoiesis
@@ -73,6 +74,9 @@ public:
     void mature_birth_gain(float rate = 0.005f);
     void update_epigenetic_lock(float utility);
     void adapt_coordinates(float d_lin, float d_bilin, float d_rec);
+
+    // Dynamic Dimensional Morphogenesis (Net2Net Latent Sprouting)
+    void sprout_latent_dimension();
 };
 
 // =========================================================================
@@ -114,12 +118,14 @@ struct CoreTelemetry {
     float max_predicted_peril = 0.0f;
     size_t active_primitives_count = 0;
     size_t active_hormones_count = 0;
+    size_t current_latent_dim = 16;
     size_t horizon_k = 1;
     float lock_ratio = 0.0f;
     bool event_sprouted = false;
     bool event_pruned = false;
     bool event_hormone_sprouted = false;
     bool event_hormone_pruned = false;
+    bool event_latent_sprouted = false;
     size_t action_discrete_chosen = 0;
 };
 
@@ -128,12 +134,19 @@ public:
     explicit KaryonSovereignCore(const CoreConfig& config);
     ~KaryonSovereignCore() = default;
 
-    // 1. Continuous Analog Motor Control
+    // 1. Continuous Analog Motor Control via Variational Adjoint Field
     void decide_continuous_action(std::span<const float> current_state,
                                   std::span<const float> target_goal,
                                   std::span<float> action_out);
 
-    // 2. Discrete Action Decision via Mental Trajectory Rollout Sandbox with Epistemic & Predictive Peril Veto
+    // 2. Continuous Trajectory Rollout & Variational Optimization in Control Space
+    // Optimizes the continuous action vector directly along the manifold gradient
+    void optimize_continuous_action_trajectory(std::span<const float> current_state,
+                                               std::span<const float> target_goal,
+                                               std::span<float> action_inout,
+                                               size_t variational_steps = 3);
+
+    // 3. Discrete Action Decision (backed by Continuous Trajectory Rollout)
     size_t decide_action(const std::vector<float>& current_state,
                          const std::vector<float>& target_goal);
 
@@ -164,12 +177,15 @@ public:
     float get_average_epigenetic_lock() const;
     size_t get_primitives_count() const { return primitives_.size(); }
 
-    // Autopoietic Genesis of Primitives & Hormones
+    // Autopoietic Genesis of Primitives & Hormones & Latent Dimensions
     bool trigger_morphogenetic_sprout();
     bool prune_least_causal_primitive();
 
     bool trigger_hormone_sprout();
     bool prune_least_causal_hormone();
+
+    bool trigger_latent_dimension_sprout();
+    size_t get_current_latent_dim() const { return current_latent_dim_; }
 
 private:
     CoreConfig config_;
@@ -196,9 +212,11 @@ private:
     float stagnation_potential_;           // Continuous non-static stagnation field trace
     float appetitive_hunger_;              // Continuous goal frustration / appetitive drive
     float last_goal_dist_sq_;              // Squared distance to goal on previous step
+    size_t current_latent_dim_;            // Sovereign Dynamic Latent Dimensionality
     size_t current_horizon_k_;
     size_t ticks_since_last_sprout_;
     size_t ticks_since_last_hormone_sprout_;
+    size_t ticks_since_last_latent_sprout_;
     float moving_fe_ema_;
 
     // Continuous running barycenter / velocity trace of sensory manifold

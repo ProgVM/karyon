@@ -22,7 +22,8 @@ KaryonCABIHandle* karyon_cabi_create(size_t sensory_dim,
                                      float plasticity_rate) {
     auto handle = new KaryonCABIHandle();
     handle->config.sensory_dim = sensory_dim;
-    handle->config.latent_dim = latent_dim;
+    handle->config.initial_latent_dim = latent_dim;
+    handle->config.max_latent_dim = std::max(latent_dim * 2, static_cast<size_t>(64));
     handle->config.action_dim = action_dim;
     handle->config.initial_primitives = initial_primitives;
     handle->config.max_primitives = max_primitives;

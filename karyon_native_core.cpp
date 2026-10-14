@@ -130,6 +130,31 @@ void ContinuousSuperPrimitive::adapt_coordinates(float d_lin, float d_bilin, flo
     alpha_rec /= sum;
 }
 
+void ContinuousSuperPrimitive::sprout_latent_dimension() {
+    size_t old_d = dim;
+    size_t new_d = old_d + 1;
+
+    std::vector<float> new_lin(new_d * new_d, 0.0f);
+    std::vector<float> new_bilin(new_d * new_d, 0.0f);
+    std::vector<float> new_rec(new_d * new_d, 0.0f);
+
+    for (size_t r = 0; r < old_d; ++r) {
+        for (size_t c = 0; c < old_d; ++c) {
+            new_lin[r * new_d + c] = W_lin[r * old_d + c];
+            new_bilin[r * new_d + c] = W_bilin[r * old_d + c];
+            new_rec[r * new_d + c] = W_rec[r * old_d + c];
+        }
+    }
+    // Net2Net Identity Principle: New dimension starts as pass-through identity
+    new_lin[old_d * new_d + old_d] = 1.0f;
+
+    W_lin = std::move(new_lin);
+    W_bilin = std::move(new_bilin);
+    W_rec = std::move(new_rec);
+    state_trace.resize(new_d, 0.0f);
+    dim = new_d;
+}
+
 // =========================================================================
 // SovereignEndogenousHormone Implementation
 // =========================================================================
@@ -199,39 +224,41 @@ KaryonSovereignCore::KaryonSovereignCore(const CoreConfig& config)
       stagnation_potential_(0.0f),
       appetitive_hunger_(0.0f),
       last_goal_dist_sq_(10.0f),
+      current_latent_dim_(config.initial_latent_dim),
       current_horizon_k_(config.min_horizon_k),
       ticks_since_last_sprout_(0),
       ticks_since_last_hormone_sprout_(0),
+      ticks_since_last_latent_sprout_(0),
       moving_fe_ema_(0.05f) {
 
     for (size_t i = 0; i < config_.initial_primitives; ++i) {
-        primitives_.push_back(std::make_unique<ContinuousSuperPrimitive>(i, config_.latent_dim, rng_));
+        primitives_.push_back(std::make_unique<ContinuousSuperPrimitive>(i, current_latent_dim_, rng_));
     }
 
     for (size_t h = 0; h < config_.initial_hormones; ++h) {
         hormones_.emplace_back(h, config_.sensory_dim, rng_);
     }
 
-    W_sensory_down_.resize(config_.latent_dim * config_.sensory_dim);
-    W_sensory_up_.resize(config_.sensory_dim * config_.latent_dim);
+    W_sensory_down_.resize(current_latent_dim_ * config_.sensory_dim);
+    W_sensory_up_.resize(config_.sensory_dim * current_latent_dim_);
     W_motor_.resize(config_.sensory_dim * config_.action_dim, 0.0f);
     action_delta_table_.resize(config_.action_dim * config_.sensory_dim, 0.0f);
     W_action_valence_.resize(config_.action_dim * config_.sensory_dim, 0.0f);
-    W_peril_latent_.resize(config_.action_dim * config_.latent_dim, 0.0f);
+    W_peril_latent_.resize(config_.action_dim * current_latent_dim_, 0.0f);
     action_eligibility_trace_.resize(config_.action_dim * config_.sensory_dim, 0.0f);
     continuous_sensory_ema_.resize(config_.sensory_dim, 0.0f);
 
     std::normal_distribution<float> dist_down(0.0f, 1.0f / std::sqrt(static_cast<float>(config_.sensory_dim)));
     for (auto& w : W_sensory_down_) w = dist_down(rng_);
 
-    std::normal_distribution<float> dist_up(0.0f, 1.0f / std::sqrt(static_cast<float>(config_.latent_dim)));
+    std::normal_distribution<float> dist_up(0.0f, 1.0f / std::sqrt(static_cast<float>(current_latent_dim_)));
     for (auto& w : W_sensory_up_) w = dist_up(rng_);
 
     buf_sensory_in_.resize(config_.sensory_dim, 0.0f);
     buf_sensory_out_.resize(config_.sensory_dim, 0.0f);
-    buf_latent_a_.resize(config_.latent_dim, 0.0f);
-    buf_latent_b_.resize(config_.latent_dim, 0.0f);
-    buf_quad_.resize(config_.latent_dim, 0.0f);
+    buf_latent_a_.resize(current_latent_dim_, 0.0f);
+    buf_latent_b_.resize(current_latent_dim_, 0.0f);
+    buf_quad_.resize(current_latent_dim_, 0.0f);
     buf_adjoint_sensory_.resize(config_.sensory_dim, 0.0f);
 
     compute_effector_modulations();
@@ -249,7 +276,7 @@ bool KaryonSovereignCore::trigger_morphogenetic_sprout() {
     }
 
     size_t new_id = primitives_.size();
-    auto child = std::make_unique<ContinuousSuperPrimitive>(new_id, config_.latent_dim, rng_);
+    auto child = std::make_unique<ContinuousSuperPrimitive>(new_id, current_latent_dim_, rng_);
     const auto& parent = primitives_[parent_idx];
 
     child->W_lin = parent->W_lin;
@@ -330,6 +357,58 @@ bool KaryonSovereignCore::prune_least_causal_hormone() {
     return true;
 }
 
+bool KaryonSovereignCore::trigger_latent_dimension_sprout() {
+    if (current_latent_dim_ >= config_.max_latent_dim) return false;
+
+    size_t old_d = current_latent_dim_;
+    size_t new_d = old_d + 1;
+    size_t S = config_.sensory_dim;
+    size_t A = config_.action_dim;
+
+    // 1. Sprout all primitives in stack
+    for (auto& p : primitives_) {
+        p->sprout_latent_dimension();
+    }
+
+    // 2. Expand W_sensory_down_ [new_d x S]
+    std::vector<float> new_down(new_d * S, 0.0f);
+    std::copy(W_sensory_down_.begin(), W_sensory_down_.end(), new_down.begin());
+    std::normal_distribution<float> dist_down(0.0f, 0.01f); // Gentle initial projection
+    for (size_t s = 0; s < S; ++s) {
+        new_down[old_d * S + s] = dist_down(rng_);
+    }
+    W_sensory_down_ = std::move(new_down);
+
+    // 3. Expand W_sensory_up_ [S x new_d]
+    std::vector<float> new_up(S * new_d, 0.0f);
+    for (size_t s = 0; s < S; ++s) {
+        for (size_t l = 0; l < old_d; ++l) {
+            new_up[s * new_d + l] = W_sensory_up_[s * old_d + l];
+        }
+        new_up[s * new_d + old_d] = 0.0f; // Zero-shock Net2Net identity
+    }
+    W_sensory_up_ = std::move(new_up);
+
+    // 4. Expand W_peril_latent_ [A x new_d]
+    std::vector<float> new_peril(A * new_d, 0.0f);
+    for (size_t a = 0; a < A; ++a) {
+        for (size_t l = 0; l < old_d; ++l) {
+            new_peril[a * new_d + l] = W_peril_latent_[a * old_d + l];
+        }
+        new_peril[a * new_d + old_d] = 0.0f;
+    }
+    W_peril_latent_ = std::move(new_peril);
+
+    // 5. Expand internal scratchpads
+    buf_latent_a_.resize(new_d, 0.0f);
+    buf_latent_b_.resize(new_d, 0.0f);
+    buf_quad_.resize(new_d, 0.0f);
+
+    current_latent_dim_ = new_d;
+    ticks_since_last_latent_sprout_ = 0;
+    return true;
+}
+
 void KaryonSovereignCore::update_sovereign_hormones(std::span<const float> sensory_state,
                                                    float surprise,
                                                    float valence) {
@@ -397,8 +476,8 @@ void KaryonSovereignCore::compute_effector_modulations() {
 
 float KaryonSovereignCore::compute_latent_peril(size_t action_id, const std::vector<float>& h_latent) {
     if (action_id >= config_.action_dim) return 0.0f;
-    const float* p_row = W_peril_latent_.data() + action_id * config_.latent_dim;
-    float linear_hazard = avx2_dot_product(p_row, h_latent.data(), config_.latent_dim);
+    const float* p_row = W_peril_latent_.data() + action_id * current_latent_dim_;
+    float linear_hazard = avx2_dot_product(p_row, h_latent.data(), current_latent_dim_);
     return std::tanh(linear_hazard);
 }
 
@@ -409,7 +488,7 @@ void KaryonSovereignCore::decide_continuous_action(std::span<const float> curren
         buf_adjoint_sensory_[d] = target_goal[d] - current_state[d];
     }
 
-    for (size_t l = 0; l < config_.latent_dim; ++l) {
+    for (size_t l = 0; l < current_latent_dim_; ++l) {
         const float* w_row = W_sensory_down_.data() + l * config_.sensory_dim;
         buf_latent_a_[l] = std::tanh(avx2_dot_product(w_row, current_state.data(), config_.sensory_dim));
     }
@@ -428,6 +507,46 @@ void KaryonSovereignCore::decide_continuous_action(std::span<const float> curren
 
         // Sovereign Hormonal motor vigor scaling
         action_out[a] = std::tanh(motor_drive * effective_motor_vigor_);
+    }
+
+    // Refine action using continuous variational trajectory optimization
+    optimize_continuous_action_trajectory(current_state, target_goal, action_out, 3);
+}
+
+void KaryonSovereignCore::optimize_continuous_action_trajectory(std::span<const float> current_state,
+                                                                std::span<const float> target_goal,
+                                                                std::span<float> action_inout,
+                                                                size_t variational_steps) {
+    if (variational_steps == 0) return;
+
+    size_t S = config_.sensory_dim;
+    size_t A = config_.action_dim;
+    float step_size = 0.15f * effective_motor_vigor_;
+
+    for (size_t step = 0; step < variational_steps; ++step) {
+        // Continuous trajectory forward simulation along the continuous action vector
+        for (size_t d = 0; d < S; ++d) {
+            float delta_d = 0.0f;
+            for (size_t a = 0; a < A; ++a) {
+                delta_d += action_delta_table_[a * S + d] * action_inout[a];
+            }
+            buf_sensory_out_[d] = current_state[d] + delta_d;
+        }
+
+        // Compute error gradient towards target goal
+        for (size_t d = 0; d < S; ++d) {
+            buf_adjoint_sensory_[d] = target_goal[d] - buf_sensory_out_[d];
+        }
+
+        // Variational adjoint step in action space
+        for (size_t a = 0; a < A; ++a) {
+            float grad_a = 0.0f;
+            for (size_t d = 0; d < S; ++d) {
+                grad_a += action_delta_table_[a * S + d] * buf_adjoint_sensory_[d];
+            }
+            // Continuous gradient update bounded by tanh
+            action_inout[a] = std::tanh(action_inout[a] + step_size * grad_a);
+        }
     }
 }
 
@@ -449,7 +568,7 @@ float KaryonSovereignCore::evaluate_trajectory(size_t action_id,
             sim[d] += delta_row[d];
         }
 
-        for (size_t l = 0; l < config_.latent_dim; ++l) {
+        for (size_t l = 0; l < current_latent_dim_; ++l) {
             const float* w_row = W_sensory_down_.data() + l * config_.sensory_dim;
             buf_latent_b_[l] = std::tanh(avx2_dot_product(w_row, sim.data(), config_.sensory_dim));
         }
@@ -503,21 +622,21 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     size_t hormone_count_before = hormones_.size();
 
     // 1. Sensory Compression (Observation -> Latent Manifold)
-    for (size_t l = 0; l < config_.latent_dim; ++l) {
+    for (size_t l = 0; l < current_latent_dim_; ++l) {
         const float* w_row = W_sensory_down_.data() + l * config_.sensory_dim;
         buf_latent_a_[l] = std::tanh(avx2_dot_product(w_row, current_state.data(), config_.sensory_dim));
     }
 
     // 2. Super-Primitive Layer Feedforward
-    for (size_t l = 0; l < config_.latent_dim; ++l) buf_latent_b_[l] = 0.0f;
+    for (size_t l = 0; l < current_latent_dim_; ++l) buf_latent_b_[l] = 0.0f;
     for (auto& p : primitives_) {
         p->forward(buf_latent_a_, buf_latent_b_, buf_quad_);
     }
 
     // 3. Sensory Expansion (Latent -> Predicted Next Observation)
     for (size_t s = 0; s < config_.sensory_dim; ++s) {
-        const float* w_row = W_sensory_up_.data() + s * config_.latent_dim;
-        buf_sensory_out_[s] = avx2_dot_product(w_row, buf_latent_b_.data(), config_.latent_dim);
+        const float* w_row = W_sensory_up_.data() + s * current_latent_dim_;
+        buf_sensory_out_[s] = avx2_dot_product(w_row, buf_latent_b_.data(), current_latent_dim_);
     }
 
     // 4. Free Energy / Surprise Calculation
@@ -571,15 +690,15 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     for (size_t a = 0; a < config_.action_dim; ++a) {
         float a_act = action_taken[a];
         if (a_act > 0.05f) {
-            float* p_row = W_peril_latent_.data() + a * config_.latent_dim;
+            float* p_row = W_peril_latent_.data() + a * current_latent_dim_;
             if (external_valence < 0.0f) {
                 float pain_mag = std::abs(external_valence);
-                for (size_t l = 0; l < config_.latent_dim; ++l) {
+                for (size_t l = 0; l < current_latent_dim_; ++l) {
                     p_row[l] += effective_plasticity_ * 4.0f * pain_mag * buf_latent_a_[l];
                     p_row[l] = std::clamp(p_row[l], -4.0f, 4.0f);
                 }
             } else if (external_valence > 0.0f) {
-                for (size_t l = 0; l < config_.latent_dim; ++l) {
+                for (size_t l = 0; l < current_latent_dim_; ++l) {
                     p_row[l] -= effective_plasticity_ * 1.5f * external_valence * buf_latent_a_[l];
                     p_row[l] = std::clamp(p_row[l], -4.0f, 4.0f);
                 }
@@ -608,8 +727,8 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     for (size_t s = 0; s < config_.sensory_dim; ++s) {
         float err_s = next_state_observed[s] - buf_sensory_out_[s];
         err_s = std::clamp(err_s, -2.0f, 2.0f);
-        float* w_row = W_sensory_up_.data() + s * config_.latent_dim;
-        for (size_t l = 0; l < config_.latent_dim; ++l) {
+        float* w_row = W_sensory_up_.data() + s * current_latent_dim_;
+        for (size_t l = 0; l < current_latent_dim_; ++l) {
             w_row[l] += effective_plasticity_ * err_s * buf_latent_a_[l];
             w_row[l] = std::clamp(w_row[l], -3.0f, 3.0f);
         }
@@ -644,6 +763,7 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     telem.effective_motor_vigor = effective_motor_vigor_;
     telem.somatic_energy = somatic_energy_;
     telem.horizon_k = current_horizon_k_;
+    telem.current_latent_dim = current_latent_dim_;
     telem.lock_ratio = get_average_epigenetic_lock();
     return telem;
 }
@@ -672,6 +792,7 @@ CoreTelemetry KaryonSovereignCore::step_environment(const std::vector<float>& cu
 void KaryonSovereignCore::evaluate_autopoietic_morphogenesis(float fe_error) {
     ticks_since_last_sprout_++;
     ticks_since_last_hormone_sprout_++;
+    ticks_since_last_latent_sprout_++;
 
     // 1. Primitive Morphogenesis
     if (ticks_since_last_sprout_ > config_.sprouting_cooldown_ticks) {
@@ -688,6 +809,15 @@ void KaryonSovereignCore::evaluate_autopoietic_morphogenesis(float fe_error) {
             trigger_hormone_sprout();
         } else if (moving_fe_ema_ < 0.02f && hormones_.size() > 2) {
             prune_least_causal_hormone();
+        }
+    }
+
+    // 3. Sovereign Latent Manifold Morphogenesis (Dimensional Sprouting)
+    // If prediction error remains high and persistent despite primitive and hormonal adaptations,
+    // the compression bottleneck is too tight: sprout latent dimension!
+    if (ticks_since_last_latent_sprout_ > (config_.sprouting_cooldown_ticks * 3)) {
+        if (moving_fe_ema_ > 0.04f && current_latent_dim_ < config_.max_latent_dim) {
+            trigger_latent_dimension_sprout();
         }
     }
 }
