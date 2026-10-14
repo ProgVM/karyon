@@ -28,40 +28,65 @@ inline float avx2_dot_product(const float* a, const float* b, size_t size) {
 }
 
 // =========================================================================
-// ContinuousSuperPrimitive Implementation
+// Continuous Sovereign Tensor-Field Super-Primitive Implementation (KEP Principle 3)
 // =========================================================================
 ContinuousSuperPrimitive::ContinuousSuperPrimitive(size_t pid, size_t d, std::mt19937& rng)
     : id(pid), dim(d),
-      alpha_lin(0.34f), alpha_bilin(0.33f), alpha_rec(0.33f),
-      tau_time(0.1f), epigenetic_lock(0.0f), birth_gain(1.0f) {
-    W_lin.resize(d * d);
-    W_bilin.resize(d * d);
-    W_rec.resize(d * d);
-    state_trace.resize(d, 0.0f);
+      gate_bias(0.5f), decay_rate(0.1f), tau_time(0.2f),
+      epigenetic_lock(0.0f), birth_gain(1.0f) {
+    
+    // W_field is [dim x (2 * dim)] projecting [x; h_prev]
+    W_field.resize(dim * (2 * dim), 0.0f);
+    // W_gate is [dim x dim] projecting gating flow
+    W_gate.resize(dim * dim, 0.0f);
+    state_trace.resize(dim, 0.0f);
 
-    std::normal_distribution<float> dist(0.0f, 1.0f / std::sqrt(static_cast<float>(d)));
-    for (auto& w : W_lin) w = dist(rng);
-    for (auto& w : W_bilin) w = dist(rng);
-    for (auto& w : W_rec) w = dist(rng);
+    std::normal_distribution<float> dist_init(0.0f, 1.0f / std::sqrt(static_cast<float>(dim)));
+    for (auto& w : W_field) w = dist_init(rng);
+    for (auto& w : W_gate) w = dist_init(rng);
+
+    // Initial diversity of continuous operator coordinates
+    if (pid % 3 == 0) {
+        // Degenerates towards fast temporal integrator / attractor basin
+        gate_bias = 0.1f;
+        decay_rate = 0.05f;
+        tau_time = 0.4f;
+    } else if (pid % 3 == 1) {
+        // Degenerates towards non-linear multiplicative gate (SwiGLU-like)
+        gate_bias = 0.85f;
+        decay_rate = 0.3f;
+        tau_time = 0.25f;
+    } else {
+        // Balanced continuous dynamic field
+        gate_bias = 0.5f;
+        decay_rate = 0.15f;
+        tau_time = 0.2f;
+    }
 }
 
 void ContinuousSuperPrimitive::forward(std::span<const float> x_in,
-                                      std::span<float> h_out,
-                                      std::span<float> quad_buf) {
+                                       std::span<float> h_out,
+                                       std::span<float> quad_buf) {
+    size_t in_dim = 2 * dim;
+
     for (size_t i = 0; i < dim; ++i) {
-        const float* row_lin = W_lin.data() + i * dim;
-        const float* row_bilin = W_bilin.data() + i * dim;
-        const float* row_rec = W_rec.data() + i * dim;
+        const float* row_field = W_field.data() + i * in_dim;
+        const float* row_gate = W_gate.data() + i * dim;
 
-        float y_lin = avx2_dot_product(row_lin, x_in.data(), dim);
-        float y_bilin = avx2_dot_product(row_bilin, x_in.data(), dim);
-        float y_rec = avx2_dot_product(row_rec, state_trace.data(), dim);
+        // Split field dot product: x part and h_prev part
+        float f_x = avx2_dot_product(row_field, x_in.data(), dim);
+        float f_h = avx2_dot_product(row_field + dim, state_trace.data(), dim);
+        float f_total = f_x + f_h;
 
-        float fused = alpha_lin * y_lin +
-                      alpha_bilin * (y_bilin * y_lin) +
-                      alpha_rec * std::tanh(y_rec);
+        // Gate activation sigma(W_gate * x)
+        float g_lin = avx2_dot_product(row_gate, x_in.data(), dim);
+        float g_act = 1.0f / (1.0f + std::exp(-g_lin));
 
-        float dh = (fused - state_trace[i]) * tau_time;
+        // Unified continuous operator degeneration
+        float y_i = (1.0f - gate_bias) * std::tanh(f_total) + gate_bias * (g_act * f_x);
+
+        // Continuous state integration with dissipation decay
+        float dh = tau_time * (y_i - decay_rate * state_trace[i]);
         state_trace[i] += dh;
         h_out[i] = state_trace[i] * birth_gain;
     }
@@ -74,34 +99,43 @@ void ContinuousSuperPrimitive::update_plasticity_avx2(std::span<const float> pre
     float effective_lr = lr * (1.0f - epigenetic_lock) * birth_gain;
     if (effective_lr < 1e-6f) return;
 
+    size_t in_dim = 2 * dim;
     for (size_t i = 0; i < dim; ++i) {
         float post_i = post[i];
-        float* row_lin = W_lin.data() + i * dim;
-        float* row_bilin = W_bilin.data() + i * dim;
-        float* row_rec = W_rec.data() + i * dim;
+        float* row_field = W_field.data() + i * in_dim;
+        float* row_gate = W_gate.data() + i * dim;
         float trace_i = state_trace[i];
 
+        // 1. Plasticity for W_field (pre and trace)
         size_t j = 0;
         __m256 v_lr = _mm256_set1_ps(effective_lr);
         __m256 v_post = _mm256_set1_ps(post_i);
-        __m256 v_trace_i = _mm256_set1_ps(trace_i);
 
         for (; j + 8 <= dim; j += 8) {
             __m256 v_pre = _mm256_loadu_ps(pre.data() + j);
-            __m256 v_wlin = _mm256_loadu_ps(row_lin + j);
-            __m256 v_wrec = _mm256_loadu_ps(row_rec + j);
+            __m256 v_wfield_x = _mm256_loadu_ps(row_field + j);
+            __m256 v_wgate = _mm256_loadu_ps(row_gate + j);
 
-            __m256 d_wlin = _mm256_mul_ps(v_lr, _mm256_mul_ps(v_post, v_pre));
-            _mm256_storeu_ps(row_lin + j, _mm256_add_ps(v_wlin, d_wlin));
-
-            __m256 d_wrec = _mm256_mul_ps(v_lr, _mm256_mul_ps(v_trace_i, v_pre));
-            _mm256_storeu_ps(row_rec + j, _mm256_add_ps(v_wrec, d_wrec));
+            __m256 d_wfield = _mm256_mul_ps(v_lr, _mm256_mul_ps(v_post, v_pre));
+            _mm256_storeu_ps(row_field + j, _mm256_add_ps(v_wfield_x, d_wfield));
+            _mm256_storeu_ps(row_gate + j, _mm256_add_ps(v_wgate, d_wfield));
+        }
+        for (; j < dim; ++j) {
+            row_field[j] += effective_lr * post_i * pre[j];
+            row_gate[j] += effective_lr * post_i * pre[j];
         }
 
+        // 2. Plasticity for W_field recurrent block (state_trace)
+        float* row_field_h = row_field + dim;
+        j = 0;
+        for (; j + 8 <= dim; j += 8) {
+            __m256 v_trace = _mm256_loadu_ps(state_trace.data() + j);
+            __m256 v_wfield_h = _mm256_loadu_ps(row_field_h + j);
+            __m256 d_wfield_h = _mm256_mul_ps(v_lr, _mm256_mul_ps(v_post, v_trace));
+            _mm256_storeu_ps(row_field_h + j, _mm256_add_ps(v_wfield_h, d_wfield_h));
+        }
         for (; j < dim; ++j) {
-            row_lin[j] += effective_lr * post_i * pre[j];
-            row_bilin[j] += effective_lr * post_i * (pre[j] * pre[j]);
-            row_rec[j] += effective_lr * trace_i * state_trace[j];
+            row_field_h[j] += effective_lr * post_i * state_trace[j];
         }
     }
 }
@@ -120,37 +154,37 @@ void ContinuousSuperPrimitive::update_epigenetic_lock(float utility) {
     }
 }
 
-void ContinuousSuperPrimitive::adapt_coordinates(float d_lin, float d_bilin, float d_rec) {
-    alpha_lin = std::clamp(alpha_lin + d_lin, 0.05f, 0.90f);
-    alpha_bilin = std::clamp(alpha_bilin + d_bilin, 0.05f, 0.90f);
-    alpha_rec = std::clamp(alpha_rec + d_rec, 0.05f, 0.90f);
-    float sum = alpha_lin + alpha_bilin + alpha_rec;
-    alpha_lin /= sum;
-    alpha_bilin /= sum;
-    alpha_rec /= sum;
+void ContinuousSuperPrimitive::adapt_manifold_coordinates(float d_gate, float d_decay, float lr) {
+    gate_bias = std::clamp(gate_bias + d_gate * lr, 0.01f, 0.99f);
+    decay_rate = std::clamp(decay_rate + d_decay * lr, 0.01f, 0.80f);
 }
 
 void ContinuousSuperPrimitive::sprout_latent_dimension() {
     size_t old_d = dim;
     size_t new_d = old_d + 1;
+    size_t old_in_dim = 2 * old_d;
+    size_t new_in_dim = 2 * new_d;
 
-    std::vector<float> new_lin(new_d * new_d, 0.0f);
-    std::vector<float> new_bilin(new_d * new_d, 0.0f);
-    std::vector<float> new_rec(new_d * new_d, 0.0f);
+    std::vector<float> new_field(new_d * new_in_dim, 0.0f);
+    std::vector<float> new_gate(new_d * new_d, 0.0f);
 
     for (size_t r = 0; r < old_d; ++r) {
         for (size_t c = 0; c < old_d; ++c) {
-            new_lin[r * new_d + c] = W_lin[r * old_d + c];
-            new_bilin[r * new_d + c] = W_bilin[r * old_d + c];
-            new_rec[r * new_d + c] = W_rec[r * old_d + c];
+            new_field[r * new_in_dim + c] = W_field[r * old_in_dim + c];
+        }
+        for (size_t c = 0; c < old_d; ++c) {
+            new_field[r * new_in_dim + new_d + c] = W_field[r * old_in_dim + old_d + c];
+        }
+        for (size_t c = 0; c < old_d; ++c) {
+            new_gate[r * new_d + c] = W_gate[r * old_d + c];
         }
     }
-    // Net2Net Identity Principle: New dimension starts as pass-through identity
-    new_lin[old_d * new_d + old_d] = 1.0f;
 
-    W_lin = std::move(new_lin);
-    W_bilin = std::move(new_bilin);
-    W_rec = std::move(new_rec);
+    new_field[old_d * new_in_dim + old_d] = 1.0f;
+    new_gate[old_d * new_d + old_d] = 1.0f;
+
+    W_field = std::move(new_field);
+    W_gate = std::move(new_gate);
     state_trace.resize(new_d, 0.0f);
     dim = new_d;
 }
@@ -279,19 +313,17 @@ bool KaryonSovereignCore::trigger_morphogenetic_sprout() {
     auto child = std::make_unique<ContinuousSuperPrimitive>(new_id, current_latent_dim_, rng_);
     const auto& parent = primitives_[parent_idx];
 
-    child->W_lin = parent->W_lin;
-    child->W_bilin = parent->W_bilin;
-    child->W_rec = parent->W_rec;
-    child->alpha_lin = parent->alpha_lin;
-    child->alpha_bilin = parent->alpha_bilin;
-    child->alpha_rec = parent->alpha_rec;
+    child->W_field = parent->W_field;
+    child->W_gate = parent->W_gate;
+    child->gate_bias = parent->gate_bias;
+    child->decay_rate = parent->decay_rate;
+    child->tau_time = parent->tau_time;
     child->epigenetic_lock = 0.0f;
     child->birth_gain = 0.05f; // Smooth identity sprouting
 
     std::normal_distribution<float> mut_dist(0.0f, 0.02f);
-    for (auto& w : child->W_lin) w += mut_dist(rng_);
-    for (auto& w : child->W_bilin) w += mut_dist(rng_);
-    for (auto& w : child->W_rec) w += mut_dist(rng_);
+    for (auto& w : child->W_field) w += mut_dist(rng_);
+    for (auto& w : child->W_gate) w += mut_dist(rng_);
 
     primitives_.push_back(std::move(child));
     ticks_since_last_sprout_ = 0;
@@ -736,7 +768,7 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
 
     for (auto& p : primitives_) {
         p->update_plasticity_avx2(buf_latent_a_, buf_latent_a_, effective_plasticity_, buf_quad_);
-        p->adapt_coordinates(0.01f, 0.01f, effective_plasticity_);
+        p->adapt_manifold_coordinates(0.01f, 0.01f, effective_plasticity_);
         float lock_utility = (external_valence * 0.10f) + (0.05f - fe_error);
         p->update_epigenetic_lock(lock_utility);
     }

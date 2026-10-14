@@ -50,22 +50,33 @@ struct CoreConfig {
     float peril_threshold = 0.35f;        // Threshold of non-linear peril triggering trajectory veto
 };
 
+// =========================================================================
+// Continuous Sovereign Tensor-Field Super-Primitive (KEP Principle 3)
+// Replaces discrete operator zoos with a single unified parametric continuous field:
+// dh/dt = tau * [ (1 - gate) * (W_dyn * [x; h]) + gate * sigma(W_gate * x) * (W_dyn * x) - gamma * h ]
+// By varying coordinates (gate, gamma, tau), this single operator continuously
+// degenerates into pure linear projection, bilinear gating (SwiGLU-like),
+// leaky integrator (SSD/Mamba-like), or non-linear attractor basin.
+// =========================================================================
 class ContinuousSuperPrimitive {
 public:
     size_t id;
     size_t dim;
 
-    float alpha_lin;
-    float alpha_bilin;
-    float alpha_rec;
-    float tau_time;
-    float epigenetic_lock;
-    float birth_gain;
+    // Continuous manifold coordinates governing operator state:
+    float gate_bias;       // [0, 1]: Gating coordinate (0 = linear/recurrent flow, 1 = multiplicative gating)
+    float decay_rate;      // [0.01, 1.0]: Leaky dissipation / attractor depth gamma
+    float tau_time;        // Time-scale integration constant
+    float epigenetic_lock; // Invariant protection factor [0, 1]
+    float birth_gain;      // Net2Net identity scaling [0, 1]
 
-    alignas(32) std::vector<float> W_lin;
-    alignas(32) std::vector<float> W_bilin;
-    alignas(32) std::vector<float> W_rec;
-    std::vector<float> state_trace;
+    // Unified dynamic field weights:
+    // W_field: [dim x (2 * dim)] projecting concatenated [x; h_prev]
+    alignas(32) std::vector<float> W_field;
+    // W_gate: [dim x dim] projecting gating field
+    alignas(32) std::vector<float> W_gate;
+    
+    std::vector<float> state_trace; // h(t)
 
     ContinuousSuperPrimitive(size_t pid, size_t d, std::mt19937& rng);
 
@@ -73,7 +84,7 @@ public:
     void update_plasticity_avx2(std::span<const float> pre, std::span<const float> post, float lr, std::span<float> quad_buf);
     void mature_birth_gain(float rate = 0.005f);
     void update_epigenetic_lock(float utility);
-    void adapt_coordinates(float d_lin, float d_bilin, float d_rec);
+    void adapt_manifold_coordinates(float d_gate, float d_decay, float lr);
 
     // Dynamic Dimensional Morphogenesis (Net2Net Latent Sprouting)
     void sprout_latent_dimension();
