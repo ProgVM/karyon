@@ -194,6 +194,8 @@ private:
     float effective_exploration_;
     float somatic_energy_;
     float stagnation_potential_;           // Continuous non-static stagnation field trace
+    float appetitive_hunger_;              // Continuous goal frustration / appetitive drive
+    float last_goal_dist_sq_;              // Squared distance to goal on previous step
     size_t current_horizon_k_;
     size_t ticks_since_last_sprout_;
     size_t ticks_since_last_hormone_sprout_;

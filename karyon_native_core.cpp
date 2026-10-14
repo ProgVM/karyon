@@ -197,6 +197,8 @@ KaryonSovereignCore::KaryonSovereignCore(const CoreConfig& config)
       effective_exploration_(0.0f),
       somatic_energy_(1.0f),
       stagnation_potential_(0.0f),
+      appetitive_hunger_(0.0f),
+      last_goal_dist_sq_(10.0f),
       current_horizon_k_(config.min_horizon_k),
       ticks_since_last_sprout_(0),
       ticks_since_last_hormone_sprout_(0),
@@ -288,25 +290,26 @@ bool KaryonSovereignCore::trigger_hormone_sprout() {
     size_t new_id = hormones_.size();
     
     // Principle 5 (Causal Credit Assignment): Sprout along the gradient of current need
-    // If agent is failing to catch goals (low positive valence), sprout an appetitive/exploration hormone
+    // If agent is experiencing appetitive hunger/frustration, sprout an aggressive goal-seeking hormone
     // If agent is suffering high negative valence, sprout an evasive/peril-reduction hormone
     SovereignHormone new_h(new_id, config_.sensory_dim, rng_);
     
     // Data-driven endogenous initialization
-    if (stagnation_potential_ > 0.3f) {
-        // Stagnation/timidity detected: boost motor vigor and exploration
-        new_h.w_motor_vigor = 0.8f;
-        new_h.w_exploration = 0.5f;
-        new_h.w_threat_aversive = -0.2f;
-        new_h.valence_sensitivity = 0.5f;
+    if (appetitive_hunger_ > 0.4f || stagnation_potential_ > 0.3f) {
+        // Frustration / Stagnation: boost motor vigor, appetence and goal pursuit
+        new_h.w_motor_vigor = 1.0f;
+        new_h.w_threat_aversive = -0.3f; // Disinhibit timidity
+        new_h.w_exploration = 0.4f;
+        new_h.valence_sensitivity = 0.8f;
+        new_h.surprise_sensitivity = 0.2f;
     } else {
         // Balanced adaptive axis
         new_h.w_motor_vigor = 0.4f;
         new_h.w_plasticity = 0.3f;
-        new_h.w_threat_aversive = 0.2f;
-        new_h.valence_sensitivity = 0.3f;
+        new_h.w_threat_aversive = 0.3f;
+        new_h.valence_sensitivity = 0.4f;
     }
-    new_h.birth_gain = 0.1f; // Net2Net smooth birth
+    new_h.birth_gain = 0.15f; // Net2Net smooth birth
 
     hormones_.push_back(std::move(new_h));
     ticks_since_last_hormone_sprout_ = 0;
@@ -460,12 +463,16 @@ float KaryonSovereignCore::evaluate_trajectory(size_t action_id,
             goal_dist_sq += diff * diff;
         }
 
+        // Active Teleonomic Drive: Appetitive hunger amplifies weight on goal approach
+        float teleonomic_weight = 1.0f + 2.5f * appetitive_hunger_;
         float discount = std::pow(config_.discount_gamma, static_cast<float>(tau - 1));
-        total_cost += discount * goal_dist_sq;
+        total_cost += discount * goal_dist_sq * teleonomic_weight;
     }
 
-    if (max_trajectory_peril > config_.peril_threshold) {
-        total_cost += 1e5f * (max_trajectory_peril - config_.peril_threshold);
+    // Peril barrier threshold is dynamic: when starving/hungry, agent takes calculated risks
+    float dynamic_peril_thresh = config_.peril_threshold + 0.15f * std::min(1.0f, appetitive_hunger_);
+    if (max_trajectory_peril > dynamic_peril_thresh) {
+        total_cost += 1e5f * (max_trajectory_peril - dynamic_peril_thresh);
     }
     total_cost += immediate_pain_cost;
     return total_cost;
@@ -524,12 +531,16 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     telem.free_energy = fe_error;
     telem.sensory_prediction_error = fe_error;
 
-    // 5. Stagnation Detection
+    // 5. Stagnation & Goal Progress Detection
     float sensory_motion = 0.0f;
+    float current_goal_dist_sq = 0.0f;
     for (size_t s = 0; s < config_.sensory_dim; ++s) {
         float diff = current_state[s] - continuous_sensory_ema_[s];
         sensory_motion += diff * diff;
         continuous_sensory_ema_[s] = 0.90f * continuous_sensory_ema_[s] + 0.10f * current_state[s];
+
+        float g_diff = target_goal[s] - current_state[s];
+        current_goal_dist_sq += g_diff * g_diff;
     }
     sensory_motion = std::sqrt(sensory_motion / static_cast<float>(config_.sensory_dim));
     if (sensory_motion < 0.005f) {
@@ -538,6 +549,20 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
         stagnation_potential_ = std::max(0.0f, stagnation_potential_ - config_.stagnation_decay);
     }
     telem.stagnation_potential = stagnation_potential_;
+
+    // Teleonomic Progress & Appetitive Hunger:
+    // If distance to goal did not decrease, increase appetitive drive
+    float goal_delta = last_goal_dist_sq_ - current_goal_dist_sq;
+    last_goal_dist_sq_ = current_goal_dist_sq;
+
+    if (external_valence > 0.5f) {
+        // Goal achieved! Satiation resets hunger
+        appetitive_hunger_ = 0.0f;
+    } else if (goal_delta <= 0.001f) {
+        appetitive_hunger_ = std::min(1.5f, appetitive_hunger_ + 0.02f);
+    } else {
+        appetitive_hunger_ = std::max(0.0f, appetitive_hunger_ - 0.04f);
+    }
 
     // 6. Update Sovereign Endogenous Hormones
     update_sovereign_hormones(current_state, fe_error, external_valence);
