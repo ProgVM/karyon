@@ -847,15 +847,26 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     }
 
     // 4. Free Energy / Surprise Calculation
-    float fe_error = 0.0f;
+    // Free Energy F = Epistemic Surprise (sensory prediction error) + Teleonomic Divergence (pragmatic goal distance error)
+    float sensory_pred_err = 0.0f;
+    float pragmatic_goal_err = 0.0f;
+
     for (size_t s = 0; s < config_.sensory_dim; ++s) {
-        float err = next_state_observed[s] - buf_sensory_out_[s];
-        fe_error += err * err;
+        float s_err = next_state_observed[s] - buf_sensory_out_[s];
+        sensory_pred_err += s_err * s_err;
+
+        float g_err = next_state_observed[s] - target_goal[s];
+        pragmatic_goal_err += g_err * g_err;
     }
-    fe_error /= static_cast<float>(config_.sensory_dim);
+    sensory_pred_err /= static_cast<float>(config_.sensory_dim);
+    pragmatic_goal_err /= static_cast<float>(config_.sensory_dim);
+
+    // Unified Variational Free Energy: F = F_epistemic + F_pragmatic
+    float fe_error = sensory_pred_err + 0.5f * pragmatic_goal_err;
+
     moving_fe_ema_ = 0.95f * moving_fe_ema_ + 0.05f * fe_error;
     telem.free_energy = fe_error;
-    telem.sensory_prediction_error = fe_error;
+    telem.sensory_prediction_error = sensory_pred_err;
 
     // 5. Stagnation & Goal Progress Detection
     float sensory_motion = 0.0f;
