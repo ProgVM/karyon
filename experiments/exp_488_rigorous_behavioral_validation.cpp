@@ -88,10 +88,6 @@ VisualArenaQuality test_visual_behavioral_quality(karyon::KaryonSovereignCore& c
 
         render_into(fb_next, px, py, tx, ty);
 
-        // Step Core environment
-        auto telem = core.step_environment(fb_curr, fb_goal, fb_next, action);
-        res.cumulative_fe += telem.free_energy;
-
         // Measure true behavioral Euclidean distance
         float dx = px - tx;
         float dy = py - ty;
@@ -102,6 +98,10 @@ VisualArenaQuality test_visual_behavioral_quality(karyon::KaryonSovereignCore& c
             res.catches++;
             orbit_angle += 1.57f;
         }
+
+        float valence = (dist < 0.25f) ? 1.0f : 0.0f;
+        auto telem = core.step_environment(fb_curr, fb_goal, fb_next, action, valence);
+        res.cumulative_fe += telem.free_energy;
     }
 
     auto t1 = std::chrono::high_resolution_clock::now();
@@ -120,7 +120,8 @@ int main() {
 
     karyon::CoreConfig cfg;
     cfg.sensory_dim = 256;
-    cfg.latent_dim = 32;
+    cfg.initial_latent_dim = 32;
+    cfg.max_latent_dim = 64;
     cfg.action_dim = 4;
     cfg.initial_primitives = 2;
     cfg.max_primitives = 6;

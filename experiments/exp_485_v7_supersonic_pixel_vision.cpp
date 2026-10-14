@@ -111,7 +111,8 @@ int main() {
 
     karyon::CoreConfig cfg;
     cfg.sensory_dim = 256;      // Full 16x16 pixel retina
-    cfg.latent_dim = 32;       // Compressed latent manifold
+    cfg.initial_latent_dim = 32;
+    cfg.max_latent_dim = 64;       // Compressed latent manifold
     cfg.action_dim = 4;        // 4D analog continuous actuation
     cfg.initial_primitives = 2;
     cfg.max_primitives = 6;
@@ -144,7 +145,8 @@ int main() {
 
         arena.render_next();
 
-        auto telem = core.step_environment(arena.fb_current, arena.fb_goal, arena.fb_next, continuous_action);
+        float valence = caught ? 1.0f : 0.0f;
+        auto telem = core.step_environment(arena.fb_current, arena.fb_goal, arena.fb_next, continuous_action, valence);
         window_fe += telem.free_energy;
 
         if (f % 2500 == 0 || f == total_frames) {
@@ -154,7 +156,7 @@ int main() {
                       << " (+" << std::setw(3) << window_catches << " in window)"
                       << " | Optical FE: " << std::fixed << std::setprecision(4) << avg_fe
                       << " | Horizon K: " << core.get_current_horizon()
-                      << " | Noradrenaline: " << std::fixed << std::setprecision(3) << core.get_noradrenaline()
+                      << " | Plasticity: " << std::fixed << std::setprecision(3) << core.get_effective_plasticity()
                       << " | Thruster u0: " << std::fixed << std::setprecision(2) << continuous_action[0]
                       << "\n";
             window_catches = 0;

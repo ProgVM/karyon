@@ -116,6 +116,64 @@ struct SovereignHormone {
 
     SovereignHormone(size_t hid, size_t sensory_dim, std::mt19937& rng);
 };
+// =========================================================================
+// Continuous Dynamic Episodic Memory Bank (Unbounded Non-Parametric Memory)
+// Implements sparse, dynamically expanding topological memory slots:
+// M = {(k_i, v_i, u_i, n_i, t_i)}
+// with AVX2 vectorized associative cosine retrieval, novelty detection,
+// and inhibition-of-return to permanently solve deep non-convex mazes.
+// =========================================================================
+struct EpisodicMemorySlot {
+    std::vector<float> key;       // Latent spatial/sensory coordinate k_i
+    std::vector<float> value;     // Consequence vector v_i (action outcomes, valence, threat)
+    float utility;                // Epigenetic protection / causal importance u_i
+    float visit_count;            // Familiarity / visit frequency n_i
+    uint64_t last_accessed_step;  // Recency timestamp t_i
+};
+
+class DynamicEpisodicMemory {
+public:
+    size_t key_dim;
+    size_t value_dim;
+    float similarity_threshold;   // Radius for clustering new memory slots
+    std::vector<EpisodicMemorySlot> slots;
+
+    DynamicEpisodicMemory(size_t k_dim, size_t v_dim, float sim_thresh = 0.92f)
+        : key_dim(k_dim), value_dim(v_dim), similarity_threshold(sim_thresh) {
+        slots.reserve(1024); // Zero-allocation buffer pre-reserve
+    }
+
+    // Dynamic Net2Net dimensional sprouting support
+    void sprout_dimension() {
+        key_dim++;
+        for (auto& slot : slots) {
+            slot.key.push_back(0.0f);
+        }
+    }
+
+    // Query associative memory with AVX2 dot product:
+    // Returns {best_similarity, best_slot_index, familiarity, read_value}
+    struct QueryResult {
+        float max_sim = -1.0f;
+        int best_idx = -1;
+        float familiarity = 0.0f;
+        std::vector<float> retrieved_value;
+    };
+
+    QueryResult query(const std::vector<float>& query_key, float* scratch_read = nullptr) const;
+
+    // Record or update memory trace at current state
+    void record(const std::vector<float>& key,
+                const std::vector<float>& value,
+                float utility,
+                uint64_t current_step);
+
+    // Compute Inhibition-of-Return penalty for a candidate next state
+    float compute_inhibition_of_return(const std::vector<float>& candidate_key) const;
+
+    size_t size() const { return slots.size(); }
+    void clear() { slots.clear(); }
+};
 
 struct CoreTelemetry {
     float free_energy = 0.0f;
@@ -139,6 +197,8 @@ struct CoreTelemetry {
     bool event_hormone_pruned = false;
     bool event_latent_sprouted = false;
     size_t action_discrete_chosen = 0;
+    size_t episodic_memory_slots = 0;     // Number of unbounded episodic memory nodes
+    float episodic_familiarity = 0.0f;    // Familiarity / novelty index of current state
 };
 
 class KaryonSovereignCore {
@@ -198,6 +258,8 @@ public:
 
     bool trigger_latent_dimension_sprout();
     size_t get_current_latent_dim() const { return current_latent_dim_; }
+    size_t get_episodic_memory_size() const { return episodic_memory_.size(); }
+    void clear_episodic_memory() { episodic_memory_.clear(); }
 
 private:
     CoreConfig config_;
@@ -211,6 +273,16 @@ private:
     std::vector<float> action_delta_table_; // [action_dim x sensory_dim] for trajectory rollout
     std::vector<float> W_action_valence_;   // [action_dim x sensory_dim] linear direct reflex
     alignas(32) std::vector<float> W_peril_latent_; // [action_dim x latent_dim] Non-linear Peril Field
+
+    // Dual-Level Hierarchical Active Inference & Successor Diffusion Attractor
+    alignas(32) std::vector<float> M_successor_;        // [latent_dim x latent_dim] Topological graph diffusion
+    alignas(32) std::vector<float> goal_successor_map_; // [latent_dim] Diffused topological potential of goal
+    alignas(32) std::vector<float> macro_subgoal_latent_; // [latent_dim] Level 2 Slow Macro-Attractor
+    float macro_subgoal_timer_;                        // Macro-attractor phase counter
+
+    // Unbounded Dynamic Episodic Memory Bank
+    DynamicEpisodicMemory episodic_memory_;
+    uint64_t global_step_counter_ = 0;
 
     // Temporal Eligibility Traces for Backward Threat Attribution
     std::vector<float> action_eligibility_trace_; // [action_dim x sensory_dim]

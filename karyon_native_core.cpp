@@ -28,6 +28,98 @@ inline float avx2_dot_product(const float* a, const float* b, size_t size) {
 }
 
 // =========================================================================
+// Continuous Dynamic Episodic Memory Bank Implementation
+// =========================================================================
+DynamicEpisodicMemory::QueryResult DynamicEpisodicMemory::query(const std::vector<float>& query_key, float* scratch_read) const {
+    QueryResult res;
+    if (slots.empty()) return res;
+
+    float best_sim = -1.0f;
+    int best_i = -1;
+
+    float q_norm_sq = avx2_dot_product(query_key.data(), query_key.data(), key_dim);
+    float q_norm = std::sqrt(std::max(1e-8f, q_norm_sq));
+
+    for (size_t i = 0; i < slots.size(); ++i) {
+        const auto& sl = slots[i];
+        float k_norm_sq = avx2_dot_product(sl.key.data(), sl.key.data(), key_dim);
+        float k_norm = std::sqrt(std::max(1e-8f, k_norm_sq));
+
+        float dot = avx2_dot_product(query_key.data(), sl.key.data(), key_dim);
+        float cosine_sim = dot / (q_norm * k_norm + 1e-8f);
+
+        if (cosine_sim > best_sim) {
+            best_sim = cosine_sim;
+            best_i = static_cast<int>(i);
+        }
+    }
+
+    res.max_sim = best_sim;
+    res.best_idx = best_i;
+    if (best_i >= 0) {
+        res.familiarity = slots[best_i].visit_count;
+        res.retrieved_value = slots[best_i].value;
+        if (scratch_read) {
+            std::memcpy(scratch_read, slots[best_i].value.data(), sizeof(float) * value_dim);
+        }
+    }
+    return res;
+}
+
+void DynamicEpisodicMemory::record(const std::vector<float>& key,
+                                   const std::vector<float>& value,
+                                   float utility,
+                                   uint64_t current_step) {
+    auto q = query(key);
+    if (q.best_idx >= 0 && q.max_sim >= similarity_threshold) {
+        // Soft update existing memory trace (Bayesian fusion of consequences)
+        auto& sl = slots[q.best_idx];
+        sl.visit_count += 1.0f;
+        sl.last_accessed_step = current_step;
+        sl.utility = std::max(sl.utility, utility);
+
+        float blend = 0.25f / std::sqrt(sl.visit_count);
+        for (size_t d = 0; d < value_dim; ++d) {
+            sl.value[d] = (1.0f - blend) * sl.value[d] + blend * value[d];
+        }
+    } else {
+        // Sprout a new episodic topological memory node (Unbounded Lifelong Expansion)
+        EpisodicMemorySlot new_slot;
+        new_slot.key = key;
+        new_slot.value = value;
+        new_slot.utility = utility;
+        new_slot.visit_count = 1.0f;
+        new_slot.last_accessed_step = current_step;
+        slots.push_back(std::move(new_slot));
+    }
+}
+
+float DynamicEpisodicMemory::compute_inhibition_of_return(const std::vector<float>& candidate_key) const {
+    if (slots.empty()) return 0.0f;
+
+    float q_norm_sq = avx2_dot_product(candidate_key.data(), candidate_key.data(), key_dim);
+    float q_norm = std::sqrt(std::max(1e-8f, q_norm_sq));
+
+    float max_penalty = 0.0f;
+    for (const auto& sl : slots) {
+        float k_norm_sq = avx2_dot_product(sl.key.data(), sl.key.data(), key_dim);
+        float k_norm = std::sqrt(std::max(1e-8f, k_norm_sq));
+        float dot = avx2_dot_product(candidate_key.data(), sl.key.data(), key_dim);
+        float sim = dot / (q_norm * k_norm + 1e-8f);
+
+        if (sim > 0.85f) {
+            // Repulsion scales with how often this state has been visited
+            float recency_boost = std::min(5.0f, sl.visit_count * 0.35f);
+            float penalty = sim * recency_boost;
+            if (penalty > max_penalty) {
+                max_penalty = penalty;
+            }
+        }
+    }
+    return max_penalty;
+}
+
+// =========================================================================
 // Continuous Sovereign Tensor-Field Super-Primitive Implementation (KEP Principle 3)
 // =========================================================================
 ContinuousSuperPrimitive::ContinuousSuperPrimitive(size_t pid, size_t d, std::mt19937& rng)
@@ -263,7 +355,9 @@ KaryonSovereignCore::KaryonSovereignCore(const CoreConfig& config)
       ticks_since_last_sprout_(0),
       ticks_since_last_hormone_sprout_(0),
       ticks_since_last_latent_sprout_(0),
-      moving_fe_ema_(0.05f) {
+      moving_fe_ema_(0.05f),
+      episodic_memory_(config.initial_latent_dim, config.action_dim + 2, 0.90f),
+      global_step_counter_(0) {
 
     for (size_t i = 0; i < config_.initial_primitives; ++i) {
         primitives_.push_back(std::make_unique<ContinuousSuperPrimitive>(i, current_latent_dim_, rng_));
@@ -281,6 +375,17 @@ KaryonSovereignCore::KaryonSovereignCore(const CoreConfig& config)
     W_peril_latent_.resize(config_.action_dim * current_latent_dim_, 0.0f);
     action_eligibility_trace_.resize(config_.action_dim * config_.sensory_dim, 0.0f);
     continuous_sensory_ema_.resize(config_.sensory_dim, 0.0f);
+
+    std::normal_distribution<float> dist_m(0.0f, 0.15f);
+    for (auto& w : W_motor_) w = dist_m(rng_);
+
+    M_successor_.resize(current_latent_dim_ * current_latent_dim_, 0.0f);
+    for (size_t l = 0; l < current_latent_dim_; ++l) {
+        M_successor_[l * current_latent_dim_ + l] = 1.0f; // Diagonal identity
+    }
+    goal_successor_map_.resize(current_latent_dim_, 0.0f);
+    macro_subgoal_latent_.resize(current_latent_dim_, 0.0f);
+    macro_subgoal_timer_ = 0.0f;
 
     std::normal_distribution<float> dist_down(0.0f, 1.0f / std::sqrt(static_cast<float>(config_.sensory_dim)));
     for (auto& w : W_sensory_down_) w = dist_down(rng_);
@@ -431,6 +536,21 @@ bool KaryonSovereignCore::trigger_latent_dimension_sprout() {
     }
     W_peril_latent_ = std::move(new_peril);
 
+    // 4b. Expand M_successor_ [new_d x new_d]
+    std::vector<float> new_m(new_d * new_d, 0.0f);
+    for (size_t r = 0; r < old_d; ++r) {
+        for (size_t c = 0; c < old_d; ++c) {
+            new_m[r * new_d + c] = M_successor_[r * old_d + c];
+        }
+    }
+    new_m[old_d * new_d + old_d] = 1.0f;
+    M_successor_ = std::move(new_m);
+    goal_successor_map_.resize(new_d, 0.0f);
+    macro_subgoal_latent_.resize(new_d, 0.0f);
+
+    // 4c. Expand Dynamic Episodic Memory Key Dimension
+    episodic_memory_.sprout_dimension();
+
     // 5. Expand internal scratchpads
     buf_latent_a_.resize(new_d, 0.0f);
     buf_latent_b_.resize(new_d, 0.0f);
@@ -561,11 +681,12 @@ void KaryonSovereignCore::optimize_continuous_action_trajectory(std::span<const 
     float step_size = 0.15f * effective_motor_vigor_;
 
     for (size_t step = 0; step < variational_steps; ++step) {
-        // Continuous trajectory forward simulation along the continuous action vector
+        // Continuous trajectory forward simulation along the continuous action vector:
+        // Efference projection through W_motor:
         for (size_t d = 0; d < S; ++d) {
             float delta_d = 0.0f;
             for (size_t a = 0; a < A; ++a) {
-                delta_d += action_delta_table_[a * S + d] * action_inout[a];
+                delta_d += W_motor_[d * A + a] * action_inout[a];
             }
             buf_sensory_out_[d] = current_state[d] + delta_d;
         }
@@ -575,14 +696,14 @@ void KaryonSovereignCore::optimize_continuous_action_trajectory(std::span<const 
             buf_adjoint_sensory_[d] = target_goal[d] - buf_sensory_out_[d];
         }
 
-        // Variational adjoint step in action space
+        // Variational adjoint step in action space: dF/du_a = sum_d W_motor[d, a] * (target[d] - pred[d])
         for (size_t a = 0; a < A; ++a) {
             float grad_a = 0.0f;
             for (size_t d = 0; d < S; ++d) {
-                grad_a += action_delta_table_[a * S + d] * buf_adjoint_sensory_[d];
+                grad_a += W_motor_[d * A + a] * buf_adjoint_sensory_[d];
             }
-            // Continuous gradient update bounded by tanh
-            action_inout[a] = std::tanh(action_inout[a] + step_size * grad_a);
+            // Continuous gradient update along Free Energy manifold
+            action_inout[a] = std::clamp(action_inout[a] + step_size * grad_a, -1.0f, 1.0f);
         }
     }
 }
@@ -599,30 +720,74 @@ float KaryonSovereignCore::evaluate_trajectory(size_t action_id,
     float expected_valence = avx2_dot_product(v_row, s0.data(), config_.sensory_dim);
     float immediate_pain_cost = effective_threat_weight_ * 5.0f * std::max(0.0f, -expected_valence);
 
+    size_t S = config_.sensory_dim;
+    size_t L = current_latent_dim_;
+
     for (size_t tau = 1; tau <= horizon_k; ++tau) {
-        const float* delta_row = action_delta_table_.data() + action_id * config_.sensory_dim;
-        for (size_t d = 0; d < config_.sensory_dim; ++d) {
+        const float* delta_row = action_delta_table_.data() + action_id * S;
+        for (size_t d = 0; d < S; ++d) {
             sim[d] += delta_row[d];
         }
 
-        for (size_t l = 0; l < current_latent_dim_; ++l) {
-            const float* w_row = W_sensory_down_.data() + l * config_.sensory_dim;
-            buf_latent_b_[l] = std::tanh(avx2_dot_product(w_row, sim.data(), config_.sensory_dim));
+        for (size_t l = 0; l < L; ++l) {
+            const float* w_row = W_sensory_down_.data() + l * S;
+            buf_latent_b_[l] = std::tanh(avx2_dot_product(w_row, sim.data(), S));
         }
 
         float step_peril = compute_latent_peril(action_id, buf_latent_b_);
         max_trajectory_peril = std::max(max_trajectory_peril, step_peril);
 
+        // 1. Direct Euclidean goal distance
         float goal_dist_sq = 0.0f;
-        for (size_t d = 0; d < config_.sensory_dim; ++d) {
+        for (size_t d = 0; d < S; ++d) {
             float diff = target_goal[d] - sim[d];
             goal_dist_sq += diff * diff;
         }
 
+        // 2. Successor Topological Geodesic:
+        // Project predicted latent state through successor diffusion map M:
+        // m_sim = M * buf_latent_b_
+        float topo_geodesic_dist = 0.0f;
+        for (size_t l = 0; l < L; ++l) {
+            const float* m_row = M_successor_.data() + l * L;
+            float m_val = avx2_dot_product(m_row, buf_latent_b_.data(), L);
+            float diff = goal_successor_map_[l] - m_val;
+            topo_geodesic_dist += diff * diff;
+        }
+
+        // 3. Hierarchical Macro-Attractor Alignment (Level 2 Sub-Goal):
+        float macro_cost = 0.0f;
+        if (stagnation_potential_ > 0.05f || appetitive_hunger_ > 0.1f) {
+            for (size_t l = 0; l < L; ++l) {
+                float diff = macro_subgoal_latent_[l] - buf_latent_b_[l];
+                macro_cost += diff * diff;
+            }
+        }
+
+        // 4. Non-Parametric Episodic Memory Query & Inhibition-of-Return
+        // Prevent cyclic traps and attract towards historically fruitful paths
+        float memory_ior = episodic_memory_.compute_inhibition_of_return(buf_latent_b_);
+        auto mem_q = episodic_memory_.query(buf_latent_b_);
+        float memory_val_bonus = 0.0f;
+        if (mem_q.best_idx >= 0 && mem_q.max_sim > 0.88f) {
+            // value[0] is historical valence of this state
+            if (!mem_q.retrieved_value.empty()) {
+                memory_val_bonus = mem_q.retrieved_value[0];
+            }
+        }
+
+        // Blend Euclidean and Topological Geodesic by hunger and stagnation
+        float topo_weight = std::clamp(stagnation_potential_ * 2.5f + appetitive_hunger_ * 1.5f, 0.15f, 0.90f);
+        float effective_spatial_cost = (1.0f - topo_weight) * goal_dist_sq +
+                                       topo_weight * topo_geodesic_dist +
+                                       0.35f * macro_cost +
+                                       0.15f * memory_ior -
+                                       0.30f * memory_val_bonus;
+
         // Active Teleonomic Drive: Appetitive hunger amplifies weight on goal approach
         float teleonomic_weight = 1.0f + 2.5f * appetitive_hunger_;
         float discount = std::pow(config_.discount_gamma, static_cast<float>(tau - 1));
-        total_cost += discount * goal_dist_sq * teleonomic_weight;
+        total_cost += discount * effective_spatial_cost * teleonomic_weight;
     }
 
     // Endogenous Riemannian Geodesic Curvature Barrier:
@@ -783,18 +948,27 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
         p->update_epigenetic_lock(lock_utility);
     }
 
-    // Direct Motor Synaptic Rewiring
+    // Direct Motor Synaptic Rewiring via Causal Afference Credit
+    // delta_obs = next_state_observed - current_state
+    // If motor action m moved state towards target_goal, reward W_motor:
     for (size_t d = 0; d < config_.sensory_dim; ++d) {
-        float motor_gradient = (target_goal[d] - current_state[d]);
+        float observed_motion = next_state_observed[d] - current_state[d];
+        float goal_dir = target_goal[d] - current_state[d];
         float* w_row = W_motor_.data() + d * config_.action_dim;
         for (size_t m = 0; m < config_.action_dim; ++m) {
-            float delta = 0.0f;
+            float act = action_taken[m];
+            // Track causal correlation between motor action and physical observed movement
+            float motor_causality = observed_motion * act;
+            float alignment_with_goal = observed_motion * goal_dir;
+            
+            float dW = 0.0f;
             if (external_valence < 0.0f) {
-                delta = -effective_plasticity_ * 3.0f * std::abs(external_valence) * action_taken[m] * current_state[d];
+                dW = -effective_plasticity_ * 4.0f * std::abs(external_valence) * act * current_state[d];
             } else {
-                delta = effective_plasticity_ * (external_valence * 2.0f + 0.1f) * motor_gradient * action_taken[m];
+                // Natural Hebbian causal reinforcement: actions that move state towards goal are strengthened
+                dW = effective_plasticity_ * (motor_causality * 2.0f + alignment_with_goal * 1.5f + (external_valence * 2.0f + 0.1f) * goal_dir * act);
             }
-            w_row[m] += delta;
+            w_row[m] += dW;
             w_row[m] = std::clamp(w_row[m], -4.0f, 4.0f);
         }
     }
@@ -826,8 +1000,77 @@ CoreTelemetry KaryonSovereignCore::step_environment(const std::vector<float>& cu
             effective_plasticity_ * 5.0f * (delta - action_delta_table_[discrete_action * config_.sensory_dim + d]);
     }
 
+    // Successor Representation & Hierarchical Macro-Attractor Dynamics:
+    size_t L = current_latent_dim_;
+    size_t S = config_.sensory_dim;
+
+    for (size_t l = 0; l < L; ++l) {
+        const float* w_row = W_sensory_down_.data() + l * S;
+        buf_latent_a_[l] = std::tanh(avx2_dot_product(w_row, current_state.data(), S));
+        buf_latent_b_[l] = std::tanh(avx2_dot_product(w_row, next_state_observed.data(), S));
+    }
+
+    // M_{t+1} = M_t + eta * (phi_t + gamma * M * phi_{t+1} - M * phi_t)
+    float gamma_succ = 0.90f;
+    float lr_succ = effective_plasticity_ * 2.0f;
+    for (size_t r = 0; r < L; ++r) {
+        float* m_row = M_successor_.data() + r * L;
+        float m_next = avx2_dot_product(m_row, buf_latent_b_.data(), L);
+        float m_curr = avx2_dot_product(m_row, buf_latent_a_.data(), L);
+        float td_error = buf_latent_a_[r] + gamma_succ * m_next - m_curr;
+        for (size_t c = 0; c < L; ++c) {
+            m_row[c] += lr_succ * td_error * buf_latent_a_[c];
+            m_row[c] = std::clamp(m_row[c], -3.0f, 3.0f);
+        }
+    }
+
+    // Goal successor map imprinting:
+    if (external_valence > 0.5f) {
+        for (size_t l = 0; l < L; ++l) {
+            const float* m_row = M_successor_.data() + l * L;
+            goal_successor_map_[l] = 0.75f * goal_successor_map_[l] + 0.25f * avx2_dot_product(m_row, buf_latent_b_.data(), L);
+        }
+    } else {
+        for (size_t l = 0; l < L; ++l) {
+            const float* w_down = W_sensory_down_.data() + l * S;
+            float z_goal = std::tanh(avx2_dot_product(w_down, target_goal.data(), S));
+            goal_successor_map_[l] = 0.995f * goal_successor_map_[l] + 0.005f * z_goal;
+        }
+    }
+
+    // Level 2 Slow Macro-Attractor Evolution:
+    macro_subgoal_timer_ += 1.0f;
+    if (macro_subgoal_timer_ > 40.0f || stagnation_potential_ > 0.35f) {
+        macro_subgoal_timer_ = 0.0f;
+        if (stagnation_potential_ > 0.25f) {
+            std::normal_distribution<float> macro_dist(0.0f, 0.7f);
+            for (size_t l = 0; l < L; ++l) {
+                macro_subgoal_latent_[l] = std::tanh(-buf_latent_a_[l] + macro_dist(rng_));
+            }
+        } else {
+            for (size_t l = 0; l < L; ++l) {
+                macro_subgoal_latent_[l] = 0.65f * macro_subgoal_latent_[l] + 0.35f * goal_successor_map_[l];
+            }
+        }
+    }
+
+    // Unbounded Episodic Memory Recording:
+    // Encode current transition outcome into non-parametric memory
+    global_step_counter_++;
+    std::vector<float> mem_val(config_.action_dim + 2, 0.0f);
+    mem_val[0] = external_valence;
+    if (discrete_action < config_.action_dim) {
+        mem_val[1 + discrete_action] = 1.0f;
+    }
+    // High utility if state yielded non-zero valence or high surprise
+    float mem_util = std::abs(external_valence) * 2.0f + 0.1f;
+    episodic_memory_.record(buf_latent_a_, mem_val, mem_util, global_step_counter_);
+
     auto telem = step_environment(current_state, target_goal, next_state_observed, continuous_act, external_valence);
     telem.action_discrete_chosen = discrete_action;
+    telem.episodic_memory_slots = episodic_memory_.size();
+    auto cur_q = episodic_memory_.query(buf_latent_a_);
+    telem.episodic_familiarity = cur_q.familiarity;
     return telem;
 }
 
