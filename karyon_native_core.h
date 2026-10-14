@@ -47,7 +47,8 @@ struct CoreConfig {
     size_t sprouting_cooldown_ticks = 1000;
     float stagnation_decay = 0.03f;       // Continuous exponential decay of stagnation field
     float aversive_weight = 20.0f;        // Base weight of predicted threat in mental simulation
-    float peril_threshold = 0.35f;        // Threshold of non-linear peril triggering trajectory veto
+    float peril_threshold = 0.35f;        // Deprecated fallback threshold
+    float metric_curvature_scale = 10.0f; // Scale of Riemannian curvature barrier
 };
 
 // =========================================================================

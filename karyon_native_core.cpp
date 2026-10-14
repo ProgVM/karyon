@@ -532,9 +532,14 @@ void KaryonSovereignCore::decide_continuous_action(std::span<const float> curren
             motor_drive += w * buf_adjoint_sensory_[d];
         }
 
+        // Riemannian metric curvature barrier:
+        // Threat is an endogenous geometric curvature in latent manifold rather than hardcoded threshold.
+        // g_a = 1 + exp(5.0 * peril)
+        // High peril curves space exponentially, naturally deflecting geodesic motor trajectories.
         float peril = compute_latent_peril(a, buf_latent_a_);
-        if (peril > config_.peril_threshold) {
-            motor_drive -= effective_threat_weight_ * (peril - config_.peril_threshold) * 5.0f;
+        if (peril > 0.0f) {
+            float curvature_drag = std::expm1(4.0f * peril) * effective_threat_weight_ * 0.25f;
+            motor_drive -= curvature_drag;
         }
 
         // Sovereign Hormonal motor vigor scaling
@@ -620,10 +625,15 @@ float KaryonSovereignCore::evaluate_trajectory(size_t action_id,
         total_cost += discount * goal_dist_sq * teleonomic_weight;
     }
 
-    // Peril barrier threshold is dynamic: when starving/hungry, agent takes calculated risks
-    float dynamic_peril_thresh = config_.peril_threshold + 0.15f * std::min(1.0f, appetitive_hunger_);
-    if (max_trajectory_peril > dynamic_peril_thresh) {
-        total_cost += 1e5f * (max_trajectory_peril - dynamic_peril_thresh);
+    // Endogenous Riemannian Geodesic Curvature Barrier:
+    // Replaces hardcoded peril_threshold and artificial 1e5f infinite penalty.
+    // The metric tensor deformation along the trajectory is:
+    // ds^2 = (1 + expm1(6.0 * max_trajectory_peril)) * ||v||^2
+    // Starvation/appetitive hunger flattens the perceived metric curvature, allowing bold risk-taking.
+    if (max_trajectory_peril > 0.0f) {
+        float hunger_mitigation = 1.0f / (1.0f + 2.0f * appetitive_hunger_);
+        float metric_curvature = std::expm1(5.0f * max_trajectory_peril) * hunger_mitigation;
+        total_cost += effective_threat_weight_ * config_.metric_curvature_scale * metric_curvature;
     }
     total_cost += immediate_pain_cost;
     return total_cost;
