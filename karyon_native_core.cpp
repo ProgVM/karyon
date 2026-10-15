@@ -671,6 +671,17 @@ void KaryonSovereignCore::decide_continuous_action(std::span<const float> curren
         const float* ml_row = W_motor_latent_.data() + a * current_latent_dim_;
         motor_drive += avx2_dot_product(ml_row, buf_latent_a_.data(), current_latent_dim_);
 
+        // Fast Contextual Resonant Recall from Dynamic Episodic Memory
+        // Query memory for high-utility historical actions associated with similar latent states
+        auto mem_q = episodic_memory_.query(buf_latent_a_);
+        if (mem_q.best_idx >= 0 && mem_q.max_sim > 0.88f && !mem_q.retrieved_value.empty()) {
+            float memory_valence = mem_q.retrieved_value[0];
+            if (memory_valence > 0.01f && (1 + a) < mem_q.retrieved_value.size()) {
+                float recorded_action = mem_q.retrieved_value[1 + a];
+                motor_drive += 0.8f * memory_valence * recorded_action;
+            }
+        }
+
         // Riemannian metric curvature barrier:
         // Threat is an endogenous geometric curvature in latent manifold rather than hardcoded threshold.
         // High peril curves space, deflecting geodesic motor trajectories.
@@ -1173,22 +1184,25 @@ CoreTelemetry KaryonSovereignCore::step_environment(const std::vector<float>& cu
     }
 
     // Unbounded Episodic Memory Recording:
-    // Encode current transition outcome into non-parametric memory
+    // Encode transition outcome into non-parametric memory after environmental observation
     global_step_counter_++;
     std::vector<float> mem_val(config_.action_dim + 2, 0.0f);
     mem_val[0] = external_valence;
-    if (discrete_action < config_.action_dim) {
-        mem_val[1 + discrete_action] = 1.0f;
+    for (size_t a = 0; a < config_.action_dim && a < continuous_act.size(); ++a) {
+        mem_val[1 + a] = continuous_act[a];
     }
     // High utility if state yielded non-zero valence or high surprise
     float mem_util = std::abs(external_valence) * 2.0f + 0.1f;
-    episodic_memory_.record(buf_latent_a_, mem_val, mem_util, global_step_counter_);
 
     auto telem = step_environment(std::span<const float>(current_state.data(), current_state.size()),
                                   std::span<const float>(target_goal.data(), target_goal.size()),
                                   std::span<const float>(next_state_observed.data(), next_state_observed.size()),
                                   std::span<const float>(continuous_act.data(), continuous_act.size()),
                                   external_valence);
+
+    // Record with newly compressed latent state buf_latent_a_
+    episodic_memory_.record(buf_latent_a_, mem_val, mem_util, global_step_counter_);
+
     telem.action_discrete_chosen = discrete_action;
     telem.episodic_memory_slots = episodic_memory_.size();
     auto cur_q = episodic_memory_.query(buf_latent_a_);
