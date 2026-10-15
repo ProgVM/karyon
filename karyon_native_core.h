@@ -270,6 +270,7 @@ private:
     alignas(32) std::vector<float> W_sensory_down_;
     alignas(32) std::vector<float> W_sensory_up_;
     alignas(32) std::vector<float> W_motor_;
+    alignas(32) std::vector<float> W_motor_latent_; // [action_dim x latent_dim] Coupling latent manifold to motor output
     std::vector<float> action_delta_table_; // [action_dim x sensory_dim] for trajectory rollout
     std::vector<float> W_action_valence_;   // [action_dim x sensory_dim] linear direct reflex
     alignas(32) std::vector<float> W_peril_latent_; // [action_dim x latent_dim] Non-linear Peril Field

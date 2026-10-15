@@ -370,6 +370,7 @@ KaryonSovereignCore::KaryonSovereignCore(const CoreConfig& config)
     W_sensory_down_.resize(current_latent_dim_ * config_.sensory_dim);
     W_sensory_up_.resize(config_.sensory_dim * current_latent_dim_);
     W_motor_.resize(config_.sensory_dim * config_.action_dim, 0.0f);
+    W_motor_latent_.resize(config_.action_dim * current_latent_dim_, 0.0f);
     action_delta_table_.resize(config_.action_dim * config_.sensory_dim, 0.0f);
     W_action_valence_.resize(config_.action_dim * config_.sensory_dim, 0.0f);
     W_peril_latent_.resize(config_.action_dim * current_latent_dim_, 0.0f);
@@ -378,6 +379,9 @@ KaryonSovereignCore::KaryonSovereignCore(const CoreConfig& config)
 
     std::normal_distribution<float> dist_m(0.0f, 0.15f);
     for (auto& w : W_motor_) w = dist_m(rng_);
+
+    std::normal_distribution<float> dist_ml(0.0f, 0.15f);
+    for (auto& w : W_motor_latent_) w = dist_ml(rng_);
 
     M_successor_.resize(current_latent_dim_ * current_latent_dim_, 0.0f);
     for (size_t l = 0; l < current_latent_dim_; ++l) {
@@ -536,6 +540,16 @@ bool KaryonSovereignCore::trigger_latent_dimension_sprout() {
     }
     W_peril_latent_ = std::move(new_peril);
 
+    // 4a. Expand W_motor_latent_ [A x new_d]
+    std::vector<float> new_motor_latent(A * new_d, 0.0f);
+    for (size_t a = 0; a < A; ++a) {
+        for (size_t l = 0; l < old_d; ++l) {
+            new_motor_latent[a * new_d + l] = W_motor_latent_[a * old_d + l];
+        }
+        new_motor_latent[a * new_d + old_d] = 0.0f; // Zero-shock Net2Net identity
+    }
+    W_motor_latent_ = std::move(new_motor_latent);
+
     // 4b. Expand M_successor_ [new_d x new_d]
     std::vector<float> new_m(new_d * new_d, 0.0f);
     for (size_t r = 0; r < old_d; ++r) {
@@ -647,10 +661,15 @@ void KaryonSovereignCore::decide_continuous_action(std::span<const float> curren
 
     for (size_t a = 0; a < config_.action_dim; ++a) {
         float motor_drive = 0.0f;
+        // Direct sensory adjoint error drive
         for (size_t d = 0; d < config_.sensory_dim; ++d) {
             float w = W_motor_[d * config_.action_dim + a];
             motor_drive += w * buf_adjoint_sensory_[d];
         }
+
+        // Deep Latent Manifold Coupling (Cortex to Motor Field)
+        const float* ml_row = W_motor_latent_.data() + a * current_latent_dim_;
+        motor_drive += avx2_dot_product(ml_row, buf_latent_a_.data(), current_latent_dim_);
 
         // Riemannian metric curvature barrier:
         // Threat is an endogenous geometric curvature in latent manifold rather than hardcoded threshold.
@@ -942,6 +961,7 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     telem.event_hormone_pruned = (hormones_.size() < hormone_count_before);
 
     // 9. Numerically Bounded Plasticity Updates
+    // A. Update Sensory Expansion (W_sensory_up_): Latent -> Observed
     for (size_t s = 0; s < config_.sensory_dim; ++s) {
         float err_s = next_state_observed[s] - buf_sensory_out_[s];
         err_s = std::clamp(err_s, -2.0f, 2.0f);
@@ -949,6 +969,24 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
         for (size_t l = 0; l < current_latent_dim_; ++l) {
             w_row[l] += effective_plasticity_ * err_s * buf_latent_a_[l];
             w_row[l] = std::clamp(w_row[l], -3.0f, 3.0f);
+        }
+    }
+
+    // B. Update Sensory Compression Encoder (W_sensory_down_): Sensory -> Latent
+    for (size_t l = 0; l < current_latent_dim_; ++l) {
+        float grad_z = 0.0f;
+        for (size_t s = 0; s < config_.sensory_dim; ++s) {
+            float err_s = next_state_observed[s] - buf_sensory_out_[s];
+            grad_z += err_s * W_sensory_up_[s * current_latent_dim_ + l];
+        }
+        float z_val = buf_latent_a_[l];
+        float dtanh = 1.0f - z_val * z_val;
+        float delta_l = std::clamp(grad_z * dtanh, -2.0f, 2.0f);
+
+        float* down_row = W_sensory_down_.data() + l * config_.sensory_dim;
+        for (size_t s = 0; s < config_.sensory_dim; ++s) {
+            down_row[s] += effective_plasticity_ * 0.5f * delta_l * current_state[s];
+            down_row[s] = std::clamp(down_row[s], -3.0f, 3.0f);
         }
     }
 
@@ -981,6 +1019,26 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
             }
             w_row[m] += dW;
             w_row[m] = std::clamp(w_row[m], -4.0f, 4.0f);
+        }
+    }
+
+    // Direct Cortical-Motor Rewiring (W_motor_latent_):
+    // Actions aligned with goal motion reinforce the latent state that produced them
+    for (size_t a = 0; a < config_.action_dim; ++a) {
+        float act = action_taken[a];
+        if (std::abs(act) > 0.05f) {
+            float* ml_row = W_motor_latent_.data() + a * current_latent_dim_;
+            for (size_t l = 0; l < current_latent_dim_; ++l) {
+                float d_ml = 0.0f;
+                if (external_valence < 0.0f) {
+                    d_ml = -effective_plasticity_ * 2.0f * std::abs(external_valence) * act * buf_latent_a_[l];
+                } else {
+                    float goal_alignment = (last_goal_dist_sq_ - current_goal_dist_sq);
+                    d_ml = effective_plasticity_ * (goal_alignment * 2.0f + external_valence * 1.5f + 0.05f) * act * buf_latent_a_[l];
+                }
+                ml_row[l] += d_ml;
+                ml_row[l] = std::clamp(ml_row[l], -4.0f, 4.0f);
+            }
         }
     }
 
