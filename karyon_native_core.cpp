@@ -673,11 +673,10 @@ void KaryonSovereignCore::decide_continuous_action(std::span<const float> curren
 
         // Riemannian metric curvature barrier:
         // Threat is an endogenous geometric curvature in latent manifold rather than hardcoded threshold.
-        // g_a = 1 + exp(5.0 * peril)
-        // High peril curves space exponentially, naturally deflecting geodesic motor trajectories.
+        // High peril curves space, deflecting geodesic motor trajectories.
         float peril = compute_latent_peril(a, buf_latent_a_);
         if (peril > 0.0f) {
-            float curvature_drag = std::expm1(4.0f * peril) * effective_threat_weight_ * 0.25f;
+            float curvature_drag = std::clamp(std::expm1(2.0f * peril) * effective_threat_weight_ * 0.05f, 0.0f, 4.0f);
             motor_drive -= curvature_drag;
         }
 
@@ -697,32 +696,69 @@ void KaryonSovereignCore::optimize_continuous_action_trajectory(std::span<const 
 
     size_t S = config_.sensory_dim;
     size_t A = config_.action_dim;
-    float step_size = 0.15f * effective_motor_vigor_;
+    size_t L = current_latent_dim_;
+    float step_size = 0.20f * effective_motor_vigor_;
+
+    // If agent is stagnating in a potential well or appetitive hunger is elevated,
+    // inject a somatic phase kinetic kick along the gradient to break barrier symmetry:
+    if (stagnation_potential_ > 0.05f || appetitive_hunger_ > 0.10f) {
+        float hunger_boost = 1.0f + 2.5f * (stagnation_potential_ + appetitive_hunger_);
+        step_size *= hunger_boost;
+    }
 
     for (size_t step = 0; step < variational_steps; ++step) {
         // Continuous trajectory forward simulation along the continuous action vector:
-        // Efference projection through W_motor:
+        // Efference projection combining direct motor weights and physical action_delta_table_:
         for (size_t d = 0; d < S; ++d) {
             float delta_d = 0.0f;
             for (size_t a = 0; a < A; ++a) {
-                delta_d += W_motor_[d * A + a] * action_inout[a];
+                float act = action_inout[a];
+                delta_d += 0.5f * W_motor_[d * A + a] * act + 0.5f * action_delta_table_[a * S + d] * act;
             }
             buf_sensory_out_[d] = current_state[d] + delta_d;
         }
 
-        // Compute error gradient towards target goal
-        for (size_t d = 0; d < S; ++d) {
-            buf_adjoint_sensory_[d] = target_goal[d] - buf_sensory_out_[d];
+        // Project simulated next observation into cortical latent manifold
+        for (size_t l = 0; l < L; ++l) {
+            const float* w_down = W_sensory_down_.data() + l * S;
+            buf_latent_b_[l] = std::tanh(avx2_dot_product(w_down, buf_sensory_out_.data(), S));
         }
 
-        // Variational adjoint step in action space: dF/du_a = sum_d W_motor[d, a] * (target[d] - pred[d])
+        // Compute error gradient towards target goal in sensory space,
+        // focused on active features in current or goal state (sparse attention to task manifold)
+        for (size_t d = 0; d < S; ++d) {
+            float salience = (std::abs(target_goal[d]) > 0.01f || std::abs(current_state[d]) > 0.01f) ? 1.0f : 0.0f;
+            buf_adjoint_sensory_[d] = (target_goal[d] - buf_sensory_out_[d]) * salience;
+        }
+
+        // Variational adjoint step in action space:
+        // Combines sensory goal error + successor topological alignment + cortical latent gradient
         for (size_t a = 0; a < A; ++a) {
-            float grad_a = 0.0f;
+            float grad_sensory = 0.0f;
             for (size_t d = 0; d < S; ++d) {
-                grad_a += W_motor_[d * A + a] * buf_adjoint_sensory_[d];
+                float eff_w = 0.5f * W_motor_[d * A + a] + 0.5f * action_delta_table_[a * S + d];
+                grad_sensory += eff_w * buf_adjoint_sensory_[d];
             }
+
+            // Successor Geodesic Pull:
+            // Gradient towards goal_successor_map_ in latent space
+            float grad_latent = 0.0f;
+            const float* ml_row = W_motor_latent_.data() + a * L;
+            for (size_t l = 0; l < L; ++l) {
+                float topo_diff = goal_successor_map_[l] - buf_latent_b_[l];
+                grad_latent += ml_row[l] * topo_diff;
+            }
+
+            float grad_total = grad_sensory + 0.35f * grad_latent;
+
+            // If in high stagnation, break potential well deadlock with exploratory kinetic pulse
+            if (stagnation_potential_ > 0.08f) {
+                std::normal_distribution<float> jitter(0.0f, 0.4f * stagnation_potential_);
+                grad_total += jitter(rng_);
+            }
+
             // Continuous gradient update along Free Energy manifold
-            action_inout[a] = std::clamp(action_inout[a] + step_size * grad_a, -1.0f, 1.0f);
+            action_inout[a] = std::clamp(action_inout[a] + step_size * grad_total, -1.0f, 1.0f);
         }
     }
 }
@@ -926,17 +962,17 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     // 7. Non-Linear Peril Field & Temporal Eligibility Credit
     for (size_t a = 0; a < config_.action_dim; ++a) {
         float a_act = action_taken[a];
-        if (a_act > 0.05f) {
+        if (std::abs(a_act) > 0.05f) {
             float* p_row = W_peril_latent_.data() + a * current_latent_dim_;
             if (external_valence < 0.0f) {
                 float pain_mag = std::abs(external_valence);
                 for (size_t l = 0; l < current_latent_dim_; ++l) {
-                    p_row[l] += effective_plasticity_ * 4.0f * pain_mag * buf_latent_a_[l];
+                    p_row[l] += effective_plasticity_ * 4.0f * pain_mag * a_act * buf_latent_a_[l];
                     p_row[l] = std::clamp(p_row[l], -4.0f, 4.0f);
                 }
             } else if (external_valence > 0.0f) {
                 for (size_t l = 0; l < current_latent_dim_; ++l) {
-                    p_row[l] -= effective_plasticity_ * 1.5f * external_valence * buf_latent_a_[l];
+                    p_row[l] -= effective_plasticity_ * 1.5f * external_valence * a_act * buf_latent_a_[l];
                     p_row[l] = std::clamp(p_row[l], -4.0f, 4.0f);
                 }
             }
@@ -964,11 +1000,11 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     // A. Update Sensory Expansion (W_sensory_up_): Latent -> Observed
     for (size_t s = 0; s < config_.sensory_dim; ++s) {
         float err_s = next_state_observed[s] - buf_sensory_out_[s];
-        err_s = std::clamp(err_s, -2.0f, 2.0f);
+        err_s = std::clamp(err_s, -1.0f, 1.0f);
         float* w_row = W_sensory_up_.data() + s * current_latent_dim_;
         for (size_t l = 0; l < current_latent_dim_; ++l) {
-            w_row[l] += effective_plasticity_ * err_s * buf_latent_a_[l];
-            w_row[l] = std::clamp(w_row[l], -3.0f, 3.0f);
+            w_row[l] += effective_plasticity_ * 0.1f * err_s * buf_latent_b_[l];
+            w_row[l] = std::clamp(w_row[l], -2.0f, 2.0f);
         }
     }
 
@@ -976,17 +1012,17 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     for (size_t l = 0; l < current_latent_dim_; ++l) {
         float grad_z = 0.0f;
         for (size_t s = 0; s < config_.sensory_dim; ++s) {
-            float err_s = next_state_observed[s] - buf_sensory_out_[s];
+            float err_s = std::clamp(next_state_observed[s] - buf_sensory_out_[s], -1.0f, 1.0f);
             grad_z += err_s * W_sensory_up_[s * current_latent_dim_ + l];
         }
         float z_val = buf_latent_a_[l];
         float dtanh = 1.0f - z_val * z_val;
-        float delta_l = std::clamp(grad_z * dtanh, -2.0f, 2.0f);
+        float delta_l = std::clamp(grad_z * dtanh, -1.0f, 1.0f);
 
         float* down_row = W_sensory_down_.data() + l * config_.sensory_dim;
         for (size_t s = 0; s < config_.sensory_dim; ++s) {
-            down_row[s] += effective_plasticity_ * 0.5f * delta_l * current_state[s];
-            down_row[s] = std::clamp(down_row[s], -3.0f, 3.0f);
+            down_row[s] += effective_plasticity_ * 0.05f * delta_l * current_state[s];
+            down_row[s] = std::clamp(down_row[s], -2.0f, 2.0f);
         }
     }
 
@@ -1006,19 +1042,27 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
         float* w_row = W_motor_.data() + d * config_.action_dim;
         for (size_t m = 0; m < config_.action_dim; ++m) {
             float act = action_taken[m];
-            // Track causal correlation between motor action and physical observed movement
-            float motor_causality = observed_motion * act;
-            float alignment_with_goal = observed_motion * goal_dir;
-            
+            if (std::abs(act) < 0.01f) continue;
+
+            // Goal progress contribution: did this action move state towards goal?
+            float goal_progress = observed_motion * goal_dir;
+
             float dW = 0.0f;
             if (external_valence < 0.0f) {
-                dW = -effective_plasticity_ * 4.0f * std::abs(external_valence) * act * current_state[d];
+                // If in negative valence/pain, penalize actions that keep us in this state
+                dW = -effective_plasticity_ * 2.0f * std::abs(external_valence) * act * current_state[d];
             } else {
-                // Natural Hebbian causal reinforcement: actions that move state towards goal are strengthened
-                dW = effective_plasticity_ * (motor_causality * 2.0f + alignment_with_goal * 1.5f + (external_valence * 2.0f + 0.1f) * goal_dir * act);
+                // Natural causal reinforcement: reward actions that produce movement towards goal
+                dW = effective_plasticity_ * (goal_progress * 3.0f + external_valence * 2.0f * goal_dir * act);
             }
             w_row[m] += dW;
             w_row[m] = std::clamp(w_row[m], -4.0f, 4.0f);
+
+            // Update action_delta_table_ continuously from actual observed physical consequences of action_taken:
+            float* delta_row = action_delta_table_.data() + m * config_.sensory_dim;
+            float expected_effect = delta_row[d] * act;
+            delta_row[d] += effective_plasticity_ * 2.0f * act * (observed_motion - expected_effect);
+            delta_row[d] = std::clamp(delta_row[d], -2.0f, 2.0f);
         }
     }
 
@@ -1034,10 +1078,11 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
                     d_ml = -effective_plasticity_ * 2.0f * std::abs(external_valence) * act * buf_latent_a_[l];
                 } else {
                     float goal_alignment = (last_goal_dist_sq_ - current_goal_dist_sq);
-                    d_ml = effective_plasticity_ * (goal_alignment * 2.0f + external_valence * 1.5f + 0.05f) * act * buf_latent_a_[l];
+                    d_ml = effective_plasticity_ * (goal_alignment * 2.0f + external_valence * 1.5f) * act * buf_latent_a_[l];
                 }
-                ml_row[l] += d_ml;
-                ml_row[l] = std::clamp(ml_row[l], -4.0f, 4.0f);
+                // Oja's rule normalization to prevent monotonic drift/runaway saturation:
+                ml_row[l] += d_ml - 0.01f * act * act * ml_row[l];
+                ml_row[l] = std::clamp(ml_row[l], -2.0f, 2.0f);
             }
         }
     }
@@ -1135,7 +1180,11 @@ CoreTelemetry KaryonSovereignCore::step_environment(const std::vector<float>& cu
     float mem_util = std::abs(external_valence) * 2.0f + 0.1f;
     episodic_memory_.record(buf_latent_a_, mem_val, mem_util, global_step_counter_);
 
-    auto telem = step_environment(current_state, target_goal, next_state_observed, continuous_act, external_valence);
+    auto telem = step_environment(std::span<const float>(current_state.data(), current_state.size()),
+                                  std::span<const float>(target_goal.data(), target_goal.size()),
+                                  std::span<const float>(next_state_observed.data(), next_state_observed.size()),
+                                  std::span<const float>(continuous_act.data(), continuous_act.size()),
+                                  external_valence);
     telem.action_discrete_chosen = discrete_action;
     telem.episodic_memory_slots = episodic_memory_.size();
     auto cur_q = episodic_memory_.query(buf_latent_a_);

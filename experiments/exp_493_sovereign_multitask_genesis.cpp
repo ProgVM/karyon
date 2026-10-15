@@ -234,8 +234,6 @@ TaskReport run_regime_bistable(karyon::KaryonSovereignCore& core, size_t steps =
         int tgx = std::clamp(static_cast<int>((target + 2.0f) * 3.75f), 0, 15);
         fb[8 * 16 + gx] = 0.9f;
         fb[4 * 16 + tgx] = 1.0f;
-        fb[0] = x;
-        fb[1] = target;
     };
 
     auto t0 = std::chrono::high_resolution_clock::now();
