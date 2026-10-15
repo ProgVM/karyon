@@ -303,6 +303,9 @@ private:
     size_t ticks_since_last_hormone_sprout_;
     size_t ticks_since_last_latent_sprout_;
     float moving_fe_ema_;
+    float fe_diff_sq_ema_ = 0.001f;
+    float fe_gradient_ema_ = 0.001f;
+    float last_fe_error_ = 0.01f;
 
     // Continuous running barycenter / velocity trace of sensory manifold
     std::vector<float> continuous_sensory_ema_;

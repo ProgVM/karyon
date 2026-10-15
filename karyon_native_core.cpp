@@ -919,6 +919,10 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
     // Unified Variational Free Energy: F = F_epistemic + F_pragmatic
     float fe_error = sensory_pred_err + 0.5f * pragmatic_goal_err;
 
+    // Track running variance and gradient of Free Energy for autopoietic morphogenesis
+    fe_diff_sq_ema_ = 0.95f * fe_diff_sq_ema_ + 0.05f * (fe_error - moving_fe_ema_) * (fe_error - moving_fe_ema_);
+    fe_gradient_ema_ = 0.90f * fe_gradient_ema_ + 0.10f * std::abs(fe_error - last_fe_error_);
+    last_fe_error_ = fe_error;
     moving_fe_ema_ = 0.95f * moving_fe_ema_ + 0.05f * fe_error;
     telem.free_energy = fe_error;
     telem.sensory_prediction_error = sensory_pred_err;
@@ -1197,29 +1201,34 @@ void KaryonSovereignCore::evaluate_autopoietic_morphogenesis(float fe_error) {
     ticks_since_last_hormone_sprout_++;
     ticks_since_last_latent_sprout_++;
 
-    // 1. Primitive Morphogenesis
+    // Calculate local FE information complexity index:
+    // Combined metric of high variance (instability) and high temporal gradient (non-stationarity)
+    float fe_complexity_index = std::sqrt(fe_diff_sq_ema_) + 2.0f * fe_gradient_ema_;
+
+    // 1. Primitive Morphogenesis (Complexity & Error Gated)
     if (ticks_since_last_sprout_ > config_.sprouting_cooldown_ticks) {
-        if (fe_error > config_.sprouting_fe_threshold && primitives_.size() < config_.max_primitives) {
+        bool high_error = (fe_error > config_.sprouting_fe_threshold);
+        bool high_complexity = (fe_complexity_index > 0.02f);
+        if ((high_error || high_complexity) && primitives_.size() < config_.max_primitives) {
             trigger_morphogenetic_sprout();
-        } else if (fe_error < 0.015f && primitives_.size() > config_.initial_primitives) {
+        } else if (fe_error < 0.012f && fe_complexity_index < 0.005f && primitives_.size() > config_.initial_primitives) {
             prune_least_causal_primitive();
         }
     }
 
     // 2. Sovereign Hormone Morphogenesis
     if (ticks_since_last_hormone_sprout_ > (config_.sprouting_cooldown_ticks * 2)) {
-        if (moving_fe_ema_ > (config_.sprouting_fe_threshold * 0.8f) && hormones_.size() < config_.max_hormones) {
+        if ((moving_fe_ema_ > (config_.sprouting_fe_threshold * 0.8f) || fe_complexity_index > 0.025f) && 
+            hormones_.size() < config_.max_hormones) {
             trigger_hormone_sprout();
-        } else if (moving_fe_ema_ < 0.02f && hormones_.size() > 2) {
+        } else if (moving_fe_ema_ < 0.015f && fe_complexity_index < 0.005f && hormones_.size() > 2) {
             prune_least_causal_hormone();
         }
     }
 
     // 3. Sovereign Latent Manifold Morphogenesis (Dimensional Sprouting)
-    // If prediction error remains high and persistent despite primitive and hormonal adaptations,
-    // the compression bottleneck is too tight: sprout latent dimension!
-    if (ticks_since_last_latent_sprout_ > (config_.sprouting_cooldown_ticks * 3)) {
-        if (moving_fe_ema_ > 0.04f && current_latent_dim_ < config_.max_latent_dim) {
+    if (ticks_since_last_latent_sprout_ > (config_.sprouting_cooldown_ticks * 2)) {
+        if ((moving_fe_ema_ > 0.03f || fe_complexity_index > 0.035f) && current_latent_dim_ < config_.max_latent_dim) {
             trigger_latent_dimension_sprout();
         }
     }
