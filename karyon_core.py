@@ -6,7 +6,7 @@ Thin, zero-overhead Python orchestration binding for libkaryon_core.so
 import ctypes
 import os
 import pathlib
-from typing import Tuple
+from typing import Optional
 
 _CURRENT_DIR = pathlib.Path(__file__).parent.resolve()
 _SO_PATH = _CURRENT_DIR / "libkaryon_core.so"
@@ -16,32 +16,49 @@ if not _SO_PATH.exists():
 
 _lib = ctypes.CDLL(str(_SO_PATH))
 
-_lib.karyon_init.argtypes = []
-_lib.karyon_init.restype = None
+# Instance API
+_lib.karyon_create.argtypes = []
+_lib.karyon_create.restype = ctypes.c_void_p
 
-_lib.karyon_step.argtypes = [ctypes.c_float, ctypes.c_float, ctypes.c_float]
-_lib.karyon_step.restype = ctypes.c_float
+_lib.karyon_destroy.argtypes = [ctypes.c_void_p]
+_lib.karyon_destroy.restype = None
 
-_lib.karyon_get_free_energy.argtypes = []
-_lib.karyon_get_free_energy.restype = ctypes.c_float
+_lib.karyon_step_instance.argtypes = [ctypes.c_void_p, ctypes.c_float, ctypes.c_float, ctypes.c_float]
+_lib.karyon_step_instance.restype = ctypes.c_float
 
-_lib.karyon_reset.argtypes = []
-_lib.karyon_reset.restype = None
+_lib.karyon_get_free_energy_instance.argtypes = [ctypes.c_void_p]
+_lib.karyon_get_free_energy_instance.restype = ctypes.c_float
+
+_lib.karyon_reset_instance.argtypes = [ctypes.c_void_p]
+_lib.karyon_reset_instance.restype = None
+
 
 class SovereignKaryonCore:
     def __init__(self):
-        _lib.karyon_init()
+        self._handle = _lib.karyon_create()
+        if not self._handle:
+            raise RuntimeError("Failed to allocate native SovereignContinuumCore instance.")
+
+    def __del__(self):
+        if hasattr(self, "_handle") and self._handle:
+            _lib.karyon_destroy(self._handle)
+            self._handle = None
 
     def reset(self) -> None:
-        _lib.karyon_reset()
+        if self._handle:
+            _lib.karyon_reset_instance(self._handle)
 
     def step(self, error: float, error_rate: float, dt: float = 0.02) -> float:
         """
         Executes single exact Lie-flow perception-action step.
         Returns generated restorative boundary torque/action.
         """
-        return _lib.karyon_step(ctypes.c_float(error), ctypes.c_float(error_rate), ctypes.c_float(dt))
+        if not self._handle:
+            raise RuntimeError("Core instance was deallocated.")
+        return float(_lib.karyon_step_instance(self._handle, ctypes.c_float(error), ctypes.c_float(error_rate), ctypes.c_float(dt)))
 
     @property
     def free_energy(self) -> float:
-        return _lib.karyon_get_free_energy()
+        if not self._handle:
+            return 0.0
+        return float(_lib.karyon_get_free_energy_instance(self._handle))
