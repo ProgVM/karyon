@@ -2,7 +2,7 @@
 // Karyon-CoRE v28.0 Sovereign Architecture (Master Core Engine)
 // Pure Continuous Metric Tensor Continuum with Analytic Lie-Flow
 // Authors: Bazilevs (ProgVM) & Autonomous AI Cyberneticist
-// Standard: KEP v28.0 (Principles 2, 3, 4, 5, 27, 29)
+// Standard: KEP v28.0 (Principles 2, 3, 4, 5, 27, 29, 30)
 //
 // Key Specifications:
 // 1. Zero Biomimicry / Zero Substrate Shackles: Continuous tensor field \Psi(x, y, t).
@@ -14,6 +14,9 @@
 //    100% stack-allocated, alignas(64) cache-line aligned for AVX2/FMA execution.
 // 5. Endogenous Sovereign Plasticity (Principle 29):
 //    Autonomous metric tensor tuning g_{\mu\nu} minimizing Free Energy F_t to exact zero.
+// 6. Principle 30 (Bidirectional Worldsheet Causality & Wheeler-Feynman Waves):
+//    Continuous integration of retrospective \Psi_ret (history) and advanced \Psi_adv
+//    (future light-cone horizon \tau_adv) eliminating causal inertial phase lag.
 // ============================================================================
 
 #ifndef KARYON_SOVEREIGN_CORE_H
@@ -64,10 +67,23 @@ public:
         latest_torque_ = 0.0f;
     }
 
-    // Exact single-step Lie-flow perception-action cycle (AVX2-optimized, zero heap)
+    // Exact single-step Lie-flow perception-action cycle (Retrospective-only)
     [[gnu::always_inline]] inline float perceive_and_act(float error, float error_rate, float dt) noexcept {
+        return perceive_anticipate_and_act(error, error_rate, dt, 0.0f, 0.0f);
+    }
+
+    // Principle 30: Bidirectional Worldsheet Causality (Retrospective + Advanced Wavefields)
+    // Eliminates causal inertial lag by plucking worldsheet modes at advanced coordinate \tau = t + \tau_adv
+    [[gnu::always_inline]] inline float perceive_anticipate_and_act(
+        float error, float error_rate, float dt, float tau_adv, float anticipated_feedforward = 0.0f
+    ) noexcept {
         const float fe = 0.5f * error * error + 0.02f * error_rate * error_rate;
-        const float plucking_base = (error + 0.15f * error_rate) * 10.0f;
+
+        // Advanced wave coordinate along worldsheet light-cone:
+        // e_adv = e(t) + \tau_adv * \dot{e}(t)
+        const float eff_error = error + tau_adv * error_rate;
+        const float eff_error_rate = error_rate;
+        const float plucking_base = (eff_error + 0.15f * eff_error_rate) * 10.0f;
 
         #pragma GCC ivdep
         for (size_t k = 0; k < DEFAULT_MODES; ++k) {
@@ -137,7 +153,7 @@ public:
             restorative_moment += k_floats_[k] * state_.stiffness[k] * state_.q[k];
         }
 
-        const float torque = 12.0f * restorative_moment;
+        const float torque = 12.0f * restorative_moment + anticipated_feedforward;
         latest_fe_ = fe;
         latest_torque_ = torque;
         return torque;
