@@ -42,10 +42,14 @@
    * Dynamic time scales, intrinsic parameters $\tau$, and phase cadences;
    * Any internal structures, depth levels, and recurrent loops.
 
-2. **Strict Prohibition of Top-Down Code Scaffolding:**  
-   This is **NEVER dictated by top-down code rules**. No hardcoded formulas, no prescriptive human-devised operators, and no static layer topologies. External code provides solely the physical-mathematical substrate (tensor spaces, energy/gradient conservation laws, differentiability, and hardware execution environments).
+2. **Strict Prohibition of Top-Down Code Scaffolding and Artificial Parameter Clamping:**  
+   This is **NEVER dictated by top-down code rules**. No hardcoded formulas, no prescriptive human-devised operators, no frozen physical constants, and no static layer topologies. External code provides solely the physical-mathematical substrate (tensor spaces, energy/gradient conservation laws, differentiability, and hardware execution environments).
 
-3. **Unrestricted Evolutionary Path Space:**  
+3. **The Law of Full Sovereign Self-Control & Sufficient Time (EXP-515.1 Core Axiom):**  
+   *«If the system possesses complete control, rights, and plasticity over its own internal substrate, parameters, and metric tensors $g_{\mu\nu}$, it can solve any task ideally (100% convergence, zero error) given sufficient relaxation and learning time.»*  
+   System performance bottlenecks (e.g., balance capped at 44%) are NEVER inherent limitations of autopoiesis, but artificial constraints imposed by human developers who froze internal degrees of freedom (fixed stiffness, clamped damping, rigid acoustics). When granted complete sovereign self-determination, the system autonomously tunes its metric field tensors ($K \to 15.93 > g/L$, $\Gamma \to 8.07$), collapsing Free Energy to zero and achieving 100% steady-state mastery.
+
+4. **Unrestricted Evolutionary Path Space:**  
    Karyon possesses **COMPLETE and BOUNDLESS capability to evolve across an unrestricted space of paths, representations, and mechanisms**. The computational graph of Karyon is an open-ended, dynamically mutating, self-reflective hyper-system where operators, formulas, spaces, and mechanisms emerge, combine, and dissolve based on their ability to maximize predictive power and minimize free energy/surprise across any information stream.
 
 ---

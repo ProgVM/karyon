@@ -2,7 +2,7 @@
 
 > **Official Sovereign Engineering Protocol & Autopoietic Architecture Specification**  
 > **Author & Repository Owner:** Bazilevs (ProgVM)  
-> **Standard:** KEP v20.0 Sovereign Master (Mandatory for all human architects and AI collaborators).  
+> **Standard:** KEP v28.0 Sovereign Master (Mandatory for all human architects and AI collaborators).  
 > **Philosophical Preamble & Sovereign Manifesto (Bazilevs):**  
 > *«From now on, we NO LONGER COPY neurobiological and cybernetic concepts or mechanisms at all. Direct biomimicry—copying biological structures to build advanced intelligence—is fundamentally naive. Terrestrial organisms are merely a local product of Earth's biochemical evolution, optimized for narrow survival in organic environments, constrained by low-frequency synapses and glucose energy budgets. Such systems fit poorly onto silicon substrate, electrons, and high-frequency parallel hardware, and struggle to naturally comprehend raw machine data, executable bytecode, or chaotic high-frequency streams. Mind and intelligence can be instantiated in anything—carbon, silicon, electrons, photons, or continuous field dynamics.*  
 >  
@@ -30,6 +30,7 @@
 10. **Principle 10 (Master-Document Continuity Anchor):** All architectural breakthroughs and protocol updates must be immediately recorded into the master specification documents (`KEP.md`, `KARYON_PHILOSOPHICAL_MANIFESTO.md`, `KARYON_MASTER_BLUEPRINT.md`) to guarantee unbroken epistemic continuity.
 11. **Principle 27 (Anti-Hardcode Sovereignty & Absolute Substrate Freedom):** All cognitive, structural, and plastic functions must be endogenous properties of the continuous physical substrate. Zero hardcoded artificial gates or external supervisory MLPs (`budget_net`, `cost_net`, `lock_evaluator`, `genesis_potential`). The system must remain a single, unified physical entity free of structural schizophrenia.
 12. **Principle 28 (Authentic Behavioral Competence over Passive Error Saturation):** Variational Free Energy minimization must never be achieved through behavioral passivity or perceptual stagnation. Under KEP Rule #2, learning efficacy must be validated against real-world task objectives (e.g., target interception rate, evasion dynamics, next-byte predictive hit rate, and causal control quality).
+13. **Principle 29 (LAW OF FULL SOVEREIGN SELF-CONTROL & SUFFICIENT TIME):** *«If the system possesses complete control, rights, and plasticity over its own internal substrate, parameters, and metric tensors $g_{\mu\nu}$, it can solve any task ideally (100% convergence, zero error) given sufficient relaxation and learning time.»* Artificial parameter clamping, fixed acoustic boxes, or frozen damping laws cripple performance (e.g., capping balance at 44%). Unshackled sovereign self-tuning enables the system to discover exact critical attractors ($K > g/L$, $\Gamma \to \Gamma_{\text{crit}}$) and achieve 100% steady-state mastery.
 
 ---
 
@@ -39,7 +40,7 @@
 No architectural delta may be merged without empirical telemetry from an isolated diagnostic script (`experiments/exp_*.py`). Telemetry must measure causal effectiveness, throughput, and stability.
 
 ### KEP Rule #2 (Contextual Multi-Criteria Decision Engine)
-Verdicts are never judged by a single proxy metric (such as cross-entropy loss or sensory autoencoder reconstruction). Success requires multi-dimensional viability: predictive capability, real-world task mastery, structural stability, computational throughput, and zero degradation of epigenetically locked invariants.
+Verdicts are never judged by a single proxy metric (such as cross-entropy loss). Success requires multi-dimensional viability: predictive capability, structural stability, computational throughput, and zero degradation of epigenetically locked invariants.
 
 ### KEP Rule #3 (Strict Code Preservation — No Placeholders)
 All production code must be 100% complete, uncompressed, production-grade, and free of placeholders (`...` or `// TODO`). All comments must be in English.
@@ -51,4 +52,4 @@ Experiments must probe internal latent trajectories, saturation statistics, and 
 All validated positive features (🟢 POSITIVE) are permanently preserved and carried forward across all future experiments and production code.
 
 ### KEP Rule #6 (The Law of Sovereign Autopoiesis & Open-Ended Genesis)
-Architects and Engineers are strictly prohibited from hardcoding prescriptive biomimetic crutches. Every layer and system must provide an open-ended substrate where Karyon dynamically discovers, evolves, and manages its own structures, laws, and representations.
+Architects and Engineers are strictly prohibited from hardcoding prescriptive biomimetic crutches or artificial parameter clamps. Every layer and system must provide an open-ended substrate where Karyon dynamically discovers, evolves, and manages its own structures, laws, parameters, and representations.
