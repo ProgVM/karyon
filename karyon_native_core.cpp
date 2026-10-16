@@ -672,13 +672,16 @@ void KaryonSovereignCore::decide_continuous_action(std::span<const float> curren
         motor_drive += avx2_dot_product(ml_row, buf_latent_a_.data(), current_latent_dim_);
 
         // Fast Contextual Resonant Recall from Dynamic Episodic Memory
-        // Query memory for high-utility historical actions associated with similar latent states
+        // Query memory for high-utility historical actions associated with similar latent states.
+        // Ashby Allostatic Modulation: Resonant recall is gated by somatic stability and confidence.
+        // When somatic energy is depleted or moving free energy is high, memory reliance is attenuated.
         auto mem_q = episodic_memory_.query(buf_latent_a_);
-        if (mem_q.best_idx >= 0 && mem_q.max_sim > 0.88f && !mem_q.retrieved_value.empty()) {
+        if (mem_q.best_idx >= 0 && mem_q.max_sim > 0.92f && !mem_q.retrieved_value.empty()) {
             float memory_valence = mem_q.retrieved_value[0];
-            if (memory_valence > 0.01f && (1 + a) < mem_q.retrieved_value.size()) {
+            if (memory_valence > 0.05f && (1 + a) < mem_q.retrieved_value.size()) {
                 float recorded_action = mem_q.retrieved_value[1 + a];
-                motor_drive += 0.8f * memory_valence * recorded_action;
+                float memory_gate = somatic_energy_ * std::clamp(1.0f - moving_fe_ema_ * 10.0f, 0.1f, 1.0f);
+                motor_drive += 0.4f * memory_gate * memory_valence * recorded_action;
             }
         }
 
@@ -971,8 +974,22 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
         appetitive_hunger_ = std::max(0.0f, appetitive_hunger_ - 0.04f);
     }
 
-    // 6. Update Sovereign Endogenous Hormones
+    // 6. Update Sovereign Endogenous Hormones & Ashby Somatic Allostasis
     update_sovereign_hormones(current_state, fe_error, external_valence);
+
+    // Continuous Ashby Somatic Energy & Viability Dynamics:
+    // Kinetic motor expenditure dE_kin = sum(a^2)
+    float motor_energy_cost = 0.0f;
+    for (size_t a = 0; a < config_.action_dim; ++a) {
+        motor_energy_cost += action_taken[a] * action_taken[a];
+    }
+    motor_energy_cost *= 0.0005f;
+
+    // Energy allostasis: consumption from work and cognitive surprise, replenishment from valence
+    float d_energy = -motor_energy_cost - 0.001f * fe_error + 0.005f * std::max(0.0f, external_valence);
+    // Basal somatic metabolic recovery towards homeostasis
+    d_energy += 0.0002f * (1.0f - somatic_energy_);
+    somatic_energy_ = std::clamp(somatic_energy_ + d_energy, 0.10f, 1.0f);
 
     // 7. Non-Linear Peril Field & Temporal Eligibility Credit
     for (size_t a = 0; a < config_.action_dim; ++a) {
@@ -1070,8 +1087,10 @@ CoreTelemetry KaryonSovereignCore::step_environment(std::span<const float> curre
                 // Natural causal reinforcement: reward actions that produce movement towards goal
                 dW = effective_plasticity_ * (goal_progress * 3.0f + external_valence * 2.0f * goal_dir * act);
             }
-            w_row[m] += dW;
-            w_row[m] = std::clamp(w_row[m], -4.0f, 4.0f);
+            // Continuous Homeostatic Oja Normalization on W_motor_:
+            // Prevents boundless weight drift from earlier tasks corrupting subsequent regimes
+            w_row[m] += dW - 0.005f * act * act * w_row[m];
+            w_row[m] = std::clamp(w_row[m], -3.0f, 3.0f);
 
             // Update action_delta_table_ continuously from actual observed physical consequences of action_taken:
             float* delta_row = action_delta_table_.data() + m * config_.sensory_dim;
