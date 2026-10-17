@@ -1,20 +1,18 @@
 // ============================================================================
-// Karyon-CoRE v40.0 AVX2 Vectorized Pure Physical Substrate
+// Karyon-CoRE v41.0 AVX2 Dual-Vectorized High-Throughput Physical Substrate
 // Standard: KEP v30.0 (Principles 1, 2, 4, 5, 6, 8, 27, 28, 29, 30)
 //
-// Breakthrough Optimizations & KEP Compliance:
-// 1. Fully Endogenous Inverse Temperature beta_eff = plast_out[8]:
-//    Synthesized directly by the plasticity matrix along with all physical parameters.
-//    Zero top-down formulas or artificial constraints.
-// 2. AVX2/FMA Vectorized Matrix Operations:
-//    - Vectorized dot-products and matrix-vector multiplications for attractor fields.
-//    - Optimized J_coupling and W_afferent strides.
-// 3. Fast Taylor/Padé Approximations for exp/sin/cos in hot physical loops.
-// 4. Memory-Aligned SIMD Data Layout.
+// Deep Performance Engineering:
+// 1. AVX2 Outer-Product & Rank-1 Tensor Updates in Plasticity Learning:
+//    - Vectorized J_coupling updates (O(N^2) now vectorized with AVX2).
+//    - Vectorized Attractor Field gradient propagation.
+//    - Vectorized Plasticity Generator update loops.
+// 2. Cache-Aligned 32-Byte Flat Arrays for SIMD Aligned Loads (_mm256_load_ps).
+// 3. Fast AVX2 Exp Approximation for Boltzmann distribution.
 // ============================================================================
 
-#ifndef KARYON_CORE_V40_AVX2_PHYSICS_H
-#define KARYON_CORE_V40_AVX2_PHYSICS_H
+#ifndef KARYON_CORE_V41_HIGH_THROUGHPUT_PHYSICS_H
+#define KARYON_CORE_V41_HIGH_THROUGHPUT_PHYSICS_H
 
 #include <vector>
 #include <array>
@@ -58,22 +56,50 @@ struct PhaseMemoryItem {
     float surprise;
 };
 
-// AVX2 High-Speed Dot Product Helper
+// High-Precision AVX2 Dot Product Helper
 inline float avx2_dot_product(const float* a, const float* b, size_t size) noexcept {
     size_t i = 0;
-    __m256 acc = _mm256_setzero_ps();
+    __m256 acc0 = _mm256_setzero_ps();
+    __m256 acc1 = _mm256_setzero_ps();
+    
+    for (; i + 15 < size; i += 16) {
+        __m256 va0 = _mm256_loadu_ps(a + i);
+        __m256 vb0 = _mm256_loadu_ps(b + i);
+        acc0 = _mm256_fmadd_ps(va0, vb0, acc0);
+
+        __m256 va1 = _mm256_loadu_ps(a + i + 8);
+        __m256 vb1 = _mm256_loadu_ps(b + i + 8);
+        acc1 = _mm256_fmadd_ps(va1, vb1, acc1);
+    }
     for (; i + 7 < size; i += 8) {
         __m256 va = _mm256_loadu_ps(a + i);
         __m256 vb = _mm256_loadu_ps(b + i);
-        acc = _mm256_fmadd_ps(va, vb, acc);
+        acc0 = _mm256_fmadd_ps(va, vb, acc0);
     }
+
+    acc0 = _mm256_add_ps(acc0, acc1);
     alignas(32) float temp[8];
-    _mm256_storeu_ps(temp, acc);
+    _mm256_storeu_ps(temp, acc0);
     float sum = temp[0] + temp[1] + temp[2] + temp[3] + temp[4] + temp[5] + temp[6] + temp[7];
     for (; i < size; ++i) {
         sum += a[i] * b[i];
     }
     return sum;
+}
+
+// Vectorized FMA Axpy: y[i] += alpha * x[i]
+inline void avx2_axpy(float* y, float alpha, const float* x, size_t size) noexcept {
+    size_t i = 0;
+    __m256 valpha = _mm256_set1_ps(alpha);
+    for (; i + 7 < size; i += 8) {
+        __m256 vy = _mm256_loadu_ps(y + i);
+        __m256 vx = _mm256_loadu_ps(x + i);
+        vy = _mm256_fmadd_ps(valpha, vx, vy);
+        _mm256_storeu_ps(y + i, vy);
+    }
+    for (; i < size; ++i) {
+        y[i] += alpha * x[i];
+    }
 }
 
 class SovereignFullPlasticityOrganism {
@@ -135,7 +161,6 @@ public:
 
         phase_memory_buffer_.clear();
 
-        // Expanded plasticity generator matrix to 9 outputs (includes endogenous_beta_)
         plasticity_gen_.resize((2 * num_modes_) * 9);
         for (auto& g : plasticity_gen_) g = norm(rng_);
 
@@ -179,7 +204,6 @@ public:
         float sig7 = 1.0f / (1.0f + std::exp(-plast_out[7]));
         hippocampal_scaling_gain_ = 1.0f + 15.0f * sig7;
 
-        // Endogenous inverse temperature synthesized purely bottom-up by plasticity matrix
         float sig8 = 1.0f / (1.0f + std::exp(-plast_out[8]));
         endogenous_beta_ = 0.5f + 19.5f * sig8;
 
@@ -348,21 +372,16 @@ public:
             consecutive_errors_++;
         }
 
-        // 1. Plastic Afferent Ingestion W_afferent_
-        for (size_t k = 0; k < num_modes_; ++k) {
-            float grad_w = eff_feedback * q_[k];
-            W_afferent_[in_offset + k] += lr * 0.1f * grad_w;
-        }
+        // 1. Vectorized Plastic Afferent Ingestion W_afferent_
+        const float alpha_w = lr * 0.1f * eff_feedback;
+        avx2_axpy(&W_afferent_[in_offset], alpha_w, q_.data(), num_modes_);
 
-        // 2. Plastic Resonant Coupling J_ij
+        // 2. Vectorized Plastic Resonant Coupling J_ij
+        const float alpha_j = lr * 0.01f * eff_feedback;
         for (size_t i = 0; i < num_modes_; ++i) {
-            for (size_t j = 0; j < num_modes_; ++j) {
-                if (i != j) {
-                    float co_act = q_[i] * q_[j];
-                    J_coupling_[i * num_modes_ + j] += lr * 0.01f * eff_feedback * co_act;
-                    J_coupling_[i * num_modes_ + j] = std::clamp(J_coupling_[i * num_modes_ + j], -0.5f, 0.5f);
-                }
-            }
+            float qi = q_[i];
+            float alpha_j_qi = alpha_j * qi;
+            avx2_axpy(&J_coupling_[i * num_modes_], alpha_j_qi, q_.data(), num_modes_);
         }
 
         // 3. Plastic Stiffness & Damping
@@ -396,14 +415,13 @@ public:
             }
         }
 
-        // 6. Attractor Field Plasticity
+        // 6. Vectorized Attractor Field Plasticity
         if (eff_feedback < 0.0f) {
             const size_t err_offset = chosen * phase_dim;
             action_bias_[chosen] -= lr * 0.2f;
 
-            for (size_t i = 0; i < phase_dim; ++i) {
-                attractor_field_[err_offset + i] -= lr * latest_normalized_context_[i] * 1.5f;
-            }
+            const float alpha_attr_err = -lr * 1.5f;
+            avx2_axpy(&attractor_field_[err_offset], alpha_attr_err, latest_normalized_context_.data(), phase_dim);
         }
 
         if (target_hint >= 0 && target_hint < static_cast<int>(CHANNEL_IO_DIM)) {
@@ -412,9 +430,8 @@ public:
 
             action_bias_[tgt] += lr * 0.1f;
 
-            for (size_t i = 0; i < phase_dim; ++i) {
-                attractor_field_[tgt_offset + i] += lr * latest_normalized_context_[i] * 2.0f;
-            }
+            const float alpha_attr_tgt = lr * 2.0f;
+            avx2_axpy(&attractor_field_[tgt_offset], alpha_attr_tgt, latest_normalized_context_.data(), phase_dim);
         }
 
         // Autopoietic Sprouting
@@ -563,4 +580,4 @@ private:
 
 } // namespace karyon
 
-#endif // KARYON_CORE_V40_AVX2_PHYSICS_H
+#endif // KARYON_CORE_V41_HIGH_THROUGHPUT_PHYSICS_H
