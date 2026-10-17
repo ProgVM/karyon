@@ -1,27 +1,30 @@
 // ============================================================================
-// Karyon-CoRE v33.0 Sovereign Experiential Continuum with Autonomous Dynamic Memory
+// Karyon-CoRE v34.0 Sovereign Dynamic Memory & Adaptive Flow Refractory Continuum
 // Standard: KEP v28.0 (Principles 1, 2, 4, 5, 6, 8, 27, 28, 29, 30)
 //
 // Cybernetic Axioms:
-// 1. Axiom of Unshackled Flow (Principle 8):
-//    Memory capacity is NEVER fixed or capped by human hardcoded constants.
-//    Karyon autonomously grows (sprouts) new memory modes and attractor capacity
-//    when internal Free Energy / error persists, and prunes dead channels.
-// 2. Sovereign Endogenous Time-Scale (Horizon Plasticity):
-//    Every mode k self-tunes its own temporal decay lambda_k in (0.1, 0.999).
-//    Modes responsible for macroscopic syntactic/semantic framing autonomously
-//    widen their memory horizon (tau_k -> 1000+ steps), while rapid local modes
-//    remain sharp (tau_k ~ 2 steps).
-// 3. Epigenetic Smooth Sprouting (Principle 6):
-//    When memory capacity sprouts, new dimensions are born with zero initial
-//    perturbation (alpha_sprout -> 0), strictly preserving already consolidated knowledge.
-// 4. Pure Teacher-Student Sovereignty:
-//    The trainer never computes gradients or manipulates Karyon's internal tensors.
-//    Trainer delivers sensory bytes and honest valence/target feedback.
+// 1. Axiom of Unshackled Flow & Anti-Stupor Dynamics (Principle 8, 29):
+//    Every action/character channel possesses an ENDOGENOUS REFRACTORY FATIGUE
+//    variable r_c in [0, 1]. When a mode/character discharges, its refractory
+//    potential rises. Karyon dynamically tunes its own refractory recovery rate
+//    and fatigue penalty so it never freezes into static crystal loops ('vvvvvv').
+// 2. Continuous Multi-Scale Fast-Slow Split:
+//    Modes are split into fast-acting rhythm/transition modes (rapid response)
+//    and slow macroscopic contextual modes (framing). Fast modes guarantee
+//    that every newly emitted token immediately alters the phase state, breaking
+//    the cycle of inertia.
+// 3. Thermodynamic Energy Scaling (1 / sqrt(D_phase)):
+//    Attractor resonance is scaled by inverse square-root of active phase dimension,
+//    ensuring identical kinetic temperature and plasticity regardless of whether
+//    Karyon sprouts to 64, 512, or 2048 modes.
+// 4. Autonomous Refractory Plasticity:
+//    If Karyon detects repetitive oscillations or stagnant free energy, it
+//    autonomously strengthens refractory inhibition, driving the wavefield
+//    into fresh forward-traveling trajectories.
 // ============================================================================
 
-#ifndef KARYON_SOVEREIGN_DYNAMIC_MEMORY_CONTINUUM_V33_H
-#define KARYON_SOVEREIGN_DYNAMIC_MEMORY_CONTINUUM_V33_H
+#ifndef KARYON_SOVEREIGN_DYNAMIC_MEMORY_CONTINUUM_V34_H
+#define KARYON_SOVEREIGN_DYNAMIC_MEMORY_CONTINUUM_V34_H
 
 #include <vector>
 #include <array>
@@ -54,7 +57,16 @@ public:
         consecutive_errors_ = 0;
         latest_chosen_action_ = 0;
 
-        rng_.seed(3300);
+        // Sovereign Refractory Parameters (Fully Self-Tuned by Karyon)
+        refractory_strength_ = 1.2f;       // Sovereign fatigue penalty
+        refractory_recovery_rate_ = 0.70f;  // Sovereign recovery dissipation
+        repetitive_stagnation_counter_ = 0;
+
+        action_refractory_fatigue_.fill(0.0f);
+        action_bias_.fill(0.0f);
+        latest_probabilities_.fill(1.0f / static_cast<float>(CHANNEL_IO_DIM));
+
+        rng_.seed(3400);
         std::normal_distribution<float> norm(0.0f, 0.02f);
 
         // Allocate dynamic mode tensors
@@ -68,9 +80,13 @@ public:
         for (size_t k = 0; k < num_modes_; ++k) {
             stiffness_[k] = 1.0f + 0.05f * static_cast<float>(k);
             damping_[k] = 0.35f + 0.005f * static_cast<float>(k);
-            // Endogenous decay: log-spaced initial timescales from tau=3 to tau=200
+            // Log-spaced timescales: FAST local modes (0.35-0.75) and SLOW semantic modes (0.85-0.98)
             float frac = static_cast<float>(k) / static_cast<float>(num_modes_);
-            decay_horizon_[k] = 0.70f + 0.28f * frac; // 0.70 ... 0.98
+            if (k < num_modes_ / 4) {
+                decay_horizon_[k] = 0.35f + 0.35f * (static_cast<float>(k) / (num_modes_ / 4.0f)); // 0.35 ... 0.70 (FAST)
+            } else {
+                decay_horizon_[k] = 0.75f + 0.23f * frac; // 0.75 ... 0.98 (SLOW)
+            }
         }
 
         // Context state memory: size is 2 * num_modes_ (coordinates + momenta)
@@ -84,13 +100,10 @@ public:
         // Attractor Field: [256 actions x (2 * num_modes_)]
         attractor_field_.resize(CHANNEL_IO_DIM * (2 * num_modes_));
         for (auto& a : attractor_field_) a = norm(rng_);
-
-        action_bias_.fill(0.0f);
-        latest_probabilities_.fill(1.0f / static_cast<float>(CHANNEL_IO_DIM));
     }
 
     // =========================================================================
-    // 1. AUTONOMOUS PERCEPTION & DYNAMIC CONTEXTUAL INTEGRATION
+    // 1. AUTONOMOUS PERCEPTION & DYNAMIC CONTEXTUAL INTEGRATION WITH REFRACTORY
     // =========================================================================
     size_t perceive_and_decide(uint8_t input_channel, float dt, float temperature = 0.0f) noexcept {
         const size_t in_offset = static_cast<size_t>(input_channel) * num_modes_;
@@ -128,16 +141,16 @@ public:
             p_[k] = std::clamp(p_next, -16.0f, 16.0f);
         }
 
-        // --- 2. Update Continuous Phase Context using Endogenous Timescales lambda_k ---
+        // --- 2. Update Continuous Phase Context using Endogenous Timescales ---
         for (size_t k = 0; k < num_modes_; ++k) {
             const float lambda_q = decay_horizon_[k];
-            const float lambda_p = std::clamp(lambda_q * 0.85f, 0.40f, 0.95f);
+            const float lambda_p = std::clamp(lambda_q * 0.85f, 0.20f, 0.95f);
 
             context_trace_[k] = lambda_q * context_trace_[k] + (1.0f - lambda_q) * q_[k];
             context_trace_[num_modes_ + k] = lambda_p * context_trace_[num_modes_ + k] + (1.0f - lambda_p) * p_[k];
         }
 
-        // Normalize Context Vector
+        // Thermodynamic Normalization over Active Phase Dimension (Ensures constant temperature)
         float norm_sq = 0.0f;
         const size_t phase_dim = 2 * num_modes_;
         for (size_t i = 0; i < phase_dim; ++i) {
@@ -149,9 +162,10 @@ public:
             latest_normalized_context_[i] = context_trace_[i] * inv_norm;
         }
 
-        // --- 3. Compute Resonance with Attractor Basins ---
+        // --- 3. Compute Resonance with Attractor Basins & Refractory Barrier ---
         std::array<float, CHANNEL_IO_DIM> energy{};
         float max_e = -1e9f;
+        const float scale_factor = 1.0f / std::sqrt(static_cast<float>(phase_dim));
 
         for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
             float sum = action_bias_[c];
@@ -160,11 +174,13 @@ public:
             for (size_t i = 0; i < phase_dim; ++i) {
                 sum += attractor_field_[c_offset + i] * latest_normalized_context_[i];
             }
-            energy[c] = sum;
-            if (sum > max_e) max_e = sum;
+            // Scale and apply endogenous refractory inhibition
+            float eff_energy = (sum * scale_factor) - (refractory_strength_ * action_refractory_fatigue_[c]);
+            energy[c] = eff_energy;
+            if (eff_energy > max_e) max_e = eff_energy;
         }
 
-        // Probabilities
+        // --- 4. Probabilistic Softmax or MAP Selection ---
         float sum_exp = 0.0f;
         for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
             float val = (temperature > 0.01f) ? (energy[c] - max_e) / temperature : (energy[c] - max_e);
@@ -200,6 +216,26 @@ public:
             }
         }
 
+        // --- 5. Update Refractory Fatigue Field ---
+        for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
+            action_refractory_fatigue_[c] *= refractory_recovery_rate_;
+        }
+        // Discharged channel accumulates refractory resistance
+        action_refractory_fatigue_[chosen] += 1.0f;
+
+        // Self-detect repetitive stagnation
+        if (chosen == latest_chosen_action_) {
+            repetitive_stagnation_counter_++;
+            if (repetitive_stagnation_counter_ > 3) {
+                // Autonomous self-tuning: strengthen refractory barrier to force escape!
+                refractory_strength_ = std::min(refractory_strength_ + 0.15f, 4.0f);
+            }
+        } else {
+            repetitive_stagnation_counter_ = 0;
+            // Relax refractory strength toward sovereign baseline
+            refractory_strength_ = 0.99f * refractory_strength_ + 0.01f * 1.2f;
+        }
+
         latest_chosen_action_ = chosen;
         return chosen;
     }
@@ -218,10 +254,14 @@ public:
             positive_accumulated_ += eff_feedback;
             internal_free_energy_ = 0.99f * internal_free_energy_;
             consecutive_errors_ = (consecutive_errors_ > 0) ? consecutive_errors_ - 1 : 0;
+            // Successful flow relaxes refractory recovery
+            refractory_recovery_rate_ = std::clamp(0.999f * refractory_recovery_rate_ + 0.001f * 0.70f, 0.50f, 0.90f);
         } else {
             negative_accumulated_ += std::abs(eff_feedback);
             internal_free_energy_ = 0.99f * internal_free_energy_ + 0.01f * std::abs(eff_feedback);
             consecutive_errors_++;
+            // Errors and friction accelerate refractory clearing
+            refractory_recovery_rate_ = std::clamp(0.99f * refractory_recovery_rate_ + 0.01f * 0.60f, 0.40f, 0.85f);
         }
 
         // --- 1. Repulsion from Erroneous Action in THIS Context ---
@@ -234,11 +274,14 @@ public:
                 attractor_field_[err_offset + i] -= lr * latest_normalized_context_[i] * 1.5f;
             }
 
-            // Endogenous horizon tuning on error: if error keeps repeating, expand memory horizon!
+            // Endogenous horizon tuning: selectively widen slow modes and sharpen fast modes
             for (size_t k = 0; k < num_modes_; ++k) {
-                if (std::abs(latest_normalized_context_[k]) > 0.1f) {
-                    // Widen memory horizon to capture earlier context
-                    decay_horizon_[k] = std::clamp(decay_horizon_[k] + lr * 0.01f, 0.50f, 0.995f);
+                if (k >= num_modes_ / 4) {
+                    // Slow modes stretch deeper
+                    decay_horizon_[k] = std::clamp(decay_horizon_[k] + lr * 0.005f, 0.60f, 0.995f);
+                } else {
+                    // Fast modes stay nimble for local transitions
+                    decay_horizon_[k] = std::clamp(decay_horizon_[k] - lr * 0.005f, 0.25f, 0.70f);
                 }
             }
         }
@@ -263,10 +306,8 @@ public:
         }
 
         // --- 3. SOVEREIGN MEMORY SPROUTING (Principle 8 & Principle 6) ---
-        // If consecutive errors accumulate or internal free energy exceeds threshold,
-        // Karyon recognizes its current memory capacity is saturated and autonomously sprouts!
-        if (consecutive_errors_ > 30 && internal_free_energy_ > 0.85f && num_modes_ < MAX_ALLOWABLE_MODES) {
-            sprout_memory_capacity(16); // Sprout 16 new physical modes
+        if (consecutive_errors_ > 40 && internal_free_energy_ > 0.85f && num_modes_ < MAX_ALLOWABLE_MODES) {
+            sprout_memory_capacity(16);
             consecutive_errors_ = 0;
         }
     }
@@ -279,10 +320,8 @@ public:
         const size_t new_modes = std::min(old_modes + additional_modes, MAX_ALLOWABLE_MODES);
         if (new_modes <= old_modes) return;
 
-        const size_t added = new_modes - old_modes;
         num_modes_ = new_modes;
 
-        // Expand mode vectors
         q_.resize(new_modes, 0.0f);
         p_.resize(new_modes, 0.0f);
         stiffness_.resize(new_modes);
@@ -295,54 +334,48 @@ public:
         for (size_t k = old_modes; k < new_modes; ++k) {
             stiffness_[k] = 1.0f + 0.05f * static_cast<float>(k);
             damping_[k] = 0.35f + 0.005f * static_cast<float>(k);
-            // Newly sprouted modes explore wider horizons
+            // Newly sprouted modes contribute to slow semantic grounding
             float frac = static_cast<float>(k) / static_cast<float>(new_modes);
-            decay_horizon_[k] = 0.85f + 0.14f * frac; // 0.85 ... 0.99
+            decay_horizon_[k] = 0.85f + 0.14f * frac;
         }
 
-        // Reallocate context traces
         context_trace_.resize(2 * new_modes, 0.0f);
         latest_normalized_context_.resize(2 * new_modes, 0.0f);
 
-        // Re-stride Afferent Ingestion Tensor [256 x new_modes]
+        // Re-stride Afferent Ingestion Tensor
         std::vector<float> new_W_afferent(CHANNEL_IO_DIM * new_modes, 0.0f);
         for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
             for (size_t k = 0; k < old_modes; ++k) {
                 new_W_afferent[c * new_modes + k] = W_afferent_[c * old_modes + k];
             }
-            // Net2Net identity: new weights are born near zero
             for (size_t k = old_modes; k < new_modes; ++k) {
                 new_W_afferent[c * new_modes + k] = tiny_init(rng_);
             }
         }
         W_afferent_ = std::move(new_W_afferent);
 
-        // Re-stride Attractor Field [256 x (2 * new_modes)]
+        // Re-stride Attractor Field
         const size_t old_phase_dim = 2 * old_modes;
         const size_t new_phase_dim = 2 * new_modes;
         std::vector<float> new_attractors(CHANNEL_IO_DIM * new_phase_dim, 0.0f);
 
         for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
-            // Copy old coordinates part
             for (size_t k = 0; k < old_modes; ++k) {
                 new_attractors[c * new_phase_dim + k] = attractor_field_[c * old_phase_dim + k];
             }
-            // Zero-init newly sprouted coordinate connections
             for (size_t k = old_modes; k < new_modes; ++k) {
                 new_attractors[c * new_phase_dim + k] = tiny_init(rng_);
             }
-            // Copy old momentum part
             for (size_t k = 0; k < old_modes; ++k) {
                 new_attractors[c * new_phase_dim + new_modes + k] = attractor_field_[c * old_phase_dim + old_modes + k];
             }
-            // Zero-init newly sprouted momentum connections
             for (size_t k = old_modes; k < new_modes; ++k) {
                 new_attractors[c * new_phase_dim + new_modes + k] = tiny_init(rng_);
             }
         }
         attractor_field_ = std::move(new_attractors);
 
-        std::cout << "  >>> [Sovereign Autopoiesis] Karyon spontaneously sprouted memory: "
+        std::cout << "  >>> [Sovereign Autopoiesis] Karyon sprouted memory: "
                   << old_modes << " -> " << new_modes << " modes (Phase dim: " << new_phase_dim << ") <<<\n";
     }
 
@@ -352,6 +385,8 @@ public:
     float get_free_energy() const noexcept { return internal_free_energy_; }
     float get_positive_exp() const noexcept { return positive_accumulated_; }
     float get_negative_exp() const noexcept { return negative_accumulated_; }
+    float get_refractory_strength() const noexcept { return refractory_strength_; }
+    float get_refractory_recovery() const noexcept { return refractory_recovery_rate_; }
     float get_avg_memory_horizon() const noexcept {
         float sum = 0.0f;
         for (float h : decay_horizon_) sum += h;
@@ -363,31 +398,35 @@ private:
     size_t total_experiences_;
     size_t latest_chosen_action_;
     size_t consecutive_errors_;
+    size_t repetitive_stagnation_counter_;
+
     float positive_accumulated_;
     float negative_accumulated_;
     float internal_free_energy_;
 
+    // Sovereign Refractory Flow Parameters
+    float refractory_strength_;
+    float refractory_recovery_rate_;
+
     std::mt19937 rng_;
 
-    // Physical mode variables
     std::vector<float> q_;
     std::vector<float> p_;
     std::vector<float> stiffness_;
     std::vector<float> damping_;
-    std::vector<float> decay_horizon_;  // Endogenous timescale lambda_k
-    std::vector<float> causal_credit_;  // Long-term usefulness
+    std::vector<float> decay_horizon_;
+    std::vector<float> causal_credit_;
 
-    // Phase context traces: dim = 2 * num_modes_
     std::vector<float> context_trace_;
     std::vector<float> latest_normalized_context_;
 
-    // Dynamic coupling tensors
-    std::vector<float> W_afferent_;      // [256 x num_modes_]
-    std::vector<float> attractor_field_; // [256 x (2 * num_modes_)]
+    std::vector<float> W_afferent_;
+    std::vector<float> attractor_field_;
+    std::array<float, CHANNEL_IO_DIM> action_refractory_fatigue_;
     std::array<float, CHANNEL_IO_DIM> action_bias_;
     std::array<float, CHANNEL_IO_DIM> latest_probabilities_;
 };
 
 } // namespace karyon
 
-#endif // KARYON_SOVEREIGN_DYNAMIC_MEMORY_CONTINUUM_V33_H
+#endif // KARYON_SOVEREIGN_DYNAMIC_MEMORY_CONTINUUM_V34_H
