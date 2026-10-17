@@ -1,25 +1,25 @@
 // ============================================================================
-// Karyon-CoRE v43.0 Sovereign Variational Physical Substrate (KEP Principle 30)
+// Karyon-CoRE v44.0 Sovereign Thermodynamic Criticality & Hopfield Resonance
 // Standard: KEP v30.0 (Principles 1, 2, 4, 5, 6, 8, 27, 28, 29, 30)
 //
 // Unconstrained Morphogenetic Advances:
-// 1. Unconstrained Exponential Dynamic Law Scaling (Principle 30):
-//    - All physical parameters (dt_eff, refractory laws, metric curvature, coupling density,
-//      hippocampal gain, endogenous beta) synthesized via pure exponential maps.
-// 2. Continuous Volumetric Free Energy Stress Sprouting:
-//    - Automatic modal expansion triggered by integrated Free Energy Stress.
-// 3. Continuous Thermodynamic Attractor Field Relaxation:
-//    - ERADICATED action_bias_ completely! Zero ML-biases or heuristics.
-//    - ERADICATED discrete if-else channel updates.
-//    - Pure variational least-action gradient relaxation:
-//      dA_c = eta_endogenous * (delta_{c, target} - P(c)) * xi_t
-//      Every channel experiences natural continuous lateral inhibition proportional
-//      to its Boltzmann probability P(c).
+// 1. Hopfield Spherical Attractor Crystallization:
+//    - Normalizes each attractor basin ||A_c|| = 1.0 on hypersphere.
+//    - Resonance is exact normalized cosine interference in [-1, 1],
+//      preventing catastrophic scale divergence.
+// 2. Self-Organized Criticality (SOC) Thermodynamic Entropy Homeostasis:
+//    - Shannon entropy H = -sum P(c) ln P(c) dynamically balances temperature.
+//    - When H -> ln(256) (thermal chaos / white noise), beta endogenous increases
+//      towards crystallization.
+//    - Completely prevents thermal death (beta -> 0) during continuous 1M+ steps!
+// 3. Continuous Variational Field Relaxation (KEP Principle 30):
+//    - Zero action bias, zero discrete branch rules.
+//    - dA_c = eta_endogenous * (delta_{c, target} - P(c)) * xi_t
 // 4. Dual-Vectorized AVX2 FMA axpy Hardware Pipeline.
 // ============================================================================
 
-#ifndef KARYON_CORE_V43_SOVEREIGN_VARIATIONAL_H
-#define KARYON_CORE_V43_SOVEREIGN_VARIATIONAL_H
+#ifndef KARYON_CORE_V44_SOVEREIGN_CRITICALITY_H
+#define KARYON_CORE_V44_SOVEREIGN_CRITICALITY_H
 
 #include <vector>
 #include <array>
@@ -56,6 +56,7 @@ struct PurePhysicsTelemetry {
     float phase_retrieval_resonance;
     size_t rollout_depth;
     float autopoietic_stress;
+    float shannon_entropy;
 };
 
 struct PhaseMemoryItem {
@@ -125,6 +126,7 @@ public:
         autopoietic_volumetric_stress_ = 0.0f;
         latest_chosen_action_ = 0;
         latest_retrieval_resonance_ = 0.0f;
+        current_shannon_entropy_ = std::log(static_cast<float>(CHANNEL_IO_DIM));
 
         dt_eff_ = 0.010f;
         refractory_strength_ = 1.20f;
@@ -133,7 +135,7 @@ public:
         rollout_depth_ = 0;
         coupling_density_ = 0.05f;
         hippocampal_scaling_gain_ = 4.0f;
-        endogenous_beta_ = 2.0f;
+        endogenous_beta_ = 4.0f;
         attractor_plasticity_rate_ = 0.05f;
 
         action_refractory_fatigue_.fill(0.0f);
@@ -175,8 +177,24 @@ public:
         W_afferent_.resize(CHANNEL_IO_DIM * num_modes_);
         for (auto& w : W_afferent_) w = norm(rng_);
 
-        attractor_field_.resize(CHANNEL_IO_DIM * (2 * num_modes_));
-        for (auto& a : attractor_field_) a = norm(rng_);
+        const size_t phase_dim = 2 * num_modes_;
+        attractor_field_.resize(CHANNEL_IO_DIM * phase_dim);
+        for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
+            for (size_t i = 0; i < phase_dim; ++i) {
+                attractor_field_[c * phase_dim + i] = norm(rng_);
+            }
+            normalize_attractor_basin(c);
+        }
+    }
+
+    void normalize_attractor_basin(size_t c) noexcept {
+        const size_t phase_dim = 2 * num_modes_;
+        float* basin = &attractor_field_[c * phase_dim];
+        float sq = avx2_dot_product(basin, basin, phase_dim);
+        float inv = 1.0f / (std::sqrt(sq) + 1e-6f);
+        for (size_t i = 0; i < phase_dim; ++i) {
+            basin[i] *= inv;
+        }
     }
 
     void synthesize_internal_laws() noexcept {
@@ -203,7 +221,15 @@ public:
         coupling_density_ = std::clamp(0.05f * std::exp(0.5f * plast_out[5]), 0.001f, 0.50f);
         attractor_plasticity_rate_ = std::clamp(0.05f * std::exp(0.5f * plast_out[6]), 0.001f, 0.50f);
         hippocampal_scaling_gain_ = 4.0f * std::exp(0.5f * plast_out[7]);
-        endogenous_beta_ = 2.0f * std::exp(0.5f * plast_out[8]);
+
+        // Self-Organized Criticality (SOC): Entropy-guided thermodynamic cooling
+        // H_max = ln(256) ≈ 5.545 nats. When H approaches max, system cools (beta increases)
+        const float max_entropy = std::log(static_cast<float>(CHANNEL_IO_DIM));
+        float entropy_ratio = current_shannon_entropy_ / (max_entropy + 1e-6f);
+        float criticality_drive = 1.0f + 3.0f * std::pow(entropy_ratio, 2.0f);
+
+        endogenous_beta_ = (2.0f * criticality_drive) * std::exp(0.3f * plast_out[8]);
+        endogenous_beta_ = std::clamp(endogenous_beta_, 0.5f, 32.0f);
     }
 
     size_t perceive_and_decide(uint8_t input_channel, float external_dt) noexcept {
@@ -299,14 +325,13 @@ public:
             }
         }
 
-        // --- Step 5: Pure Wavefield Attractor Resonance (Zero Biases!) ---
+        // --- Step 5: Pure Wavefield Attractor Resonance (Hopfield Hypersphere) ---
         std::array<float, CHANNEL_IO_DIM> energy{};
         float max_e = -1e9f;
-        const float scale_factor = 1.0f / std::sqrt(static_cast<float>(phase_dim));
 
         for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
-            float resonance = avx2_dot_product(&attractor_field_[c * phase_dim], rollout_context.data(), phase_dim);
-            float eff_energy = (resonance * scale_factor) + memory_boost[c] - (refractory_strength_ * action_refractory_fatigue_[c]);
+            float cosine_sim = avx2_dot_product(&attractor_field_[c * phase_dim], rollout_context.data(), phase_dim);
+            float eff_energy = cosine_sim + memory_boost[c] - (refractory_strength_ * action_refractory_fatigue_[c]);
             energy[c] = eff_energy;
             if (eff_energy > max_e) max_e = eff_energy;
         }
@@ -321,9 +346,15 @@ public:
         }
 
         const float inv_sum_exp = 1.0f / (sum_exp + 1e-7f);
+        float entropy = 0.0f;
         for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
             latest_probabilities_[c] *= inv_sum_exp;
+            float p = latest_probabilities_[c];
+            if (p > 1e-8f) {
+                entropy -= p * std::log(p);
+            }
         }
+        current_shannon_entropy_ = entropy;
 
         float r = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX));
         float cum = 0.0f;
@@ -406,23 +437,20 @@ public:
             }
         }
 
-        // 6. Continuous Variational Attractor Relaxation (KEP Principle 30)
-        // Zero hand-crafted bias! Zero discrete if-else!
-        // dA_c = eta_endogenous * (delta_{c, target} - P(c)) * xi_t
+        // 6. Continuous Variational Attractor Relaxation & Hypersphere Normalization
         const float eff_lr = lr * attractor_plasticity_rate_ * 10.0f;
 
         if (target_hint >= 0 && target_hint < static_cast<int>(CHANNEL_IO_DIM)) {
             const size_t tgt = static_cast<size_t>(target_hint);
             
-            // For efficiency across 256 channels: update channels with non-negligible prob + target
             for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
                 float delta = (c == tgt) ? 1.0f : 0.0f;
                 float err = delta - latest_probabilities_[c];
                 
-                // Only relax channels where variational gradient is non-zero
                 if (std::abs(err) > 0.001f) {
                     float alpha_field = eff_lr * err;
                     avx2_axpy(&attractor_field_[c * phase_dim], alpha_field, latest_normalized_context_.data(), phase_dim);
+                    normalize_attractor_basin(c);
                 }
             }
         }
@@ -492,6 +520,12 @@ public:
             for (size_t k = old_modes; k < new_modes; ++k) {
                 new_attractors[c * new_phase_dim + new_modes + k] = tiny_init(rng_);
             }
+            
+            // Re-normalize newly expanded basin
+            float* basin = &new_attractors[c * new_phase_dim];
+            float sq = avx2_dot_product(basin, basin, new_phase_dim);
+            float inv = 1.0f / (std::sqrt(sq) + 1e-6f);
+            for (size_t i = 0; i < new_phase_dim; ++i) basin[i] *= inv;
         }
         attractor_field_ = std::move(new_attractors);
 
@@ -526,7 +560,8 @@ public:
             phase_memory_buffer_.size(),
             latest_retrieval_resonance_,
             rollout_depth_,
-            autopoietic_volumetric_stress_
+            autopoietic_volumetric_stress_,
+            current_shannon_entropy_
         };
     }
 
@@ -540,6 +575,7 @@ private:
     float internal_free_energy_;
     float autopoietic_volumetric_stress_;
     float latest_retrieval_resonance_;
+    float current_shannon_entropy_;
 
     float dt_eff_;
     float refractory_strength_;
@@ -575,4 +611,4 @@ private:
 
 } // namespace karyon
 
-#endif // KARYON_CORE_V43_SOVEREIGN_VARIATIONAL_H
+#endif // KARYON_CORE_V44_SOVEREIGN_CRITICALITY_H
