@@ -1,6 +1,6 @@
 // ============================================================================
-// Karyon-CoRE v28.0 Sovereign Architecture (Master C-ABI Shared Library)
-// libkaryon_core.so Export Implementation with Instance Support
+// Karyon-CoRE v29.0 Sovereign Architecture (Master C-ABI Shared Library)
+// libkaryon_core.so Export Implementation with Instance & Telemetry Support
 // ============================================================================
 
 #include "karyon_core.h"
@@ -36,6 +36,18 @@ float karyon_get_free_energy_instance(void* handle) {
 }
 
 [[gnu::visibility("default")]]
+float karyon_get_expected_free_energy_instance(void* handle) {
+    if (!handle) return 0.0f;
+    return static_cast<karyon::SovereignContinuumCore*>(handle)->get_expected_free_energy();
+}
+
+[[gnu::visibility("default")]]
+size_t karyon_get_active_modes_instance(void* handle) {
+    if (!handle) return 0;
+    return static_cast<karyon::SovereignContinuumCore*>(handle)->get_active_modes();
+}
+
+[[gnu::visibility("default")]]
 void karyon_reset_instance(void* handle) {
     if (handle) {
         static_cast<karyon::SovereignContinuumCore*>(handle)->reset();
@@ -64,6 +76,18 @@ float karyon_step(float error, float error_rate, float dt) {
 float karyon_get_free_energy() {
     if (!g_default_core) return 0.0f;
     return g_default_core->get_free_energy();
+}
+
+[[gnu::visibility("default")]]
+float karyon_get_expected_free_energy() {
+    if (!g_default_core) return 0.0f;
+    return g_default_core->get_expected_free_energy();
+}
+
+[[gnu::visibility("default")]]
+size_t karyon_get_active_modes() {
+    if (!g_default_core) return 0;
+    return g_default_core->get_active_modes();
 }
 
 [[gnu::visibility("default")]]
