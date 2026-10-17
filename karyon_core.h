@@ -1,16 +1,17 @@
 // ============================================================================
-// Karyon-CoRE v37.0 Full Substrate Plasticity & Complete Sovereign Control
+// Karyon-CoRE v38.0 Sovereign Full Plasticity & Endogenous Memory Scaling
 // Standard: KEP v30.0 (Principles 1, 2, 4, 5, 6, 8, 27, 28, 29, 30)
 //
-// Complete Substrate Plasticity (KEP Principle 29):
+// Complete Substrate Plasticity & Endogenous Control:
 // 1. Plastic Afferent Projection W_afferent_: Sensitizes wavefield modes to inputs.
 // 2. Plastic Resonant Coupling J_ij: Dynamic topological cross-talk chords.
 // 3. Plastic Stiffness & Damping (stiffness_k, damping_k): Self-tuning natural frequencies.
-// 4. Non-Parametric Phase Memory & Attractor Field.
+// 4. Endogenous Phase Memory Scaling (hippocampal_scaling_gain_): Self-synthesized
+//    precision gain governing resonance recall (KEP Principle 30).
 // ============================================================================
 
-#ifndef KARYON_SOVEREIGN_FULL_PLASTICITY_ORGANISM_V37_H
-#define KARYON_SOVEREIGN_FULL_PLASTICITY_ORGANISM_V37_H
+#ifndef KARYON_SOVEREIGN_ENDOGENOUS_MEMORY_ORGANISM_V38_H
+#define KARYON_SOVEREIGN_ENDOGENOUS_MEMORY_ORGANISM_V38_H
 
 #include <vector>
 #include <array>
@@ -27,7 +28,7 @@ namespace karyon {
 constexpr size_t CHANNEL_IO_DIM = 256;
 constexpr size_t INITIAL_MODES = 64;
 constexpr size_t MAX_ALLOWABLE_MODES = 512;
-constexpr size_t PHASE_MEMORY_CAPACITY = 256;
+constexpr size_t PHASE_MEMORY_CAPACITY = 512;
 
 struct FullPlasticityTelemetry {
     size_t active_modes;
@@ -40,6 +41,7 @@ struct FullPlasticityTelemetry {
     float avg_damping;
     float coupling_density;
     float mean_coupling_weight;
+    float hippocampal_gain;
     size_t stored_phase_traces;
     float phase_retrieval_resonance;
     size_t rollout_depth;
@@ -73,12 +75,13 @@ public:
         metric_curvature_ = 1.00f;
         rollout_depth_ = 0;
         coupling_density_ = 0.05f;
+        hippocampal_scaling_gain_ = 4.0f; // Endogenous parameter
 
         action_refractory_fatigue_.fill(0.0f);
         action_bias_.fill(0.0f);
         latest_probabilities_.fill(1.0f / static_cast<float>(CHANNEL_IO_DIM));
 
-        rng_.seed(5620);
+        rng_.seed(5630);
         std::normal_distribution<float> norm(0.0f, 0.02f);
 
         q_.assign(num_modes_, 0.0f);
@@ -148,6 +151,10 @@ public:
         float sig5 = 1.0f / (1.0f + std::exp(-plast_out[5]));
         coupling_density_ = 0.01f + 0.20f * sig5;
 
+        // ENDOGENOUS MEMORY SCALING GAIN: Synthesized directly from internal phase state!
+        float sig7 = 1.0f / (1.0f + std::exp(-plast_out[7]));
+        hippocampal_scaling_gain_ = 1.0f + 15.0f * sig7; // Dynamic gain in [1.0, 16.0]
+
         for (size_t k = 0; k < num_modes_; ++k) {
             float act = std::abs(latest_normalized_context_[k]);
             float shift = 0.01f * std::tanh(plast_out[6] * act);
@@ -161,7 +168,7 @@ public:
         const float dt = dt_eff_;
         const size_t in_offset = static_cast<size_t>(input_channel) * num_modes_;
 
-        // --- Step 1: Wavefield Mode Update with Full Resonant Coupling J_ij ---
+        // --- Step 1: Wavefield Mode Update ---
         for (size_t k = 0; k < num_modes_; ++k) {
             float coupling_sum = 0.0f;
             const size_t k_row = k * num_modes_;
@@ -220,7 +227,7 @@ public:
             latest_normalized_context_[i] = context_trace_[i] * inv_norm;
         }
 
-        // --- Step 3: Phase Memory Retrieval ---
+        // --- Step 3: Endogenously Governed Phase Memory Retrieval ---
         float memory_boost[CHANNEL_IO_DIM] = {0.0f};
         latest_retrieval_resonance_ = 0.0f;
 
@@ -244,7 +251,8 @@ public:
             }
 
             if (max_resonance > 0.60f && best_action >= 0) {
-                memory_boost[best_action] = (max_resonance - 0.60f) * 4.0f;
+                // Hippocampal boost governed by ENDOGENOUS hippocampal_scaling_gain_!
+                memory_boost[best_action] = (max_resonance - 0.60f) * hippocampal_scaling_gain_;
                 latest_retrieval_resonance_ = max_resonance;
             }
         }
@@ -320,9 +328,6 @@ public:
         return chosen;
     }
 
-    // =========================================================================
-    // FULL SUBSTRATE PLASTICITY UPDATE (KEP Principle 29)
-    // =========================================================================
     void assimilate_experience(uint8_t input_channel, float valence, float magnitude, int target_hint = -1, float lr = 0.05f) noexcept {
         total_experiences_++;
 
@@ -341,13 +346,13 @@ public:
             consecutive_errors_++;
         }
 
-        // 1. Plastic Afferent Ingestion W_afferent_: Sensitizes input projection!
+        // 1. Plastic Afferent Ingestion W_afferent_
         for (size_t k = 0; k < num_modes_; ++k) {
             float grad_w = eff_feedback * q_[k];
             W_afferent_[in_offset + k] += lr * 0.1f * grad_w;
         }
 
-        // 2. Plastic Resonant Coupling J_ij: Hebbian cross-talk updates
+        // 2. Plastic Resonant Coupling J_ij
         for (size_t i = 0; i < num_modes_; ++i) {
             for (size_t j = 0; j < num_modes_; ++j) {
                 if (i != j) {
@@ -358,7 +363,7 @@ public:
             }
         }
 
-        // 3. Plastic Stiffness & Damping Self-Tuning
+        // 3. Plastic Stiffness & Damping
         for (size_t k = 0; k < num_modes_; ++k) {
             float energy_k = q_[k] * q_[k] + p_[k] * p_[k];
             stiffness_[k] += lr * 0.001f * eff_feedback * energy_k;
@@ -477,7 +482,7 @@ public:
         }
         attractor_field_ = std::move(new_attractors);
 
-        std::cout << "  >>> [Full Substrate Autopoiesis] Karyon sprouted modes: "
+        std::cout << "  >>> [Endogenous Autopoiesis] Karyon sprouted modes: "
                   << old_modes << " -> " << new_modes << " (Phase dim: " << new_phase_dim << ") <<<\n";
     }
 
@@ -503,6 +508,7 @@ public:
             sum_damp / static_cast<float>(num_modes_),
             coupling_density_,
             coupling_weight_sum / static_cast<float>(num_modes_ * num_modes_),
+            hippocampal_scaling_gain_,
             phase_memory_buffer_.size(),
             latest_retrieval_resonance_,
             rollout_depth_
@@ -526,6 +532,7 @@ private:
     float metric_curvature_;
     size_t rollout_depth_;
     float coupling_density_;
+    float hippocampal_scaling_gain_; // Endogenous memory gain
 
     std::mt19937 rng_;
 
@@ -552,4 +559,4 @@ private:
 
 } // namespace karyon
 
-#endif // KARYON_SOVEREIGN_FULL_PLASTICITY_ORGANISM_V37_H
+#endif // KARYON_SOVEREIGN_ENDOGENOUS_MEMORY_ORGANISM_V38_H
