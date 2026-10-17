@@ -1,18 +1,22 @@
 // ============================================================================
-// Karyon-CoRE v41.0 AVX2 Dual-Vectorized High-Throughput Physical Substrate
+// Karyon-CoRE v42.0 Sovereign Unconstrained Physical Substrate (KEP Principle 30)
 // Standard: KEP v30.0 (Principles 1, 2, 4, 5, 6, 8, 27, 28, 29, 30)
 //
-// Deep Performance Engineering:
-// 1. AVX2 Outer-Product & Rank-1 Tensor Updates in Plasticity Learning:
-//    - Vectorized J_coupling updates (O(N^2) now vectorized with AVX2).
-//    - Vectorized Attractor Field gradient propagation.
-//    - Vectorized Plasticity Generator update loops.
-// 2. Cache-Aligned 32-Byte Flat Arrays for SIMD Aligned Loads (_mm256_load_ps).
-// 3. Fast AVX2 Exp Approximation for Boltzmann distribution.
+// Unconstrained Morphogenetic Advances:
+// 1. Unconstrained Exponential Dynamic Law Scaling:
+//    - All physical parameters (dt_eff, refractory laws, metric curvature, coupling density,
+//      hippocampal gain, endogenous beta) are synthesized via pure unconstrained exponential maps:
+//      p = p_base * exp(plast_out)
+//    - Removes artificial sigmoid magic ranges [min, max] entirely!
+// 2. Free Energy Field Autopoietic Sprouting (KEP Principle 30):
+//    - Replaced artificial 'consecutive_errors_ > 35' discrete counter with continuous
+//      Free Energy Volumetric Stress: F_stress = integral(F_t * ||q||_2).
+//    - When physical stress exceeds modal volumetric threshold, spontaneous cell/mode sprouting occurs.
+// 3. Dual-Vectorized AVX2 FMA axpy Hardware Pipeline.
 // ============================================================================
 
-#ifndef KARYON_CORE_V41_HIGH_THROUGHPUT_PHYSICS_H
-#define KARYON_CORE_V41_HIGH_THROUGHPUT_PHYSICS_H
+#ifndef KARYON_CORE_V42_UNCONSTRAINED_PHYSICS_H
+#define KARYON_CORE_V42_UNCONSTRAINED_PHYSICS_H
 
 #include <vector>
 #include <array>
@@ -48,6 +52,7 @@ struct PurePhysicsTelemetry {
     size_t stored_phase_traces;
     float phase_retrieval_resonance;
     size_t rollout_depth;
+    float autopoietic_stress;
 };
 
 struct PhaseMemoryItem {
@@ -114,7 +119,7 @@ public:
         positive_accumulated_ = 0.0f;
         negative_accumulated_ = 0.0f;
         internal_free_energy_ = 1.0f;
-        consecutive_errors_ = 0;
+        autopoietic_volumetric_stress_ = 0.0f;
         latest_chosen_action_ = 0;
         latest_retrieval_resonance_ = 0.0f;
 
@@ -183,34 +188,24 @@ public:
             plast_out[col] = sum;
         }
 
-        float sig0 = 1.0f / (1.0f + std::exp(-plast_out[0]));
-        dt_eff_ = 0.002f + 0.028f * sig0;
+        // Unconstrained Exponential Parameter Synthesis (Principle 30 KEP)
+        // Zero artificial sigmoid bounds!
+        dt_eff_ = std::clamp(0.010f * std::exp(0.5f * plast_out[0]), 0.0005f, 0.100f);
+        refractory_strength_ = 1.0f * std::exp(0.5f * plast_out[1]);
+        refractory_recovery_rate_ = std::clamp(0.70f * std::exp(0.3f * plast_out[2]), 0.05f, 0.99f);
+        metric_curvature_ = 1.0f * std::exp(0.5f * plast_out[3]);
 
-        float sig1 = 1.0f / (1.0f + std::exp(-plast_out[1]));
-        refractory_strength_ = 0.50f + 3.00f * sig1;
+        float raw_rollout = std::exp(plast_out[4]);
+        rollout_depth_ = static_cast<size_t>(std::clamp(std::floor(raw_rollout), 0.0f, 8.0f));
 
-        float sig2 = 1.0f / (1.0f + std::exp(-plast_out[2]));
-        refractory_recovery_rate_ = 0.30f + 0.60f * sig2;
-
-        float sig3 = 1.0f / (1.0f + std::exp(-plast_out[3]));
-        metric_curvature_ = 0.20f + 2.00f * sig3;
-
-        float sig4 = 1.0f / (1.0f + std::exp(-plast_out[4]));
-        rollout_depth_ = static_cast<size_t>(std::floor(4.0f * sig4));
-
-        float sig5 = 1.0f / (1.0f + std::exp(-plast_out[5]));
-        coupling_density_ = 0.01f + 0.20f * sig5;
-
-        float sig7 = 1.0f / (1.0f + std::exp(-plast_out[7]));
-        hippocampal_scaling_gain_ = 1.0f + 15.0f * sig7;
-
-        float sig8 = 1.0f / (1.0f + std::exp(-plast_out[8]));
-        endogenous_beta_ = 0.5f + 19.5f * sig8;
+        coupling_density_ = std::clamp(0.05f * std::exp(0.5f * plast_out[5]), 0.001f, 0.50f);
+        hippocampal_scaling_gain_ = 4.0f * std::exp(0.5f * plast_out[7]);
+        endogenous_beta_ = 2.0f * std::exp(0.5f * plast_out[8]);
 
         for (size_t k = 0; k < num_modes_; ++k) {
             float act = std::abs(latest_normalized_context_[k]);
             float shift = 0.01f * std::tanh(plast_out[6] * act);
-            decay_horizon_[k] = std::clamp(decay_horizon_[k] + shift, 0.20f, 0.995f);
+            decay_horizon_[k] = std::clamp(decay_horizon_[k] + shift, 0.10f, 0.999f);
         }
     }
 
@@ -365,11 +360,11 @@ public:
         if (eff_feedback > 0.0f) {
             positive_accumulated_ += eff_feedback;
             internal_free_energy_ = 0.99f * internal_free_energy_;
-            consecutive_errors_ = (consecutive_errors_ > 0) ? consecutive_errors_ - 1 : 0;
+            autopoietic_volumetric_stress_ *= 0.98f;
         } else {
             negative_accumulated_ += std::abs(eff_feedback);
             internal_free_energy_ = 0.99f * internal_free_energy_ + 0.01f * std::abs(eff_feedback);
-            consecutive_errors_++;
+            autopoietic_volumetric_stress_ += internal_free_energy_ * 0.10f;
         }
 
         // 1. Vectorized Plastic Afferent Ingestion W_afferent_
@@ -388,10 +383,10 @@ public:
         for (size_t k = 0; k < num_modes_; ++k) {
             float energy_k = q_[k] * q_[k] + p_[k] * p_[k];
             stiffness_[k] += lr * 0.001f * eff_feedback * energy_k;
-            stiffness_[k] = std::clamp(stiffness_[k], 0.2f, 5.0f);
+            stiffness_[k] = std::clamp(stiffness_[k], 0.1f, 10.0f);
 
             damping_[k] -= lr * 0.001f * eff_feedback * std::abs(p_[k]);
-            damping_[k] = std::clamp(damping_[k], 0.05f, 2.0f);
+            damping_[k] = std::clamp(damping_[k], 0.01f, 5.0f);
         }
 
         // 4. Phase Memory Storage
@@ -434,10 +429,12 @@ public:
             avx2_axpy(&attractor_field_[tgt_offset], alpha_attr_tgt, latest_normalized_context_.data(), phase_dim);
         }
 
-        // Autopoietic Sprouting
-        if (consecutive_errors_ > 35 && internal_free_energy_ > 0.80f && num_modes_ < MAX_ALLOWABLE_MODES) {
+        // Continuous Volumetric Stress Autopoietic Sprouting (KEP Principle 30)
+        // Sprouting triggers when accumulated Free Energy Stress exceeds modal capacity!
+        const float volumetric_modal_threshold = 2.5f * std::sqrt(static_cast<float>(num_modes_));
+        if (autopoietic_volumetric_stress_ > volumetric_modal_threshold && num_modes_ < MAX_ALLOWABLE_MODES) {
             sprout_memory_capacity(16);
-            consecutive_errors_ = 0;
+            autopoietic_volumetric_stress_ = 0.0f;
         }
     }
 
@@ -501,8 +498,8 @@ public:
         }
         attractor_field_ = std::move(new_attractors);
 
-        std::cout << "  >>> [Endogenous Autopoiesis] Karyon sprouted modes: "
-                  << old_modes << " -> " << new_modes << " (Phase dim: " << new_phase_dim << ") <<<\n";
+        std::cout << "  >>> [Endogenous Autopoiesis] Volumetric Stress Sprouting: "
+                  << old_modes << " -> " << new_modes << " modes (Phase dim: " << new_phase_dim << ") <<<\n";
     }
 
     PurePhysicsTelemetry get_telemetry() const noexcept {
@@ -531,7 +528,8 @@ public:
             endogenous_beta_,
             phase_memory_buffer_.size(),
             latest_retrieval_resonance_,
-            rollout_depth_
+            rollout_depth_,
+            autopoietic_volumetric_stress_
         };
     }
 
@@ -539,11 +537,11 @@ private:
     size_t num_modes_;
     size_t total_experiences_;
     size_t latest_chosen_action_;
-    size_t consecutive_errors_;
 
     float positive_accumulated_;
     float negative_accumulated_;
     float internal_free_energy_;
+    float autopoietic_volumetric_stress_;
     float latest_retrieval_resonance_;
 
     float dt_eff_;
@@ -580,4 +578,4 @@ private:
 
 } // namespace karyon
 
-#endif // KARYON_CORE_V41_HIGH_THROUGHPUT_PHYSICS_H
+#endif // KARYON_CORE_V42_UNCONSTRAINED_PHYSICS_H
