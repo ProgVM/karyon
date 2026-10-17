@@ -1,17 +1,19 @@
 // ============================================================================
-// Karyon-CoRE v38.0 Sovereign Full Plasticity & Endogenous Memory Scaling
+// Karyon-CoRE v39.0 Sovereign Pure Physical Substrate (Zero Artificial Hyperparams)
 // Standard: KEP v30.0 (Principles 1, 2, 4, 5, 6, 8, 27, 28, 29, 30)
 //
-// Complete Substrate Plasticity & Endogenous Control:
-// 1. Plastic Afferent Projection W_afferent_: Sensitizes wavefield modes to inputs.
-// 2. Plastic Resonant Coupling J_ij: Dynamic topological cross-talk chords.
-// 3. Plastic Stiffness & Damping (stiffness_k, damping_k): Self-tuning natural frequencies.
-// 4. Endogenous Phase Memory Scaling (hippocampal_scaling_gain_): Self-synthesized
-//    precision gain governing resonance recall (KEP Principle 30).
+// Pure Physical Decision Mechanics:
+// 1. External 'temperature' completely eliminated.
+// 2. Action choice is purely driven by continuous Boltzmann-Gibbs statistical mechanics
+//    where energy E_c = (attractor_field * context) + memory_boost - refractory_fatigue.
+// 3. Noise level is an endogenous thermodynamic function of internal Free Energy F_t:
+//    beta_eff = 1.0 / (F_t + 1e-4). When Free Energy is low (low surprise/high confidence),
+//    beta_eff is large -> sharp deterministic attractor snapping. When Free Energy is high
+//    (high surprise), beta_eff is lower -> natural thermodynamic exploration.
 // ============================================================================
 
-#ifndef KARYON_SOVEREIGN_ENDOGENOUS_MEMORY_ORGANISM_V38_H
-#define KARYON_SOVEREIGN_ENDOGENOUS_MEMORY_ORGANISM_V38_H
+#ifndef KARYON_SOVEREIGN_PURE_PHYSICS_ORGANISM_V39_H
+#define KARYON_SOVEREIGN_PURE_PHYSICS_ORGANISM_V39_H
 
 #include <vector>
 #include <array>
@@ -30,7 +32,7 @@ constexpr size_t INITIAL_MODES = 64;
 constexpr size_t MAX_ALLOWABLE_MODES = 512;
 constexpr size_t PHASE_MEMORY_CAPACITY = 512;
 
-struct FullPlasticityTelemetry {
+struct PurePhysicsTelemetry {
     size_t active_modes;
     size_t phase_dim;
     float free_energy;
@@ -42,6 +44,7 @@ struct FullPlasticityTelemetry {
     float coupling_density;
     float mean_coupling_weight;
     float hippocampal_gain;
+    float endogenous_beta;
     size_t stored_phase_traces;
     float phase_retrieval_resonance;
     size_t rollout_depth;
@@ -75,13 +78,13 @@ public:
         metric_curvature_ = 1.00f;
         rollout_depth_ = 0;
         coupling_density_ = 0.05f;
-        hippocampal_scaling_gain_ = 4.0f; // Endogenous parameter
+        hippocampal_scaling_gain_ = 4.0f;
 
         action_refractory_fatigue_.fill(0.0f);
         action_bias_.fill(0.0f);
         latest_probabilities_.fill(1.0f / static_cast<float>(CHANNEL_IO_DIM));
 
-        rng_.seed(5630);
+        rng_.seed(5640);
         std::normal_distribution<float> norm(0.0f, 0.02f);
 
         q_.assign(num_modes_, 0.0f);
@@ -151,9 +154,8 @@ public:
         float sig5 = 1.0f / (1.0f + std::exp(-plast_out[5]));
         coupling_density_ = 0.01f + 0.20f * sig5;
 
-        // ENDOGENOUS MEMORY SCALING GAIN: Synthesized directly from internal phase state!
         float sig7 = 1.0f / (1.0f + std::exp(-plast_out[7]));
-        hippocampal_scaling_gain_ = 1.0f + 15.0f * sig7; // Dynamic gain in [1.0, 16.0]
+        hippocampal_scaling_gain_ = 1.0f + 15.0f * sig7;
 
         for (size_t k = 0; k < num_modes_; ++k) {
             float act = std::abs(latest_normalized_context_[k]);
@@ -162,7 +164,8 @@ public:
         }
     }
 
-    size_t perceive_and_decide(uint8_t input_channel, float external_dt, float temperature = 0.0f) noexcept {
+    // PURE PHYSICAL PERCEPTION & DECISION (Zero Artificial Temperature Arguments)
+    size_t perceive_and_decide(uint8_t input_channel, float external_dt) noexcept {
         synthesize_internal_laws();
 
         const float dt = dt_eff_;
@@ -227,7 +230,7 @@ public:
             latest_normalized_context_[i] = context_trace_[i] * inv_norm;
         }
 
-        // --- Step 3: Endogenously Governed Phase Memory Retrieval ---
+        // --- Step 3: Endogenous Phase Memory Retrieval ---
         float memory_boost[CHANNEL_IO_DIM] = {0.0f};
         latest_retrieval_resonance_ = 0.0f;
 
@@ -251,7 +254,6 @@ public:
             }
 
             if (max_resonance > 0.60f && best_action >= 0) {
-                // Hippocampal boost governed by ENDOGENOUS hippocampal_scaling_gain_!
                 memory_boost[best_action] = (max_resonance - 0.60f) * hippocampal_scaling_gain_;
                 latest_retrieval_resonance_ = max_resonance;
             }
@@ -259,7 +261,7 @@ public:
 
         // --- Step 4: Mental Sandbox Rollout ---
         std::vector<float> rollout_context = latest_normalized_context_;
-        if (rollout_depth_ > 0 && temperature > 0.05f) {
+        if (rollout_depth_ > 0) {
             for (size_t sub = 0; sub < rollout_depth_; ++sub) {
                 for (size_t k = 0; k < num_modes_; ++k) {
                     rollout_context[k] = 0.90f * rollout_context[k] + 0.10f * std::tanh(q_[k]);
@@ -283,39 +285,34 @@ public:
             if (eff_energy > max_e) max_e = eff_energy;
         }
 
-        // --- Step 6: Decision ---
+        // --- Step 6: Pure Boltzmann-Gibbs Thermodynamic Selection ---
+        // Endogenous inverse temperature beta_eff is purely derived from Free Energy F_t:
+        // High confidence (low F_t) -> large beta_eff -> sharp deterministic snapping.
+        // High surprise (high F_t) -> moderate beta_eff -> thermodynamic exploration.
+        const float endogenous_beta = std::clamp(2.0f / (internal_free_energy_ + 0.10f), 1.0f, 20.0f);
+
         float sum_exp = 0.0f;
         for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
-            float val = (temperature > 0.01f) ? (energy[c] - max_e) / temperature : (energy[c] - max_e);
+            float val = (energy[c] - max_e) * endogenous_beta;
             float p = std::exp(val);
             latest_probabilities_[c] = p;
             sum_exp += p;
         }
 
         const float inv_sum_exp = 1.0f / (sum_exp + 1e-7f);
+        for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
+            latest_probabilities_[c] *= inv_sum_exp;
+        }
+
+        float r = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX));
+        float cum = 0.0f;
         size_t chosen = 0;
 
-        if (temperature <= 0.01f) {
-            float best_val = -1e9f;
-            for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
-                latest_probabilities_[c] *= inv_sum_exp;
-                if (energy[c] > best_val) {
-                    best_val = energy[c];
-                    chosen = c;
-                }
-            }
-        } else {
-            for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
-                latest_probabilities_[c] *= inv_sum_exp;
-            }
-            float r = (static_cast<float>(rand()) / static_cast<float>(RAND_MAX));
-            float cum = 0.0f;
-            for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
-                cum += latest_probabilities_[c];
-                if (cum >= r) {
-                    chosen = c;
-                    break;
-                }
+        for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
+            cum += latest_probabilities_[c];
+            if (cum >= r) {
+                chosen = c;
+                break;
             }
         }
 
@@ -486,7 +483,7 @@ public:
                   << old_modes << " -> " << new_modes << " (Phase dim: " << new_phase_dim << ") <<<\n";
     }
 
-    FullPlasticityTelemetry get_telemetry() const noexcept {
+    PurePhysicsTelemetry get_telemetry() const noexcept {
         float sum_stiff = 0.0f;
         float sum_damp = 0.0f;
         for (size_t k = 0; k < num_modes_; ++k) {
@@ -497,7 +494,9 @@ public:
         float coupling_weight_sum = 0.0f;
         for (float j : J_coupling_) coupling_weight_sum += std::abs(j);
 
-        return FullPlasticityTelemetry{
+        const float endogenous_beta = std::clamp(2.0f / (internal_free_energy_ + 0.10f), 1.0f, 20.0f);
+
+        return PurePhysicsTelemetry{
             num_modes_,
             2 * num_modes_,
             internal_free_energy_,
@@ -509,6 +508,7 @@ public:
             coupling_density_,
             coupling_weight_sum / static_cast<float>(num_modes_ * num_modes_),
             hippocampal_scaling_gain_,
+            endogenous_beta,
             phase_memory_buffer_.size(),
             latest_retrieval_resonance_,
             rollout_depth_
@@ -532,7 +532,7 @@ private:
     float metric_curvature_;
     size_t rollout_depth_;
     float coupling_density_;
-    float hippocampal_scaling_gain_; // Endogenous memory gain
+    float hippocampal_scaling_gain_;
 
     std::mt19937 rng_;
 
@@ -559,4 +559,4 @@ private:
 
 } // namespace karyon
 
-#endif // KARYON_SOVEREIGN_ENDOGENOUS_MEMORY_ORGANISM_V38_H
+#endif // KARYON_SOVEREIGN_PURE_PHYSICS_ORGANISM_V39_H
