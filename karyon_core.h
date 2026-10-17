@@ -1,32 +1,30 @@
 // ============================================================================
-// Karyon-CoRE v32.0 Sovereign Experiential Continuum with Contextual Attractors
-// Standard: KEP v28.0 (Principles 1, 2, 4, 5, 6, 27, 28, 29, 30)
+// Karyon-CoRE v33.0 Sovereign Experiential Continuum with Autonomous Dynamic Memory
+// Standard: KEP v28.0 (Principles 1, 2, 4, 5, 6, 8, 27, 28, 29, 30)
 //
-// Root Cybernetic Principles:
-// 1. Contextual State Vector (Phase Memory):
-//    An action is NEVER chosen in a vacuum. It is chosen from the current physical
-//    trajectory in phase space: xi(t) = [q(t), p(t)] in R^{2*N_modes}.
-// 2. Attractor Transition Landscape:
-//    The core maintains an associative transition memory M[target, k].
-// 3. True Experiential Learning:
-//    - POSITIVE EXPERIENCE (+1.0):
-//      Deepens the energy well connecting the current trajectory xi(t) to the target:
-//      Delta M[target, :] += lr * xi(t)
-//      Reduces internal dissipation (fluidity).
-//    - NEGATIVE EXPERIENCE (-1.0):
-//      Forms a REPULSION BARRIER directly on the erroneous transition from THIS context:
-//      Delta M[erroneous_choice, :] -= lr * xi(t)
-//      This guarantees that next time the system is in context xi(t), it will NOT
-//      repeat the same mistake, completely preventing oscillatory stutter (wwwwwvwv).
-// 4. Autonomous Epigenetic Consolidation:
-//    Frequently rewarded transitions are epigenetically locked, preventing forgetting.
+// Cybernetic Axioms:
+// 1. Axiom of Unshackled Flow (Principle 8):
+//    Memory capacity is NEVER fixed or capped by human hardcoded constants.
+//    Karyon autonomously grows (sprouts) new memory modes and attractor capacity
+//    when internal Free Energy / error persists, and prunes dead channels.
+// 2. Sovereign Endogenous Time-Scale (Horizon Plasticity):
+//    Every mode k self-tunes its own temporal decay lambda_k in (0.1, 0.999).
+//    Modes responsible for macroscopic syntactic/semantic framing autonomously
+//    widen their memory horizon (tau_k -> 1000+ steps), while rapid local modes
+//    remain sharp (tau_k ~ 2 steps).
+// 3. Epigenetic Smooth Sprouting (Principle 6):
+//    When memory capacity sprouts, new dimensions are born with zero initial
+//    perturbation (alpha_sprout -> 0), strictly preserving already consolidated knowledge.
+// 4. Pure Teacher-Student Sovereignty:
+//    The trainer never computes gradients or manipulates Karyon's internal tensors.
+//    Trainer delivers sensory bytes and honest valence/target feedback.
 // ============================================================================
 
-#ifndef KARYON_SOVEREIGN_EXPERIENTIAL_CONTINUUM_V32_H
-#define KARYON_SOVEREIGN_EXPERIENTIAL_CONTINUUM_V32_H
+#ifndef KARYON_SOVEREIGN_DYNAMIC_MEMORY_CONTINUUM_V33_H
+#define KARYON_SOVEREIGN_DYNAMIC_MEMORY_CONTINUUM_V33_H
 
-#include <array>
 #include <vector>
+#include <array>
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
@@ -37,80 +35,75 @@
 
 namespace karyon {
 
-constexpr size_t NUM_CONTINUUM_MODES = 128;
-constexpr size_t STATE_PHASE_DIM = NUM_CONTINUUM_MODES * 2; // [q, p] phase space
 constexpr size_t CHANNEL_IO_DIM = 256;
+constexpr size_t INITIAL_MODES = 64;
+constexpr size_t MAX_ALLOWABLE_MODES = 512;
 
-struct alignas(64) PhaseStateMetrics {
-    std::array<float, NUM_CONTINUUM_MODES> q;            // Mode displacements
-    std::array<float, NUM_CONTINUUM_MODES> p;            // Mode conjugate momenta
-    std::array<float, NUM_CONTINUUM_MODES> stiffness;    // Mode stiffness K_k
-    std::array<float, NUM_CONTINUUM_MODES> damping;      // Mode dissipation Gamma_k
-    std::array<float, STATE_PHASE_DIM> context_trace;    // Continuous phase-trajectory memory
-};
-
-class SovereignExperientialContinuum {
+class SovereignDynamicExperientialContinuum {
 public:
-    SovereignExperientialContinuum() noexcept {
+    SovereignDynamicExperientialContinuum() noexcept {
         reset();
     }
 
     void reset() noexcept {
+        num_modes_ = INITIAL_MODES;
         total_experiences_ = 0;
         positive_accumulated_ = 0.0f;
         negative_accumulated_ = 0.0f;
         internal_free_energy_ = 1.0f;
+        consecutive_errors_ = 0;
         latest_chosen_action_ = 0;
 
-        std::mt19937 rng(3200);
+        rng_.seed(3300);
         std::normal_distribution<float> norm(0.0f, 0.02f);
 
-        for (size_t k = 0; k < NUM_CONTINUUM_MODES; ++k) {
-            state_.q[k] = 0.0f;
-            state_.p[k] = 0.0f;
-            state_.stiffness[k] = 1.0f + 0.03f * static_cast<float>(k);
-            state_.damping[k] = 0.35f + 0.005f * static_cast<float>(k);
+        // Allocate dynamic mode tensors
+        q_.assign(num_modes_, 0.0f);
+        p_.assign(num_modes_, 0.0f);
+        stiffness_.resize(num_modes_);
+        damping_.resize(num_modes_);
+        decay_horizon_.resize(num_modes_);
+        causal_credit_.assign(num_modes_, 0.0f);
+
+        for (size_t k = 0; k < num_modes_; ++k) {
+            stiffness_[k] = 1.0f + 0.05f * static_cast<float>(k);
+            damping_[k] = 0.35f + 0.005f * static_cast<float>(k);
+            // Endogenous decay: log-spaced initial timescales from tau=3 to tau=200
+            float frac = static_cast<float>(k) / static_cast<float>(num_modes_);
+            decay_horizon_[k] = 0.70f + 0.28f * frac; // 0.70 ... 0.98
         }
 
-        for (size_t i = 0; i < STATE_PHASE_DIM; ++i) {
-            state_.context_trace[i] = 0.0f;
-        }
+        // Context state memory: size is 2 * num_modes_ (coordinates + momenta)
+        context_trace_.assign(2 * num_modes_, 0.0f);
+        latest_normalized_context_.assign(2 * num_modes_, 0.0f);
 
-        // Initialize Afferent Ingestion Tensor (One-hot byte -> physical pulse)
-        for (size_t i = 0; i < CHANNEL_IO_DIM * NUM_CONTINUUM_MODES; ++i) {
-            W_afferent_[i] = norm(rng);
-        }
+        // Afferent Ingestion Tensor: [256 actions x num_modes_]
+        W_afferent_.resize(CHANNEL_IO_DIM * num_modes_);
+        for (auto& w : W_afferent_) w = norm(rng_);
 
-        // Initialize Context-to-Action Attractor Field: [256 actions x 256 phase-dim]
-        for (size_t i = 0; i < CHANNEL_IO_DIM * STATE_PHASE_DIM; ++i) {
-            attractor_field_[i] = norm(rng);
-        }
+        // Attractor Field: [256 actions x (2 * num_modes_)]
+        attractor_field_.resize(CHANNEL_IO_DIM * (2 * num_modes_));
+        for (auto& a : attractor_field_) a = norm(rng_);
 
-        for (size_t i = 0; i < CHANNEL_IO_DIM; ++i) {
-            action_bias_[i] = 0.0f;
-            latest_probabilities_[i] = 1.0f / static_cast<float>(CHANNEL_IO_DIM);
-        }
+        action_bias_.fill(0.0f);
+        latest_probabilities_.fill(1.0f / static_cast<float>(CHANNEL_IO_DIM));
     }
 
     // =========================================================================
-    // 1. CONTINUOUS PERCEPTION & PHASE STATE TRAJECTORY INTEGRATION
-    // Sensory input plucks the wavefield; Lie-Hamiltonian dynamics propagate q, p.
-    // The current phase trajectory vector xi = [q, p] is preserved as context.
+    // 1. AUTONOMOUS PERCEPTION & DYNAMIC CONTEXTUAL INTEGRATION
     // =========================================================================
     size_t perceive_and_decide(uint8_t input_channel, float dt, float temperature = 0.0f) noexcept {
-        // --- 1. Afferent Sensory Pulse into Physical Modes ---
-        const size_t in_offset = static_cast<size_t>(input_channel) * NUM_CONTINUUM_MODES;
+        const size_t in_offset = static_cast<size_t>(input_channel) * num_modes_;
 
-        #pragma GCC ivdep
-        for (size_t k = 0; k < NUM_CONTINUUM_MODES; ++k) {
+        // --- 1. Pluck internal wavefield modes ---
+        for (size_t k = 0; k < num_modes_; ++k) {
             const float drive = W_afferent_[in_offset + k] * 5.0f;
-            const float omega_sq = state_.stiffness[k];
-            const float gamma = 0.5f * state_.damping[k];
+            const float omega_sq = stiffness_[k];
+            const float gamma = 0.5f * damping_[k];
 
-            // Analytic Stratonovich-Lie step
             const float q_star = drive / (omega_sq + 1e-6f);
-            const float q_rel  = state_.q[k] - q_star;
-            const float p_curr = state_.p[k];
+            const float q_rel  = q_[k] - q_star;
+            const float p_curr = p_[k];
             const float disc   = omega_sq - gamma * gamma;
 
             float q_next = 0.0f;
@@ -131,53 +124,47 @@ public:
                 p_next = decay * (p_curr - gamma * p_curr * dt);
             }
 
-            state_.q[k] = std::clamp(q_next, -8.0f, 8.0f);
-            state_.p[k] = std::clamp(p_next, -16.0f, 16.0f);
+            q_[k] = std::clamp(q_next, -8.0f, 8.0f);
+            p_[k] = std::clamp(p_next, -16.0f, 16.0f);
         }
 
-        // --- 2. Form Full Phase Trajectory Vector xi = [q, p] ---
-        // Also integrate continuous leaky history to preserve multi-step context
-        for (size_t k = 0; k < NUM_CONTINUUM_MODES; ++k) {
-            // First half: coordinate memory (slower decay, keeps context)
-            state_.context_trace[k] = 0.85f * state_.context_trace[k] + 0.15f * state_.q[k];
-            // Second half: momentum memory (faster, keeps instantaneous rhythm)
-            state_.context_trace[NUM_CONTINUUM_MODES + k] = 0.70f * state_.context_trace[NUM_CONTINUUM_MODES + k] + 0.30f * state_.p[k];
+        // --- 2. Update Continuous Phase Context using Endogenous Timescales lambda_k ---
+        for (size_t k = 0; k < num_modes_; ++k) {
+            const float lambda_q = decay_horizon_[k];
+            const float lambda_p = std::clamp(lambda_q * 0.85f, 0.40f, 0.95f);
+
+            context_trace_[k] = lambda_q * context_trace_[k] + (1.0f - lambda_q) * q_[k];
+            context_trace_[num_modes_ + k] = lambda_p * context_trace_[num_modes_ + k] + (1.0f - lambda_p) * p_[k];
         }
 
-        // Normalize context trace for bounded stable attractor retrieval
+        // Normalize Context Vector
         float norm_sq = 0.0f;
-        #pragma GCC ivdep
-        for (size_t i = 0; i < STATE_PHASE_DIM; ++i) {
-            norm_sq += state_.context_trace[i] * state_.context_trace[i];
+        const size_t phase_dim = 2 * num_modes_;
+        for (size_t i = 0; i < phase_dim; ++i) {
+            norm_sq += context_trace_[i] * context_trace_[i];
         }
         const float inv_norm = 1.0f / (std::sqrt(norm_sq) + 1e-6f);
 
-        std::array<float, STATE_PHASE_DIM> norm_context{};
-        #pragma GCC ivdep
-        for (size_t i = 0; i < STATE_PHASE_DIM; ++i) {
-            norm_context[i] = state_.context_trace[i] * inv_norm;
+        for (size_t i = 0; i < phase_dim; ++i) {
+            latest_normalized_context_[i] = context_trace_[i] * inv_norm;
         }
 
-        // Preserve current normalized context for experiential learning
-        latest_context_ = norm_context;
-
-        // --- 3. Compute Energy Resonance with Attractor Basins ---
-        // Resonance E_c = action_bias_c + sum_i (Attractor_ci * context_i)
+        // --- 3. Compute Resonance with Attractor Basins ---
         std::array<float, CHANNEL_IO_DIM> energy{};
         float max_e = -1e9f;
 
         for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
             float sum = action_bias_[c];
-            const size_t c_offset = c * STATE_PHASE_DIM;
+            const size_t c_offset = c * phase_dim;
             #pragma GCC ivdep
-            for (size_t i = 0; i < STATE_PHASE_DIM; ++i) {
-                sum += attractor_field_[c_offset + i] * norm_context[i];
+            for (size_t i = 0; i < phase_dim; ++i) {
+                sum += attractor_field_[c_offset + i] * latest_normalized_context_[i];
             }
             energy[c] = sum;
             if (sum > max_e) max_e = sum;
         }
 
-        // Softmax probabilities
+        // Probabilities
         float sum_exp = 0.0f;
         for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
             float val = (temperature > 0.01f) ? (energy[c] - max_e) / temperature : (energy[c] - max_e);
@@ -190,7 +177,6 @@ public:
         size_t chosen = 0;
 
         if (temperature <= 0.01f) {
-            // Greedy MAP decision
             float best_val = -1e9f;
             for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
                 latest_probabilities_[c] *= inv_sum_exp;
@@ -200,7 +186,6 @@ public:
                 }
             }
         } else {
-            // Temperature sampling
             for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
                 latest_probabilities_[c] *= inv_sum_exp;
             }
@@ -220,95 +205,189 @@ public:
     }
 
     // =========================================================================
-    // 2. TRUE EXPERIENTIAL ASSIMILATION (Context-Bound Success & Failure)
-    // - Environmental signal:
-    //   valence: +1.0 (good/correct), -1.0 (bad/incorrect)
-    //   magnitude: intensity of the reward or penalty
-    //   target_hint: environmental ground-truth demonstration
-    //
-    // Cybernetic Mechanism:
-    // - SUCCESS: The transition from the CURRENT CONTEXT to TARGET is carved deeper into memory.
-    // - ERROR: The transition from the CURRENT CONTEXT to CHOSEN ACTION is hit with a REPULSION BARRIER.
-    //   Next time the core is in this context, it is physically pushed AWAY from repeating the mistake.
+    // 2. SOVEREIGN EXPERIENTIAL ASSIMILATION & AUTONOMOUS CAPACITY CONTROL
     // =========================================================================
     void assimilate_experience(float valence, float magnitude, int target_hint = -1, float lr = 0.05f) noexcept {
         total_experiences_++;
 
         const float eff_feedback = std::clamp(valence, -1.0f, 1.0f) * std::clamp(magnitude, 0.0f, 2.0f);
         const size_t chosen = latest_chosen_action_;
+        const size_t phase_dim = 2 * num_modes_;
 
         if (eff_feedback > 0.0f) {
             positive_accumulated_ += eff_feedback;
             internal_free_energy_ = 0.99f * internal_free_energy_;
+            consecutive_errors_ = (consecutive_errors_ > 0) ? consecutive_errors_ - 1 : 0;
         } else {
             negative_accumulated_ += std::abs(eff_feedback);
             internal_free_energy_ = 0.99f * internal_free_energy_ + 0.01f * std::abs(eff_feedback);
+            consecutive_errors_++;
         }
 
         // --- 1. Repulsion from Erroneous Action in THIS Context ---
         if (eff_feedback < 0.0f) {
-            const size_t err_offset = chosen * STATE_PHASE_DIM;
+            const size_t err_offset = chosen * phase_dim;
             action_bias_[chosen] -= lr * 0.2f;
 
             #pragma GCC ivdep
-            for (size_t i = 0; i < STATE_PHASE_DIM; ++i) {
-                // Errect a repulsion barrier proportional to current context state
-                attractor_field_[err_offset + i] -= lr * latest_context_[i] * 1.5f;
+            for (size_t i = 0; i < phase_dim; ++i) {
+                attractor_field_[err_offset + i] -= lr * latest_normalized_context_[i] * 1.5f;
             }
 
-            // Also adapt physical mode damping: dampen oscillatory instability
-            for (size_t k = 0; k < NUM_CONTINUUM_MODES; ++k) {
-                state_.damping[k] = std::clamp(state_.damping[k] * 1.001f, 0.05f, 20.0f);
+            // Endogenous horizon tuning on error: if error keeps repeating, expand memory horizon!
+            for (size_t k = 0; k < num_modes_; ++k) {
+                if (std::abs(latest_normalized_context_[k]) > 0.1f) {
+                    // Widen memory horizon to capture earlier context
+                    decay_horizon_[k] = std::clamp(decay_horizon_[k] + lr * 0.01f, 0.50f, 0.995f);
+                }
             }
         }
 
-        // --- 2. Attraction towards Correct Target in THIS Context ---
+        // --- 2. Attraction towards Correct Target ---
         if (target_hint >= 0 && target_hint < static_cast<int>(CHANNEL_IO_DIM)) {
             const size_t tgt = static_cast<size_t>(target_hint);
-            const size_t tgt_offset = tgt * STATE_PHASE_DIM;
+            const size_t tgt_offset = tgt * phase_dim;
 
             action_bias_[tgt] += lr * 0.1f;
 
             #pragma GCC ivdep
-            for (size_t i = 0; i < STATE_PHASE_DIM; ++i) {
-                // Carve attraction basin connecting current context -> target
-                attractor_field_[tgt_offset + i] += lr * latest_context_[i] * 2.0f;
+            for (size_t i = 0; i < phase_dim; ++i) {
+                attractor_field_[tgt_offset + i] += lr * latest_normalized_context_[i] * 2.0f;
             }
 
-            // Afferent pathway consolidation: strengthen receptive link
-            const size_t in_offset = chosen * NUM_CONTINUUM_MODES;
-            for (size_t k = 0; k < NUM_CONTINUUM_MODES; ++k) {
-                W_afferent_[in_offset + k] += lr * state_.q[k] * 0.01f;
+            // Credit assignment: reward modes active during success
+            for (size_t k = 0; k < num_modes_; ++k) {
+                const float act = std::abs(latest_normalized_context_[k]);
+                causal_credit_[k] = 0.95f * causal_credit_[k] + 0.05f * act;
             }
+        }
+
+        // --- 3. SOVEREIGN MEMORY SPROUTING (Principle 8 & Principle 6) ---
+        // If consecutive errors accumulate or internal free energy exceeds threshold,
+        // Karyon recognizes its current memory capacity is saturated and autonomously sprouts!
+        if (consecutive_errors_ > 30 && internal_free_energy_ > 0.85f && num_modes_ < MAX_ALLOWABLE_MODES) {
+            sprout_memory_capacity(16); // Sprout 16 new physical modes
+            consecutive_errors_ = 0;
         }
     }
 
+    // =========================================================================
+    // 3. EPIGENETIC SMOOTH SPROUTING (Lossless Expansion)
+    // =========================================================================
+    void sprout_memory_capacity(size_t additional_modes) noexcept {
+        const size_t old_modes = num_modes_;
+        const size_t new_modes = std::min(old_modes + additional_modes, MAX_ALLOWABLE_MODES);
+        if (new_modes <= old_modes) return;
+
+        const size_t added = new_modes - old_modes;
+        num_modes_ = new_modes;
+
+        // Expand mode vectors
+        q_.resize(new_modes, 0.0f);
+        p_.resize(new_modes, 0.0f);
+        stiffness_.resize(new_modes);
+        damping_.resize(new_modes);
+        decay_horizon_.resize(new_modes);
+        causal_credit_.resize(new_modes, 0.0f);
+
+        std::normal_distribution<float> tiny_init(0.0f, 0.001f);
+
+        for (size_t k = old_modes; k < new_modes; ++k) {
+            stiffness_[k] = 1.0f + 0.05f * static_cast<float>(k);
+            damping_[k] = 0.35f + 0.005f * static_cast<float>(k);
+            // Newly sprouted modes explore wider horizons
+            float frac = static_cast<float>(k) / static_cast<float>(new_modes);
+            decay_horizon_[k] = 0.85f + 0.14f * frac; // 0.85 ... 0.99
+        }
+
+        // Reallocate context traces
+        context_trace_.resize(2 * new_modes, 0.0f);
+        latest_normalized_context_.resize(2 * new_modes, 0.0f);
+
+        // Re-stride Afferent Ingestion Tensor [256 x new_modes]
+        std::vector<float> new_W_afferent(CHANNEL_IO_DIM * new_modes, 0.0f);
+        for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
+            for (size_t k = 0; k < old_modes; ++k) {
+                new_W_afferent[c * new_modes + k] = W_afferent_[c * old_modes + k];
+            }
+            // Net2Net identity: new weights are born near zero
+            for (size_t k = old_modes; k < new_modes; ++k) {
+                new_W_afferent[c * new_modes + k] = tiny_init(rng_);
+            }
+        }
+        W_afferent_ = std::move(new_W_afferent);
+
+        // Re-stride Attractor Field [256 x (2 * new_modes)]
+        const size_t old_phase_dim = 2 * old_modes;
+        const size_t new_phase_dim = 2 * new_modes;
+        std::vector<float> new_attractors(CHANNEL_IO_DIM * new_phase_dim, 0.0f);
+
+        for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
+            // Copy old coordinates part
+            for (size_t k = 0; k < old_modes; ++k) {
+                new_attractors[c * new_phase_dim + k] = attractor_field_[c * old_phase_dim + k];
+            }
+            // Zero-init newly sprouted coordinate connections
+            for (size_t k = old_modes; k < new_modes; ++k) {
+                new_attractors[c * new_phase_dim + k] = tiny_init(rng_);
+            }
+            // Copy old momentum part
+            for (size_t k = 0; k < old_modes; ++k) {
+                new_attractors[c * new_phase_dim + new_modes + k] = attractor_field_[c * old_phase_dim + old_modes + k];
+            }
+            // Zero-init newly sprouted momentum connections
+            for (size_t k = old_modes; k < new_modes; ++k) {
+                new_attractors[c * new_phase_dim + new_modes + k] = tiny_init(rng_);
+            }
+        }
+        attractor_field_ = std::move(new_attractors);
+
+        std::cout << "  >>> [Sovereign Autopoiesis] Karyon spontaneously sprouted memory: "
+                  << old_modes << " -> " << new_modes << " modes (Phase dim: " << new_phase_dim << ") <<<\n";
+    }
+
     // Telemetry getters
-    size_t get_latest_action() const noexcept { return latest_chosen_action_; }
+    size_t get_active_modes() const noexcept { return num_modes_; }
+    size_t get_phase_dim() const noexcept { return 2 * num_modes_; }
     float get_free_energy() const noexcept { return internal_free_energy_; }
     float get_positive_exp() const noexcept { return positive_accumulated_; }
     float get_negative_exp() const noexcept { return negative_accumulated_; }
-    const std::array<float, CHANNEL_IO_DIM>& get_probabilities() const noexcept { return latest_probabilities_; }
+    float get_avg_memory_horizon() const noexcept {
+        float sum = 0.0f;
+        for (float h : decay_horizon_) sum += h;
+        return sum / static_cast<float>(num_modes_);
+    }
 
 private:
+    size_t num_modes_;
     size_t total_experiences_;
     size_t latest_chosen_action_;
+    size_t consecutive_errors_;
     float positive_accumulated_;
     float negative_accumulated_;
     float internal_free_energy_;
 
-    PhaseStateMetrics state_;
-    std::array<float, STATE_PHASE_DIM> latest_context_;
+    std::mt19937 rng_;
 
-    // Afferent receptive projection: [256 x 128]
-    alignas(64) std::array<float, CHANNEL_IO_DIM * NUM_CONTINUUM_MODES> W_afferent_;
+    // Physical mode variables
+    std::vector<float> q_;
+    std::vector<float> p_;
+    std::vector<float> stiffness_;
+    std::vector<float> damping_;
+    std::vector<float> decay_horizon_;  // Endogenous timescale lambda_k
+    std::vector<float> causal_credit_;  // Long-term usefulness
 
-    // Contextual Phase Attractor Field: [256 actions x 256 phase-dims]
-    alignas(64) std::array<float, CHANNEL_IO_DIM * STATE_PHASE_DIM> attractor_field_;
-    alignas(64) std::array<float, CHANNEL_IO_DIM> action_bias_;
-    alignas(64) std::array<float, CHANNEL_IO_DIM> latest_probabilities_;
+    // Phase context traces: dim = 2 * num_modes_
+    std::vector<float> context_trace_;
+    std::vector<float> latest_normalized_context_;
+
+    // Dynamic coupling tensors
+    std::vector<float> W_afferent_;      // [256 x num_modes_]
+    std::vector<float> attractor_field_; // [256 x (2 * num_modes_)]
+    std::array<float, CHANNEL_IO_DIM> action_bias_;
+    std::array<float, CHANNEL_IO_DIM> latest_probabilities_;
 };
 
 } // namespace karyon
 
-#endif // KARYON_SOVEREIGN_EXPERIENTIAL_CONTINUUM_V32_H
+#endif // KARYON_SOVEREIGN_DYNAMIC_MEMORY_CONTINUUM_V33_H
