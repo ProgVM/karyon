@@ -1,10 +1,16 @@
 // ============================================================================
-// Karyon-CoRE v36.0 Sovereign Tri-Vector Unified Totipotent Organism (High-Performance SIMD)
+// Karyon-CoRE v37.0 Full Substrate Plasticity & Complete Sovereign Control
 // Standard: KEP v30.0 (Principles 1, 2, 4, 5, 6, 8, 27, 28, 29, 30)
+//
+// Complete Substrate Plasticity (KEP Principle 29):
+// 1. Plastic Afferent Projection W_afferent_: Sensitizes wavefield modes to inputs.
+// 2. Plastic Resonant Coupling J_ij: Dynamic topological cross-talk chords.
+// 3. Plastic Stiffness & Damping (stiffness_k, damping_k): Self-tuning natural frequencies.
+// 4. Non-Parametric Phase Memory & Attractor Field.
 // ============================================================================
 
-#ifndef KARYON_SOVEREIGN_TRI_VECTOR_ORGANISM_V36_H
-#define KARYON_SOVEREIGN_TRI_VECTOR_ORGANISM_V36_H
+#ifndef KARYON_SOVEREIGN_FULL_PLASTICITY_ORGANISM_V37_H
+#define KARYON_SOVEREIGN_FULL_PLASTICITY_ORGANISM_V37_H
 
 #include <vector>
 #include <array>
@@ -23,14 +29,15 @@ constexpr size_t INITIAL_MODES = 64;
 constexpr size_t MAX_ALLOWABLE_MODES = 512;
 constexpr size_t PHASE_MEMORY_CAPACITY = 256;
 
-struct TriVectorTelemetry {
+struct FullPlasticityTelemetry {
     size_t active_modes;
     size_t phase_dim;
     float free_energy;
     float dt_eff;
     float refractory_strength;
     float refractory_recovery;
-    float avg_horizon;
+    float avg_stiffness;
+    float avg_damping;
     float coupling_density;
     float mean_coupling_weight;
     size_t stored_phase_traces;
@@ -44,9 +51,9 @@ struct PhaseMemoryItem {
     float surprise;
 };
 
-class SovereignTriVectorOrganism {
+class SovereignFullPlasticityOrganism {
 public:
-    SovereignTriVectorOrganism() noexcept {
+    SovereignFullPlasticityOrganism() noexcept {
         reset();
     }
 
@@ -60,7 +67,6 @@ public:
         latest_chosen_action_ = 0;
         latest_retrieval_resonance_ = 0.0f;
 
-        // Sovereign Plastic Control Parameters (Self-Synthesized)
         dt_eff_ = 0.010f;
         refractory_strength_ = 1.20f;
         refractory_recovery_rate_ = 0.70f;
@@ -72,10 +78,9 @@ public:
         action_bias_.fill(0.0f);
         latest_probabilities_.fill(1.0f / static_cast<float>(CHANNEL_IO_DIM));
 
-        rng_.seed(5610);
+        rng_.seed(5620);
         std::normal_distribution<float> norm(0.0f, 0.02f);
 
-        // Core Wavefield Tensors
         q_.assign(num_modes_, 0.0f);
         p_.assign(num_modes_, 0.0f);
         stiffness_.resize(num_modes_);
@@ -94,21 +99,21 @@ public:
         context_trace_.assign(2 * num_modes_, 0.0f);
         latest_normalized_context_.assign(2 * num_modes_, 0.0f);
 
-        // Vector 1: Structural Synaptogenesis Couplings J_ij
         J_coupling_.assign(num_modes_ * num_modes_, 0.0f);
+        for (size_t i = 0; i < num_modes_; ++i) {
+            for (size_t j = 0; j < num_modes_; ++j) {
+                if (i != j) J_coupling_[i * num_modes_ + j] = norm(rng_) * 0.05f;
+            }
+        }
 
-        // Vector 2: Phase Memory Buffer
         phase_memory_buffer_.clear();
 
-        // Plasticity Generator Tensors: Maps context -> [dt_eff, refractory_strength, rollout_depth, etc.]
         plasticity_gen_.resize((2 * num_modes_) * 8);
         for (auto& g : plasticity_gen_) g = norm(rng_);
 
-        // Afferent Ingestion: [256 x num_modes_]
         W_afferent_.resize(CHANNEL_IO_DIM * num_modes_);
         for (auto& w : W_afferent_) w = norm(rng_);
 
-        // Attractor Field: [256 x (2 * num_modes_)]
         attractor_field_.resize(CHANNEL_IO_DIM * (2 * num_modes_));
         for (auto& a : attractor_field_) a = norm(rng_);
     }
@@ -156,9 +161,15 @@ public:
         const float dt = dt_eff_;
         const size_t in_offset = static_cast<size_t>(input_channel) * num_modes_;
 
-        // --- Step 1: Wavefield Mode Update ---
+        // --- Step 1: Wavefield Mode Update with Full Resonant Coupling J_ij ---
         for (size_t k = 0; k < num_modes_; ++k) {
-            const float drive = W_afferent_[in_offset + k] * 5.0f;
+            float coupling_sum = 0.0f;
+            const size_t k_row = k * num_modes_;
+            for (size_t j = 0; j < num_modes_; ++j) {
+                coupling_sum += J_coupling_[k_row + j] * q_[j];
+            }
+
+            const float drive = W_afferent_[in_offset + k] * 5.0f + coupling_density_ * coupling_sum;
             const float omega_sq = stiffness_[k] * metric_curvature_;
             const float gamma = 0.5f * damping_[k];
 
@@ -209,7 +220,7 @@ public:
             latest_normalized_context_[i] = context_trace_[i] * inv_norm;
         }
 
-        // --- Step 3: Fast Sampled Vector 2 Phase Memory Retrieval ---
+        // --- Step 3: Phase Memory Retrieval ---
         float memory_boost[CHANNEL_IO_DIM] = {0.0f};
         latest_retrieval_resonance_ = 0.0f;
 
@@ -217,8 +228,7 @@ public:
             float max_resonance = -1.0f;
             int best_action = -1;
 
-            // Check most recent 32 phase memory items for ultra-fast lookup
-            size_t check_count = std::min(phase_memory_buffer_.size(), static_cast<size_t>(32));
+            size_t check_count = std::min(phase_memory_buffer_.size(), static_cast<size_t>(64));
             for (size_t m = 0; m < check_count; ++m) {
                 const auto& item = phase_memory_buffer_[phase_memory_buffer_.size() - 1 - m];
                 if (item.phase_vector.size() == phase_dim) {
@@ -233,8 +243,8 @@ public:
                 }
             }
 
-            if (max_resonance > 0.65f && best_action >= 0) {
-                memory_boost[best_action] = (max_resonance - 0.65f) * 3.0f;
+            if (max_resonance > 0.60f && best_action >= 0) {
+                memory_boost[best_action] = (max_resonance - 0.60f) * 4.0f;
                 latest_retrieval_resonance_ = max_resonance;
             }
         }
@@ -310,12 +320,16 @@ public:
         return chosen;
     }
 
-    void assimilate_experience(float valence, float magnitude, int target_hint = -1, float lr = 0.05f) noexcept {
+    // =========================================================================
+    // FULL SUBSTRATE PLASTICITY UPDATE (KEP Principle 29)
+    // =========================================================================
+    void assimilate_experience(uint8_t input_channel, float valence, float magnitude, int target_hint = -1, float lr = 0.05f) noexcept {
         total_experiences_++;
 
         const float eff_feedback = std::clamp(valence, -1.0f, 1.0f) * std::clamp(magnitude, 0.0f, 2.0f);
         const size_t chosen = latest_chosen_action_;
         const size_t phase_dim = 2 * num_modes_;
+        const size_t in_offset = static_cast<size_t>(input_channel) * num_modes_;
 
         if (eff_feedback > 0.0f) {
             positive_accumulated_ += eff_feedback;
@@ -327,7 +341,34 @@ public:
             consecutive_errors_++;
         }
 
-        // Vector 2: Phase Memory Storage on High Feedback
+        // 1. Plastic Afferent Ingestion W_afferent_: Sensitizes input projection!
+        for (size_t k = 0; k < num_modes_; ++k) {
+            float grad_w = eff_feedback * q_[k];
+            W_afferent_[in_offset + k] += lr * 0.1f * grad_w;
+        }
+
+        // 2. Plastic Resonant Coupling J_ij: Hebbian cross-talk updates
+        for (size_t i = 0; i < num_modes_; ++i) {
+            for (size_t j = 0; j < num_modes_; ++j) {
+                if (i != j) {
+                    float co_act = q_[i] * q_[j];
+                    J_coupling_[i * num_modes_ + j] += lr * 0.01f * eff_feedback * co_act;
+                    J_coupling_[i * num_modes_ + j] = std::clamp(J_coupling_[i * num_modes_ + j], -0.5f, 0.5f);
+                }
+            }
+        }
+
+        // 3. Plastic Stiffness & Damping Self-Tuning
+        for (size_t k = 0; k < num_modes_; ++k) {
+            float energy_k = q_[k] * q_[k] + p_[k] * p_[k];
+            stiffness_[k] += lr * 0.001f * eff_feedback * energy_k;
+            stiffness_[k] = std::clamp(stiffness_[k], 0.2f, 5.0f);
+
+            damping_[k] -= lr * 0.001f * eff_feedback * std::abs(p_[k]);
+            damping_[k] = std::clamp(damping_[k], 0.05f, 2.0f);
+        }
+
+        // 4. Phase Memory Storage
         if (std::abs(eff_feedback) >= 0.8f && target_hint >= 0) {
             PhaseMemoryItem item;
             item.phase_vector = latest_normalized_context_;
@@ -340,7 +381,7 @@ public:
             phase_memory_buffer_.push_back(std::move(item));
         }
 
-        // Plasticity Generator Gradient
+        // 5. Plasticity Generator Gradient
         for (size_t col = 0; col < 8; ++col) {
             for (size_t i = 0; i < phase_dim; ++i) {
                 float grad = eff_feedback * latest_normalized_context_[i];
@@ -348,7 +389,7 @@ public:
             }
         }
 
-        // Attractor Field Plasticity
+        // 6. Attractor Field Plasticity
         if (eff_feedback < 0.0f) {
             const size_t err_offset = chosen * phase_dim;
             action_bias_[chosen] -= lr * 0.2f;
@@ -405,7 +446,6 @@ public:
         J_coupling_.resize(new_modes * new_modes, 0.0f);
         plasticity_gen_.resize((2 * new_modes) * 8, 0.0f);
 
-        // Re-stride Afferent Ingestion
         std::vector<float> new_W_afferent(CHANNEL_IO_DIM * new_modes, 0.0f);
         for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
             for (size_t k = 0; k < old_modes; ++k) {
@@ -417,7 +457,6 @@ public:
         }
         W_afferent_ = std::move(new_W_afferent);
 
-        // Re-stride Attractor Field
         const size_t old_phase_dim = 2 * old_modes;
         const size_t new_phase_dim = 2 * new_modes;
         std::vector<float> new_attractors(CHANNEL_IO_DIM * new_phase_dim, 0.0f);
@@ -438,25 +477,30 @@ public:
         }
         attractor_field_ = std::move(new_attractors);
 
-        std::cout << "  >>> [Tri-Vector Autopoiesis] Karyon sprouted modes: "
+        std::cout << "  >>> [Full Substrate Autopoiesis] Karyon sprouted modes: "
                   << old_modes << " -> " << new_modes << " (Phase dim: " << new_phase_dim << ") <<<\n";
     }
 
-    TriVectorTelemetry get_telemetry() const noexcept {
-        float sum_h = 0.0f;
-        for (float h : decay_horizon_) sum_h += h;
+    FullPlasticityTelemetry get_telemetry() const noexcept {
+        float sum_stiff = 0.0f;
+        float sum_damp = 0.0f;
+        for (size_t k = 0; k < num_modes_; ++k) {
+            sum_stiff += stiffness_[k];
+            sum_damp += damping_[k];
+        }
 
         float coupling_weight_sum = 0.0f;
         for (float j : J_coupling_) coupling_weight_sum += std::abs(j);
 
-        return TriVectorTelemetry{
+        return FullPlasticityTelemetry{
             num_modes_,
             2 * num_modes_,
             internal_free_energy_,
             dt_eff_,
             refractory_strength_,
             refractory_recovery_rate_,
-            sum_h / static_cast<float>(num_modes_),
+            sum_stiff / static_cast<float>(num_modes_),
+            sum_damp / static_cast<float>(num_modes_),
             coupling_density_,
             coupling_weight_sum / static_cast<float>(num_modes_ * num_modes_),
             phase_memory_buffer_.size(),
@@ -508,4 +552,4 @@ private:
 
 } // namespace karyon
 
-#endif // KARYON_SOVEREIGN_TRI_VECTOR_ORGANISM_V36_H
+#endif // KARYON_SOVEREIGN_FULL_PLASTICITY_ORGANISM_V37_H
