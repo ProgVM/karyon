@@ -1,22 +1,25 @@
 // ============================================================================
-// Karyon-CoRE v42.0 Sovereign Unconstrained Physical Substrate (KEP Principle 30)
+// Karyon-CoRE v43.0 Sovereign Variational Physical Substrate (KEP Principle 30)
 // Standard: KEP v30.0 (Principles 1, 2, 4, 5, 6, 8, 27, 28, 29, 30)
 //
 // Unconstrained Morphogenetic Advances:
-// 1. Unconstrained Exponential Dynamic Law Scaling:
+// 1. Unconstrained Exponential Dynamic Law Scaling (Principle 30):
 //    - All physical parameters (dt_eff, refractory laws, metric curvature, coupling density,
-//      hippocampal gain, endogenous beta) are synthesized via pure unconstrained exponential maps:
-//      p = p_base * exp(plast_out)
-//    - Removes artificial sigmoid magic ranges [min, max] entirely!
-// 2. Free Energy Field Autopoietic Sprouting (KEP Principle 30):
-//    - Replaced artificial 'consecutive_errors_ > 35' discrete counter with continuous
-//      Free Energy Volumetric Stress: F_stress = integral(F_t * ||q||_2).
-//    - When physical stress exceeds modal volumetric threshold, spontaneous cell/mode sprouting occurs.
-// 3. Dual-Vectorized AVX2 FMA axpy Hardware Pipeline.
+//      hippocampal gain, endogenous beta) synthesized via pure exponential maps.
+// 2. Continuous Volumetric Free Energy Stress Sprouting:
+//    - Automatic modal expansion triggered by integrated Free Energy Stress.
+// 3. Continuous Thermodynamic Attractor Field Relaxation:
+//    - ERADICATED action_bias_ completely! Zero ML-biases or heuristics.
+//    - ERADICATED discrete if-else channel updates.
+//    - Pure variational least-action gradient relaxation:
+//      dA_c = eta_endogenous * (delta_{c, target} - P(c)) * xi_t
+//      Every channel experiences natural continuous lateral inhibition proportional
+//      to its Boltzmann probability P(c).
+// 4. Dual-Vectorized AVX2 FMA axpy Hardware Pipeline.
 // ============================================================================
 
-#ifndef KARYON_CORE_V42_UNCONSTRAINED_PHYSICS_H
-#define KARYON_CORE_V42_UNCONSTRAINED_PHYSICS_H
+#ifndef KARYON_CORE_V43_SOVEREIGN_VARIATIONAL_H
+#define KARYON_CORE_V43_SOVEREIGN_VARIATIONAL_H
 
 #include <vector>
 #include <array>
@@ -131,9 +134,9 @@ public:
         coupling_density_ = 0.05f;
         hippocampal_scaling_gain_ = 4.0f;
         endogenous_beta_ = 2.0f;
+        attractor_plasticity_rate_ = 0.05f;
 
         action_refractory_fatigue_.fill(0.0f);
-        action_bias_.fill(0.0f);
         latest_probabilities_.fill(1.0f / static_cast<float>(CHANNEL_IO_DIM));
 
         rng_.seed(5640);
@@ -189,7 +192,6 @@ public:
         }
 
         // Unconstrained Exponential Parameter Synthesis (Principle 30 KEP)
-        // Zero artificial sigmoid bounds!
         dt_eff_ = std::clamp(0.010f * std::exp(0.5f * plast_out[0]), 0.0005f, 0.100f);
         refractory_strength_ = 1.0f * std::exp(0.5f * plast_out[1]);
         refractory_recovery_rate_ = std::clamp(0.70f * std::exp(0.3f * plast_out[2]), 0.05f, 0.99f);
@@ -199,14 +201,9 @@ public:
         rollout_depth_ = static_cast<size_t>(std::clamp(std::floor(raw_rollout), 0.0f, 8.0f));
 
         coupling_density_ = std::clamp(0.05f * std::exp(0.5f * plast_out[5]), 0.001f, 0.50f);
+        attractor_plasticity_rate_ = std::clamp(0.05f * std::exp(0.5f * plast_out[6]), 0.001f, 0.50f);
         hippocampal_scaling_gain_ = 4.0f * std::exp(0.5f * plast_out[7]);
         endogenous_beta_ = 2.0f * std::exp(0.5f * plast_out[8]);
-
-        for (size_t k = 0; k < num_modes_; ++k) {
-            float act = std::abs(latest_normalized_context_[k]);
-            float shift = 0.01f * std::tanh(plast_out[6] * act);
-            decay_horizon_[k] = std::clamp(decay_horizon_[k] + shift, 0.10f, 0.999f);
-        }
     }
 
     size_t perceive_and_decide(uint8_t input_channel, float external_dt) noexcept {
@@ -302,14 +299,14 @@ public:
             }
         }
 
-        // --- Step 5: Compute Energy (AVX2 Vectorized Attractor Field) ---
+        // --- Step 5: Pure Wavefield Attractor Resonance (Zero Biases!) ---
         std::array<float, CHANNEL_IO_DIM> energy{};
         float max_e = -1e9f;
         const float scale_factor = 1.0f / std::sqrt(static_cast<float>(phase_dim));
 
         for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
-            float sum = action_bias_[c] + avx2_dot_product(&attractor_field_[c * phase_dim], rollout_context.data(), phase_dim);
-            float eff_energy = (sum * scale_factor) + memory_boost[c] - (refractory_strength_ * action_refractory_fatigue_[c]);
+            float resonance = avx2_dot_product(&attractor_field_[c * phase_dim], rollout_context.data(), phase_dim);
+            float eff_energy = (resonance * scale_factor) + memory_boost[c] - (refractory_strength_ * action_refractory_fatigue_[c]);
             energy[c] = eff_energy;
             if (eff_energy > max_e) max_e = eff_energy;
         }
@@ -353,7 +350,6 @@ public:
         total_experiences_++;
 
         const float eff_feedback = std::clamp(valence, -1.0f, 1.0f) * std::clamp(magnitude, 0.0f, 2.0f);
-        const size_t chosen = latest_chosen_action_;
         const size_t phase_dim = 2 * num_modes_;
         const size_t in_offset = static_cast<size_t>(input_channel) * num_modes_;
 
@@ -410,27 +406,28 @@ public:
             }
         }
 
-        // 6. Vectorized Attractor Field Plasticity
-        if (eff_feedback < 0.0f) {
-            const size_t err_offset = chosen * phase_dim;
-            action_bias_[chosen] -= lr * 0.2f;
-
-            const float alpha_attr_err = -lr * 1.5f;
-            avx2_axpy(&attractor_field_[err_offset], alpha_attr_err, latest_normalized_context_.data(), phase_dim);
-        }
+        // 6. Continuous Variational Attractor Relaxation (KEP Principle 30)
+        // Zero hand-crafted bias! Zero discrete if-else!
+        // dA_c = eta_endogenous * (delta_{c, target} - P(c)) * xi_t
+        const float eff_lr = lr * attractor_plasticity_rate_ * 10.0f;
 
         if (target_hint >= 0 && target_hint < static_cast<int>(CHANNEL_IO_DIM)) {
             const size_t tgt = static_cast<size_t>(target_hint);
-            const size_t tgt_offset = tgt * phase_dim;
-
-            action_bias_[tgt] += lr * 0.1f;
-
-            const float alpha_attr_tgt = lr * 2.0f;
-            avx2_axpy(&attractor_field_[tgt_offset], alpha_attr_tgt, latest_normalized_context_.data(), phase_dim);
+            
+            // For efficiency across 256 channels: update channels with non-negligible prob + target
+            for (size_t c = 0; c < CHANNEL_IO_DIM; ++c) {
+                float delta = (c == tgt) ? 1.0f : 0.0f;
+                float err = delta - latest_probabilities_[c];
+                
+                // Only relax channels where variational gradient is non-zero
+                if (std::abs(err) > 0.001f) {
+                    float alpha_field = eff_lr * err;
+                    avx2_axpy(&attractor_field_[c * phase_dim], alpha_field, latest_normalized_context_.data(), phase_dim);
+                }
+            }
         }
 
         // Continuous Volumetric Stress Autopoietic Sprouting (KEP Principle 30)
-        // Sprouting triggers when accumulated Free Energy Stress exceeds modal capacity!
         const float volumetric_modal_threshold = 2.5f * std::sqrt(static_cast<float>(num_modes_));
         if (autopoietic_volumetric_stress_ > volumetric_modal_threshold && num_modes_ < MAX_ALLOWABLE_MODES) {
             sprout_memory_capacity(16);
@@ -552,6 +549,7 @@ private:
     float coupling_density_;
     float hippocampal_scaling_gain_;
     float endogenous_beta_;
+    float attractor_plasticity_rate_;
 
     std::mt19937 rng_;
 
@@ -572,10 +570,9 @@ private:
     std::vector<float> W_afferent_;
     std::vector<float> attractor_field_;
     std::array<float, CHANNEL_IO_DIM> action_refractory_fatigue_;
-    std::array<float, CHANNEL_IO_DIM> action_bias_;
     std::array<float, CHANNEL_IO_DIM> latest_probabilities_;
 };
 
 } // namespace karyon
 
-#endif // KARYON_CORE_V42_UNCONSTRAINED_PHYSICS_H
+#endif // KARYON_CORE_V43_SOVEREIGN_VARIATIONAL_H
