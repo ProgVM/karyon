@@ -1,0 +1,215 @@
+========================================================================
+=== EXP-592: FULL-SPECTRUM TOTIPOTENT SUPER-PRIMITIVE DAG (FT-SP-DAG) ===
+=== Memory State s_k(t), Real DAG Routing, & Multiplicative Binding  ===
+========================================================================
+[+] Corpus loaded: 22773992 bytes.
+
+>>> Initializing Full-Spectrum Organism (Dim: 256)...
+>>> Launching Full-Spectrum Autopoietic Learning (300000 steps)...
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 20000] ---
+  Free Energy: 3.3644 | Active Nodes: 3 | Sprouts: 0 | Prunes: 0
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.07325 | Tau(Alpha): 0.116009 | Credit: 0.18325 | Lock: 98% | Bilin: 0.432017 | Phase: 0.332017
+  Node [1] SuperDAG (0, 0) | Coeff: 1.87688 | Tau(Alpha): 0.985617 | Credit: 0.185131 | Lock: 1% | Bilin: 0.972234 | Phase: 0.972234
+  Node [2] SuperDAG (1, 0) | Coeff: 1.05415 | Tau(Alpha): 0.998363 | Credit: 0.178741 | Lock: 13.4% | Bilin: 0.769929 | Phase: 0.669928
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [3] parents=(0, 2) | Tau(alpha): 0.2656 | FE: 3.3644
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 40000] ---
+  Free Energy: 3.47285 | Active Nodes: 4 | Sprouts: 1 | Prunes: 0
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.1428 | Tau(Alpha): 0.137396 | Credit: 0.0937048 | Lock: 98% | Bilin: 0.474791 | Phase: 0.374791
+  Node [1] SuperDAG (0, 0) | Coeff: 0.985016 | Tau(Alpha): 0.914027 | Credit: -0.0278149 | Lock: 80.3% | Bilin: 0.82905 | Phase: 0.82905
+  Node [2] SuperDAG (1, 0) | Coeff: 0.365133 | Tau(Alpha): 0.899224 | Credit: -0.0189713 | Lock: 71.3995% | Bilin: 0.799446 | Phase: 0.799089
+  Node [3] SuperDAG (0, 2) | Coeff: 0.141878 | Tau(Alpha): 0.292156 | Credit: 0.00587199 | Lock: 98% | Bilin: 0.453119 | Phase: 0.353119
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [4] parents=(1, 0) | Tau(alpha): 0.613239 | FE: 3.47285
+  >>> Step 50000 | Free Energy: 3.63301 | Beta: 4.83296 | Nodes: 5 | Sprouts: 2 | Prunes: 0
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 60000] ---
+  Free Energy: 3.41754 | Active Nodes: 5 | Sprouts: 2 | Prunes: 0
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.21222 | Tau(Alpha): 0.151569 | Credit: -0.0572068 | Lock: 91% | Bilin: 0.503138 | Phase: 0.403138
+  Node [1] SuperDAG (0, 0) | Coeff: 1.82714 | Tau(Alpha): 0.995354 | Credit: 0.438925 | Lock: 8.39999% | Bilin: 0.991709 | Phase: 0.991709
+  Node [2] SuperDAG (1, 0) | Coeff: 0.209157 | Tau(Alpha): 0.993913 | Credit: 0.397854 | Lock: 8.79998% | Bilin: 0.988826 | Phase: 0.988826
+  Node [3] SuperDAG (0, 2) | Coeff: 0.218277 | Tau(Alpha): 0.307484 | Credit: 0.100569 | Lock: 98% | Bilin: 0.483781 | Phase: 0.383781
+  Node [4] SuperDAG (1, 0) | Coeff: -0.090127 | Tau(Alpha): 0.808691 | Credit: 0.406846 | Lock: 8.39998% | Bilin: 0.790898 | Phase: 0.690897
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [5] parents=(4, 1) | Tau(alpha): 0.893217 | FE: 3.41754
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 80000] ---
+  Free Energy: 3.5912 | Active Nodes: 6 | Sprouts: 3 | Prunes: 0
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.31141 | Tau(Alpha): 0.181085 | Credit: 0.0196859 | Lock: 98% | Bilin: 0.562167 | Phase: 0.462169
+  Node [1] SuperDAG (0, 0) | Coeff: 1.85092 | Tau(Alpha): 0.996603 | Credit: 0.327783 | Lock: 59.4992% | Bilin: 0.994205 | Phase: 0.994205
+  Node [2] SuperDAG (1, 0) | Coeff: 0.638795 | Tau(Alpha): 0.987931 | Credit: 0.27343 | Lock: 55.8993% | Bilin: 0.976865 | Phase: 0.976865
+  Node [3] SuperDAG (0, 2) | Coeff: 0.281914 | Tau(Alpha): 0.320555 | Credit: 0.082468 | Lock: 98% | Bilin: 0.509925 | Phase: 0.409926
+  Node [4] SuperDAG (1, 0) | Coeff: 0.812331 | Tau(Alpha): 0.996112 | Credit: 0.293493 | Lock: 57.7993% | Bilin: 0.993224 | Phase: 0.993224
+  Node [5] SuperDAG (4, 1) | Coeff: 1.19427 | Tau(Alpha): 0.996808 | Credit: 0.334815 | Lock: 62.6992% | Bilin: 0.994616 | Phase: 0.994616
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [6] parents=(4, 3) | Tau(alpha): 0.589012 | FE: 3.5912
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 100000] ---
+  Free Energy: 3.3939 | Active Nodes: 7 | Sprouts: 4 | Prunes: 0
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.40276 | Tau(Alpha): 0.204274 | Credit: 0.0850369 | Lock: 98% | Bilin: 0.608542 | Phase: 0.508544
+  Node [1] SuperDAG (0, 0) | Coeff: 1.97165 | Tau(Alpha): 0.995346 | Credit: 0.359925 | Lock: 10.2% | Bilin: 0.991692 | Phase: 0.991692
+  Node [2] SuperDAG (1, 0) | Coeff: -0.00823453 | Tau(Alpha): 0.977129 | Credit: 0.317918 | Lock: 4% | Bilin: 0.955259 | Phase: 0.955259
+  Node [3] SuperDAG (0, 2) | Coeff: 0.336217 | Tau(Alpha): 0.332169 | Credit: 0.0978557 | Lock: 98% | Bilin: 0.533153 | Phase: 0.433155
+  Node [4] SuperDAG (1, 0) | Coeff: 0.551512 | Tau(Alpha): 0.984102 | Credit: 0.333126 | Lock: 4.2% | Bilin: 0.969202 | Phase: 0.969202
+  Node [5] SuperDAG (4, 1) | Coeff: 1.34446 | Tau(Alpha): 0.994774 | Credit: 0.34496 | Lock: 4.2% | Bilin: 0.990549 | Phase: 0.990549
+  Node [6] SuperDAG (4, 3) | Coeff: -0.350944 | Tau(Alpha): 0.812608 | Credit: 0.340605 | Lock: 4.2% | Bilin: 0.847189 | Phase: 0.747191
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [7] parents=(6, 3) | Tau(alpha): 0.634699 | FE: 3.3939
+  >>> Step 100000 | Free Energy: 3.3939 | Beta: 5.01958 | Nodes: 8 | Sprouts: 5 | Prunes: 0
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 120000] ---
+  Free Energy: 3.72979 | Active Nodes: 8 | Sprouts: 5 | Prunes: 0
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.49332 | Tau(Alpha): 0.230483 | Credit: 0.0405343 | Lock: 98% | Bilin: 0.66096 | Phase: 0.560962
+  Node [1] SuperDAG (0, 0) | Coeff: 1.26535 | Tau(Alpha): 0.914254 | Credit: 0.636765 | Lock: 9.89999% | Bilin: 0.829509 | Phase: 0.829509
+  Node [2] SuperDAG (1, 0) | Coeff: -1.47664 | Tau(Alpha): 0.868845 | Credit: 0.585825 | Lock: 8.7% | Bilin: 0.738687 | Phase: 0.738687
+  Node [3] SuperDAG (0, 2) | Coeff: 0.413864 | Tau(Alpha): 0.350777 | Credit: 0.141755 | Lock: 98% | Bilin: 0.570369 | Phase: 0.470377
+  Node [4] SuperDAG (1, 0) | Coeff: -0.282992 | Tau(Alpha): 0.907261 | Credit: 0.610052 | Lock: 9.1% | Bilin: 0.815521 | Phase: 0.815521
+  Node [5] SuperDAG (4, 1) | Coeff: 1.13193 | Tau(Alpha): 0.91132 | Credit: 0.640582 | Lock: 9.89999% | Bilin: 0.82364 | Phase: 0.82364
+  Node [6] SuperDAG (4, 3) | Coeff: -0.732297 | Tau(Alpha): 0.910239 | Credit: 0.631624 | Lock: 9.5% | Bilin: 0.821477 | Phase: 0.821477
+  Node [7] SuperDAG (6, 3) | Coeff: 0.0743569 | Tau(Alpha): 0.891886 | Credit: 0.653513 | Lock: 10.6% | Bilin: 0.827057 | Phase: 0.814386
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [8] parents=(2, 7) | Tau(alpha): 0.425002 | FE: 3.72979
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 140000] ---
+  Free Energy: 3.64408 | Active Nodes: 9 | Sprouts: 6 | Prunes: 0
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.55254 | Tau(Alpha): 0.248387 | Credit: 0.0210127 | Lock: 98% | Bilin: 0.696763 | Phase: 0.596765
+  Node [1] SuperDAG (0, 0) | Coeff: 0.316932 | Tau(Alpha): 0.870253 | Credit: -0.0398538 | Lock: 18.7001% | Bilin: 0.741506 | Phase: 0.741506
+  Node [2] SuperDAG (1, 0) | Coeff: -1.37889 | Tau(Alpha): 0.758394 | Credit: -0.0830362 | Lock: 4.6001% | Bilin: 0.517796 | Phase: 0.517796
+  Node [3] SuperDAG (0, 2) | Coeff: 0.722255 | Tau(Alpha): 0.464544 | Credit: -0.0182766 | Lock: 26.9001% | Bilin: 0.797903 | Phase: 0.697912
+  Node [4] SuperDAG (1, 0) | Coeff: -1.36743 | Tau(Alpha): 0.843289 | Credit: -0.0875224 | Lock: 4.6001% | Bilin: 0.687578 | Phase: 0.687578
+  Node [5] SuperDAG (4, 1) | Coeff: 0.68548 | Tau(Alpha): 0.906643 | Credit: -0.0944027 | Lock: 5.3001% | Bilin: 0.814289 | Phase: 0.814289
+  Node [6] SuperDAG (4, 3) | Coeff: -1.18337 | Tau(Alpha): 0.913662 | Credit: -0.0915801 | Lock: 5.9001% | Bilin: 0.828318 | Phase: 0.828318
+  Node [7] SuperDAG (6, 3) | Coeff: 0.368145 | Tau(Alpha): 0.925599 | Credit: -0.0193583 | Lock: 3.7% | Bilin: 0.852195 | Phase: 0.852195
+  Node [8] SuperDAG (2, 7) | Coeff: 0.265855 | Tau(Alpha): 0.683308 | Credit: -0.147733 | Lock: 13.4% | Bilin: 0.658085 | Phase: 0.658085
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [4] (Credit: -0.0875224, Lock: 4.6001%)
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [5] (Credit: -0.0944027, Lock: 5.3001%)
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [6] (Credit: -0.0915801, Lock: 5.9001%)
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [8] (Credit: -0.147733, Lock: 13.4%)
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [5] parents=(3, 1) | Tau(alpha): 0.936624 | FE: 3.64408
+  >>> Step 150000 | Free Energy: 3.60093 | Beta: 6.17758 | Nodes: 6 | Sprouts: 7 | Prunes: 4
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 160000] ---
+  Free Energy: 3.37304 | Active Nodes: 6 | Sprouts: 7 | Prunes: 4
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.58915 | Tau(Alpha): 0.271748 | Credit: 0.0581438 | Lock: 98% | Bilin: 0.743486 | Phase: 0.643488
+  Node [1] SuperDAG (0, 0) | Coeff: -1.32737 | Tau(Alpha): 0.102024 | Credit: 0.0638699 | Lock: 78.3997% | Bilin: 0.104048 | Phase: 0.104048
+  Node [2] SuperDAG (1, 0) | Coeff: -1.00551 | Tau(Alpha): 0.243339 | Credit: 0.481952 | Lock: 98% | Bilin: 0.386679 | Phase: 0.386679
+  Node [3] SuperDAG (0, 2) | Coeff: 1.00775 | Tau(Alpha): 0.626393 | Credit: 0.272802 | Lock: 69.8998% | Bilin: 0.99925 | Phase: 0.99925
+  Node [7] SuperDAG (0, 3) | Coeff: -1.05632 | Tau(Alpha): 0.728914 | Credit: -0.127635 | Lock: 15.4987% | Bilin: 0.458826 | Phase: 0.458826
+  Node [5] SuperDAG (3, 1) | Coeff: 2 | Tau(Alpha): 0.998796 | Credit: 0.830014 | Lock: 71.8998% | Bilin: 0.998592 | Phase: 0.998592
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [6] parents=(5, 5) | Tau(alpha): 0.950922 | FE: 3.37304
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 180000] ---
+  Free Energy: 3.75572 | Active Nodes: 7 | Sprouts: 8 | Prunes: 4
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.6469 | Tau(Alpha): 0.283482 | Credit: 0.0975403 | Lock: 98% | Bilin: 0.766954 | Phase: 0.666956
+  Node [1] SuperDAG (0, 0) | Coeff: -1.437 | Tau(Alpha): 0.165967 | Credit: 0.314815 | Lock: 39.2% | Bilin: 0.231935 | Phase: 0.231935
+  Node [2] SuperDAG (1, 0) | Coeff: -0.0338073 | Tau(Alpha): 0.603343 | Credit: 0.166303 | Lock: 36.7001% | Bilin: 0.994842 | Phase: 0.994842
+  Node [3] SuperDAG (0, 2) | Coeff: 1.5921 | Tau(Alpha): 0.840282 | Credit: 0.051274 | Lock: 95.7% | Bilin: 0.999944 | Phase: 0.999944
+  Node [7] SuperDAG (0, 3) | Coeff: -0.7352 | Tau(Alpha): 0.879163 | Credit: 0.00362287 | Lock: 6.8% | Bilin: 0.759322 | Phase: 0.759322
+  Node [5] SuperDAG (3, 1) | Coeff: 1.99984 | Tau(Alpha): 0.999261 | Credit: -0.0301704 | Lock: 92.5% | Bilin: 0.999522 | Phase: 0.999522
+  Node [6] SuperDAG (5, 5) | Coeff: 1.54661 | Tau(Alpha): 0.999465 | Credit: -0.000814311 | Lock: 93% | Bilin: 0.99993 | Phase: 0.99993
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [7] parents=(5, 2) | Tau(alpha): 0.853279 | FE: 3.75572
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 200000] ---
+  Free Energy: 3.77259 | Active Nodes: 8 | Sprouts: 9 | Prunes: 4
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.71494 | Tau(Alpha): 0.303356 | Credit: -0.0300658 | Lock: 94% | Bilin: 0.806702 | Phase: 0.706704
+  Node [1] SuperDAG (0, 0) | Coeff: -0.906328 | Tau(Alpha): 0.327887 | Credit: 0.442628 | Lock: 98% | Bilin: 0.555778 | Phase: 0.555778
+  Node [2] SuperDAG (1, 0) | Coeff: 0.732899 | Tau(Alpha): 0.921991 | Credit: 0.00635303 | Lock: 39.1001% | Bilin: 0.995906 | Phase: 0.995906
+  Node [3] SuperDAG (0, 2) | Coeff: 1.15153 | Tau(Alpha): 0.845884 | Credit: -0.057126 | Lock: 0% | Bilin: 0.692769 | Phase: 0.692769
+  Node [7] SuperDAG (0, 3) | Coeff: -1.5 | Tau(Alpha): 0.358298 | Credit: -0.243549 | Lock: 0% | Bilin: 0.00424825 | Phase: 0.00424825
+  Node [5] SuperDAG (3, 1) | Coeff: -1.07366 | Tau(Alpha): 0.458489 | Credit: -0.391164 | Lock: 0% | Bilin: 0.000207447 | Phase: 0.000207447
+  Node [6] SuperDAG (5, 5) | Coeff: -0.375845 | Tau(Alpha): 0.665646 | Credit: -0.065114 | Lock: 7.20002% | Bilin: 0.332284 | Phase: 0.332284
+  Node [7] SuperDAG (5, 2) | Coeff: -0.750933 | Tau(Alpha): 0.909967 | Credit: 0.0319023 | Lock: 21.9% | Bilin: 0.700208 | Phase: 0.700208
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [3] (Credit: -0.057126, Lock: 0%)
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [7] (Credit: -0.243549, Lock: 0%)
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [5] (Credit: -0.391164, Lock: 0%)
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [6] (Credit: -0.065114, Lock: 7.20002%)
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [4] parents=(0, 1) | Tau(alpha): 0.271408 | FE: 3.77259
+  >>> Step 200000 | Free Energy: 3.77259 | Beta: 5.06083 | Nodes: 5 | Sprouts: 10 | Prunes: 8
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 220000] ---
+  Free Energy: 3.5409 | Active Nodes: 5 | Sprouts: 10 | Prunes: 8
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.81547 | Tau(Alpha): 0.324417 | Credit: 0.111916 | Lock: 98% | Bilin: 0.848825 | Phase: 0.748827
+  Node [1] SuperDAG (0, 0) | Coeff: -0.885152 | Tau(Alpha): 0.289226 | Credit: 0.0276531 | Lock: 98% | Bilin: 0.478456 | Phase: 0.478456
+  Node [2] SuperDAG (1, 0) | Coeff: 1.95145 | Tau(Alpha): 0.993878 | Credit: 0.208393 | Lock: 11.7993% | Bilin: 0.988756 | Phase: 0.988756
+  Node [7] SuperDAG (0, 2) | Coeff: -1.48472 | Tau(Alpha): 0.820745 | Credit: -0.0579598 | Lock: 0% | Bilin: 0.521769 | Phase: 0.521769
+  Node [4] SuperDAG (0, 1) | Coeff: -0.0309353 | Tau(Alpha): 0.282334 | Credit: -0.0516165 | Lock: 0% | Bilin: 0.421851 | Phase: 0.32185
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [7] (Credit: -0.0579598, Lock: 0%)
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [4] (Credit: -0.0516165, Lock: 0%)
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [3] parents=(2, 1) | Tau(alpha): 0.675411 | FE: 3.5409
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 240000] ---
+  Free Energy: 3.62223 | Active Nodes: 4 | Sprouts: 11 | Prunes: 10
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.90647 | Tau(Alpha): 0.343899 | Credit: 0.0887023 | Lock: 98% | Bilin: 0.887788 | Phase: 0.78779
+  Node [1] SuperDAG (0, 0) | Coeff: -0.578485 | Tau(Alpha): 0.353764 | Credit: 0.462222 | Lock: 98% | Bilin: 0.607532 | Phase: 0.607532
+  Node [2] SuperDAG (1, 0) | Coeff: 1.25282 | Tau(Alpha): 0.906851 | Credit: 0.386171 | Lock: 7.8% | Bilin: 0.814703 | Phase: 0.814703
+  Node [3] SuperDAG (2, 1) | Coeff: -0.0835435 | Tau(Alpha): 0.886099 | Credit: 0.425127 | Lock: 10.2% | Bilin: 0.773201 | Phase: 0.743297
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [4] parents=(3, 3) | Tau(alpha): 0.51101 | FE: 3.62223
+  >>> Step 250000 | Free Energy: 3.63411 | Beta: 5.05593 | Nodes: 5 | Sprouts: 12 | Prunes: 10
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 260000] ---
+  Free Energy: 4.69082 | Active Nodes: 5 | Sprouts: 12 | Prunes: 10
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.94224 | Tau(Alpha): 0.361339 | Credit: -0.00939426 | Lock: 46.6994% | Bilin: 0.922669 | Phase: 0.822671
+  Node [1] SuperDAG (0, 0) | Coeff: -0.766395 | Tau(Alpha): 0.348575 | Credit: 0.0728926 | Lock: 68.9% | Bilin: 0.597153 | Phase: 0.597153
+  Node [2] SuperDAG (1, 0) | Coeff: -0.513187 | Tau(Alpha): 0.549784 | Credit: -0.398595 | Lock: 0% | Bilin: 0.100563 | Phase: 0.100563
+  Node [3] SuperDAG (2, 1) | Coeff: -1.5 | Tau(Alpha): 0.591187 | Credit: -0.478952 | Lock: 0% | Bilin: 0.183378 | Phase: 0.183378
+  Node [4] SuperDAG (3, 3) | Coeff: -0.00694035 | Tau(Alpha): 0.841504 | Credit: -0.52221 | Lock: 0% | Bilin: 0.816012 | Phase: 0.816012
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [3] (Credit: -0.478952, Lock: 0%)
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [4] (Credit: -0.52221, Lock: 0%)
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [3] parents=(2, 1) | Tau(alpha): 0.239769 | FE: 4.69082
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 280000] ---
+  Free Energy: 3.41772 | Active Nodes: 4 | Sprouts: 13 | Prunes: 12
+  Node [0] SensoryRoot (0, 0) | Coeff: 1.85298 | Tau(Alpha): 0.375005 | Credit: 0.0890188 | Lock: 98% | Bilin: 0.950001 | Phase: 0.850003
+  Node [1] SuperDAG (0, 0) | Coeff: -0.470914 | Tau(Alpha): 0.490391 | Credit: -0.136768 | Lock: 70% | Bilin: 0.880786 | Phase: 0.880786
+  Node [2] SuperDAG (1, 0) | Coeff: -1.06082 | Tau(Alpha): 0.672543 | Credit: -0.671079 | Lock: 0% | Bilin: 0.408942 | Phase: 0.408942
+  Node [3] SuperDAG (2, 1) | Coeff: 0.123429 | Tau(Alpha): 0.393098 | Credit: -0.388906 | Lock: 0% | Bilin: 0.706658 | Phase: 0.606657
+
+[-] FULL-SPECTRUM PRUNING: Dissolved harmful Node [3] (Credit: -0.388906, Lock: 0%)
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [3] parents=(1, 1) | Tau(alpha): 0.402406 | FE: 3.41772
+
+--- [FULL-SPECTRUM DAG AUDIT @ Step 300000] ---
+  Free Energy: 3.52263 | Active Nodes: 4 | Sprouts: 14 | Prunes: 13
+  Node [0] SensoryRoot (0, 0) | Coeff: 2 | Tau(Alpha): 0.435946 | Credit: 0.0658785 | Lock: 98% | Bilin: 0.999955 | Phase: 0.971884
+  Node [1] SuperDAG (0, 0) | Coeff: -0.936837 | Tau(Alpha): 0.439816 | Credit: 0.212318 | Lock: 98% | Bilin: 0.779635 | Phase: 0.779635
+  Node [2] SuperDAG (1, 0) | Coeff: -1.30267 | Tau(Alpha): 0.757148 | Credit: -0.166069 | Lock: 51.1998% | Bilin: 0.578146 | Phase: 0.578146
+  Node [3] SuperDAG (1, 1) | Coeff: 0.510385 | Tau(Alpha): 0.585312 | Credit: -0.0541494 | Lock: 58.9998% | Bilin: 0.765798 | Phase: 0.665798
+
+[+] FULL-SPECTRUM GENESIS: Synthesized Super-Primitive Node [4] parents=(0, 3) | Tau(alpha): 0.537567 | FE: 3.52263
+  >>> Step 300000 | Free Energy: 3.52263 | Beta: 5.52497 | Nodes: 5 | Sprouts: 15 | Prunes: 13
+
+========================================================================
+=== COMPARATIVE TELEMETRY (EXP-592 vs EXP-591 vs EXP-589)             ===
+========================================================================
+Substrate Architecture          | Throughput (tok/s) | Final FE (nats) | Active Nodes | Sprouts | Prunes | Alphabet %
+--------------------------------|--------------------|-----------------|--------------|---------|--------|-----------
+FT-SP-DAG Full-Spectrum(EXP-592)| 599.807          | 3.52263          | 5            | 15       | 13      | 76.4444%
+LVCC Individual Credit (EXP-591)| 937.84             | 3.4218          | 5            | 14      | 11     | 77.33%
+CO-MTAR Operadic (EXP-589)      | 675.92             | 3.5126          | 6            | 0       | 0      | 76.89%
+========================================================================
+
+>>> AUTONOMOUSLY SYNTHESIZED SPEECH (200 bytes):
+"The capital of France is  luit
+ns edfatr şseacit oarntcaku etc,ogi wtNpt icetn aiet 3alt.r Naetn‚ osait a3l tnbc Deait iqcite0ai enst ouaeÂ eiaht.ec dpl etnsNv"loaesita  tr, eio tiae nsvNi" tso,cen aie cratsnge } litde nrtd"
+
