@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-668",
+  "hypothesis": "Eradication of biomimicry in favor of pure physical SOC parameters",
+  "final_result": "0-1",
+  "plies": 30,
+  "avg_beta_eff": 15.996823478384497,
+  "min_beta_eff": 15.996450029628132,
+  "max_beta_eff": 15.997066332169526,
+  "total_runtime_sec": 49.39958234500227,
+  "verdict": "NEUTRAL"
+}
