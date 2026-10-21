@@ -1,0 +1,34 @@
+{
+  "exp_id": "EXP-666",
+  "num_games": 5,
+  "karyon_score": 0.0,
+  "stockfish_score": 5.0,
+  "win_rate": 0.0,
+  "results": [
+    {
+      "result": "0-1",
+      "moves_played": 28,
+      "fen": "r3kb1r/pp1b1ppp/4p3/2q5/8/3K1N2/PPPBPnPP/RN3B1R w kq - 0 15"
+    },
+    {
+      "result": "1-0",
+      "moves_played": 17,
+      "fen": "rnb2bnr/ppp2p1p/5kp1/4Q3/2NP4/8/PPP2PPP/RNB1K2R b KQ - 3 9"
+    },
+    {
+      "result": "0-1",
+      "moves_played": 22,
+      "fen": "r1b1k2r/ppp2ppp/8/4nn2/3qK3/8/PPPBPPPP/RN3BNR w kq - 4 12"
+    },
+    {
+      "result": "1-0",
+      "moves_played": 15,
+      "fen": "rnbB1bnr/ppp2ppp/8/5kN1/2p1Q3/8/PP2PPPP/RN2KB1R b KQ - 3 8"
+    },
+    {
+      "result": "0-1",
+      "moves_played": 30,
+      "fen": "r3k1nr/ppp2ppp/4b3/3pn3/6q1/2N3K1/PPPBPPPP/R4B1R w kq - 2 16"
+    }
+  ]
+}
