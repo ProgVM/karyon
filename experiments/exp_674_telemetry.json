@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-674",
+  "strategic_result": "1/2-1/2 (30-ply horizon reached)",
+  "strategic_plies": 30,
+  "strategic_runtime_s": 1.76572339699851,
+  "avg_action_time_ms": 117.714893133234,
+  "speech_action": -49.37623159769275,
+  "code_action": -49.170355471213206,
+  "verdict": "POSITIVE"
+}
