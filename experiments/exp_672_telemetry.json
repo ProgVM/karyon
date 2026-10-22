@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-672",
+  "accuracy_clean_ahfe": 1.000000,
+  "fer_clean_ahfe": 0.000000,
+  "accuracy_noise30_ahfe": 0.258438,
+  "fer_noise30_ahfe": 0.741562,
+  "accuracy_noise50_ahfe": 0.034375,
+  "fer_noise50_ahfe": 0.965625,
+  "compute_time_ms": 24.115875,
+  "verdict": "POSITIVE"
+}

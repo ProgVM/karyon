@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-671",
+  "accuracy_clean_cmff": 1.000000,
+  "fer_clean_cmff": 0.000000,
+  "accuracy_noise30_cmff": 0.257656,
+  "fer_noise30_cmff": 0.742344,
+  "accuracy_noise50_cmff": 0.045938,
+  "fer_noise50_cmff": 0.954063,
+  "compute_time_ms": 14.191640,
+  "verdict": "POSITIVE"
+}

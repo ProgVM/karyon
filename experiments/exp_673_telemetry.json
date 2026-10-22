@@ -1,0 +1,11 @@
+{
+  "exp_id": "EXP-673",
+  "accuracy_clean_zc": 1.000000,
+  "fer_clean_zc": 0.000000,
+  "accuracy_noise30_zc": 0.000000,
+  "fer_noise30_zc": 0.893129,
+  "accuracy_noise50_zc": 0.000000,
+  "fer_noise50_zc": 0.972400,
+  "runtime_ms": 0.000000,
+  "verdict": "POSITIVE"
+}
