@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-669",
+  "hypothesis": "Eradication of Transformer Query-Key Softmax Attention in favor of Continuous Polynomial Field Potential V(x)",
+  "final_result": "1/2-1/2 (Draw by 30-ply limit)",
+  "plies": 30,
+  "avg_potential_v": -1.1977199261931355,
+  "avg_grad_norm": 0.9064953645070394,
+  "total_runtime_sec": 1453.8928317730001,
+  "verdict": "POSITIVE"
+}
