@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-670",
+  "hypothesis": "Eradication of Discrete Search Trees (MCTS/Minimax) in favor of Feynman Path Integral Variational Trajectory Planning in Continuous Field V(x)",
+  "final_result": "1/2-1/2 (Draw by 30-ply limit)",
+  "plies": 30,
+  "avg_path_action": -2.7550432523091635,
+  "avg_wavefront_entropy": 3.035436995824178,
+  "total_runtime_sec": 1.2037142369999856,
+  "verdict": "POSITIVE"
+}
