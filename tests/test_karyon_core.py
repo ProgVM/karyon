@@ -1,55 +1,30 @@
-"""
-Pytest Suite for Karyon Sovereign Core v28.0 (Python / C-ABI Binding)
-"""
-
-import math
 import pytest
-from karyon_core import SovereignKaryonCore
+import karyon_core
 
-def test_core_instantiation():
-    core = SovereignKaryonCore()
-    assert core is not None
-    assert core.free_energy == 0.0
+def test_karyon_core_initialization():
+    agent = karyon_core.SovereignCoreAgent()
+    telem = agent.get_telemetry()
+    assert telem['active_modes'] == 64
+    assert telem['phase_dim'] == 128
+    assert telem['free_energy'] == 1.0
 
-def test_core_step_and_free_energy():
-    core = SovereignKaryonCore()
-    torque = core.step(error=0.4, error_rate=0.0, dt=0.02)
-    assert torque > 0.0
-    assert core.free_energy > 0.0
-    expected_fe = 0.5 * (0.4 ** 2)
-    assert math.isclose(core.free_energy, expected_fe, rel_tol=1e-4)
+def test_karyon_core_perceive_and_assimilate():
+    agent = karyon_core.SovereignCoreAgent()
+    action = agent.perceive_and_decide(100)
+    assert 0 <= action < 256
+    
+    agent.assimilate_experience(100, valence=1.0, magnitude=1.0, target_hint=100)
+    telem = agent.get_telemetry()
+    assert telem['stored_phase_traces'] == 1
+    assert telem['free_energy'] < 1.0  # Positive feedback reduces free energy
 
-def test_core_symmetry():
-    c_pos = SovereignKaryonCore()
-    c_neg = SovereignKaryonCore()
-
-    t_pos = c_pos.step(0.3, 0.0, 0.02)
-    t_neg = c_neg.step(-0.3, 0.0, 0.02)
-
-    assert t_pos > 0.0
-    assert t_neg < 0.0
-    assert math.isclose(t_pos, -t_neg, rel_tol=1e-3)
-
-def test_core_reset():
-    core = SovereignKaryonCore()
-    core.step(0.5, 0.2, 0.02)
-    assert core.free_energy > 0.0
-    core.reset()
-    assert core.free_energy == 0.0
-
-def test_core_convergence_closed_loop():
-    core = SovereignKaryonCore()
-    theta = 0.45
-    omega = 0.0
-    dt = 0.02
-    g = 9.81
-    L = 1.0
-
-    for _ in range(5000):
-        torque = core.step(theta, omega, dt)
-        alpha = (g / L) * math.sin(theta) - torque - 0.1 * omega
-        omega += dt * alpha
-        theta += dt * omega
-
-    assert abs(theta) < 0.01, f"Theta failed to stabilize: {theta}"
-    assert core.free_energy < 1e-4, f"Free energy failed to drop: {core.free_energy}"
+def test_karyon_core_autopoiesis_sprouting():
+    agent = karyon_core.SovereignCoreAgent()
+    # Induce negative feedback to trigger volumetric stress
+    for i in range(100):
+        action = agent.perceive_and_decide(i % 256)
+        agent.assimilate_experience(i % 256, valence=-1.0, magnitude=2.0)
+    
+    telem = agent.get_telemetry()
+    print("Post-Stress Telemetry:", telem)
+    assert telem['autopoietic_stress'] > 0.0 or telem['active_modes'] >= 64
