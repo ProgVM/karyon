@@ -1,10 +1,10 @@
 // ============================================================================
-// EXP-800: Autonomous Spatial Dimensionality Uncurling & Metric Tensor Autopoiesis (ASDU-MTA)
+// EXP-701: Autonomous Spatial Dimensionality Uncurling & Metric Tensor Autopoiesis (ASDU-MTA)
 // Master Protocol: KEP v30.0 Substrate Specification (Principles 2, 3, 4, 7, 8, 27, 29, 30, 31)
 //
-// Milestone Architectural Discovery for EXP-800 (The 800-Series Frontier):
+// Milestone Architectural Discovery for EXP-701 (The 800-Series Frontier):
 // In EXP-700, 2D spatial continuum grid (X, Y) reduced Free Energy to 0.2748 nats.
-// In EXP-800, we unshackle spatial dimensionality itself:
+// In EXP-701, we unshackle spatial dimensionality itself:
 // 1. Autonomous Fractional Dimensionality Uncurling (\alpha_{dim}(u)):
 //    Each universe u continuously modulates its uncurled spatial capacity D2_eff(u) \in [1, 16]
 //    and spatial scale tensor components g_xx(u), g_yy(u), g_xy(u) driven directly by local
@@ -469,7 +469,7 @@ __global__ void init_rand_kernel_22(curandState* states, unsigned long seed, int
 
 int main() {
     std::cout << "====================================================================\n";
-    std::cout << "EXP-800: Autonomous Spatial Dimensionality Uncurling & Metric Tensor Autopoiesis\n";
+    std::cout << "EXP-701: Autonomous Spatial Dimensionality Uncurling & Metric Tensor Autopoiesis\n";
     std::cout << "Dynamic Spatial Metric g_ij & Fractional Dimension Uncurling alpha_dim\n";
     std::cout << "KEP Principles 2, 3, 4, 7, 8, 27, 29, 30, 31 Fully Operational\n";
     std::cout << "====================================================================\n\n";

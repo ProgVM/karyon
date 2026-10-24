@@ -2,7 +2,7 @@ import subprocess
 import json
 
 def main():
-    print("Executing EXP-800 Autonomous Spatial Dimensionality Uncurling Runner...")
+    print("Executing EXP-701 Autonomous Spatial Dimensionality Uncurling Runner...")
     res = subprocess.run(["./experiments/exp_800_runner"], capture_output=True, text=True)
     print("STDOUT:", res.stdout)
     
