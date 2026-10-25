@@ -70,17 +70,15 @@ class GDLevelParser:
                 self.hazards.append({'type': 'saw', 'x': x, 'y': y, 'r': 0.44*scale})
 
 def main():
-    print("==================================================================")
-    print("EXP-712: Complete 240Hz GD Physics & Karyon Multiverse Engine")
-    print("Level: GRIEF.gdlvl (Top Tier Unnerfed Extreme Demon)")
-    print("==================================================================")
+    print("EXP-712: Complete 240Hz GD Physics and Karyon Multiverse Engine")
+    print("Level: GRIEF.gdlvl")
     
     lvl_path = '/kaggle/input/datasets/mcpeorakul/grief-gd/GRIEF.gdlvl'
     parser = GDLevelParser(lvl_path)
     
     print("Level parsed successfully:")
-    print("  Solid blocks:", len(parser.blocks))
-    print("  Hazards:     ", len(parser.hazards))
+    print("Solid blocks:", len(parser.blocks))
+    print("Hazards:", len(parser.hazards))
     
     c_obs_list = []
     for h in parser.hazards:
@@ -108,7 +106,6 @@ def main():
     res = MultiverseSimulationResult()
     t_start = time.time()
     
-    # Run 128 parallel universes across 16384 240Hz sub-steps
     lib.run_multiverse_simulation_out(
         c_obs_arr,
         len(c_obs_list),
@@ -118,16 +115,14 @@ def main():
     )
     t_elapsed = time.time() - t_start
     
-    print("
---- FINAL BENCHMARK TELEMETRY ---")
-    print("  Active Parallel Universes:", res.active_universes)
-    print("  GPU Execution Time (ms):  ", f"{res.gpu_execution_time_ms:.2f}")
-    print("  Mean Navigated Distance:  ", f"{res.mean_navigated_distance_x:.2f} / 1857.50 blocks")
-    print("  Hazard Evasion Rate (%):  ", f"{res.hazard_evasion_rate_pct:.2f}")
-    print("  Closed-Loop Free Energy F:", f"{res.closed_loop_free_energy_F:.6f}")
-    print("  Intrinsic Order Integrity:", f"{res.intrinsic_order_integrity_O:.6f}")
+    print("Active Parallel Universes:", res.active_universes)
+    print("GPU Execution Time ms:", res.gpu_execution_time_ms)
+    print("Mean Navigated Distance:", res.mean_navigated_distance_x)
+    print("Hazard Evasion Rate Pct:", res.hazard_evasion_rate_pct)
+    print("Closed Loop Free Energy F:", res.closed_loop_free_energy_F)
+    print("Intrinsic Order Integrity:", res.intrinsic_order_integrity_O)
     
-    print("FINAL_LOSS:", f"{res.closed_loop_free_energy_F:.6f}")
+    print("FINAL_LOSS:", res.closed_loop_free_energy_F)
 
 if __name__ == "__main__":
     main()
