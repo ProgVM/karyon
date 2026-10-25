@@ -9,7 +9,7 @@
 
 #include <cstdint>
 
-#define MAX_UNIVERSES 512
+#define MAX_UNIVERSES 128
 #define D1 64
 #define MAX_D2 16
 #define TOTAL_FIELD_DIM (D1 * MAX_D2)
@@ -18,12 +18,6 @@
 #define NUM_SYMBOLS 4
 
 #define BASE_DT 0.005f
-#define SYMPLECTIC_GAMMA 0.05f
-#define LOOKAHEAD_HORIZON 12
-#define DX_HORIZON 2.0f
-#define GRAVITY -450.0f
-#define JUMP_IMPULSE 320.0f
-#define AGENT_RADIUS 0.45f
 
 struct Obstacle {
     float x;
@@ -45,19 +39,27 @@ struct MultiverseSimulationResult {
 extern "C" {
 #endif
 
+void run_multiverse_benchmark(
+    const Obstacle* stream_data,
+    int active_count,
+    int num_universes,
+    int ticks,
+    float* out_free_energy,
+    float* out_order_integrity,
+    float* out_evasion_rate,
+    float* out_symbols,
+    float* out_metric_scale,
+    float* out_chaos_energy,
+    float* out_navigated_x,
+    double* out_gpu_time_ms
+);
+
 void run_multiverse_simulation_out(
     const Obstacle* obstacles,
     int total_obstacles,
     int num_universes,
     int ticks,
     MultiverseSimulationResult* out_result
-);
-
-MultiverseSimulationResult run_multiverse_simulation(
-    const Obstacle* obstacles,
-    int total_obstacles,
-    int num_universes,
-    int ticks
 );
 
 #ifdef __cplusplus
