@@ -7,7 +7,6 @@ Standard: KEP v30.0 Sovereign Master
 import os, sys, time, ctypes, base64, gzip, re
 import numpy as np
 
-# Define exact C structures for CUDA Multiverse Core
 class Obstacle(ctypes.Structure):
     _fields_ = [
         ("x", ctypes.c_float),
@@ -79,9 +78,9 @@ def main():
     lvl_path = '/kaggle/input/datasets/mcpeorakul/grief-gd/GRIEF.gdlvl'
     parser = GDLevelParser(lvl_path)
     
-    print(f"Level parsed successfully:")
-    print(f"  Solid blocks: {len(parser.blocks)}")
-    print(f"  Hazards:      {len(parser.hazards)}")
+    print("Level parsed successfully:")
+    print("  Solid blocks:", len(parser.blocks))
+    print("  Hazards:     ", len(parser.hazards))
     
     c_obs_list = []
     for h in parser.hazards:
@@ -121,16 +120,14 @@ def main():
     
     print("
 --- FINAL BENCHMARK TELEMETRY ---")
-    print(f"  Active Parallel Universes: {res.active_universes}")
-    print(f"  GPU Execution Time:        {res.gpu_execution_time_ms:.2f} ms ({t_elapsed:.2f} s total)")
-    print(f"  Mean Navigated Distance:   {res.mean_navigated_distance_x:.2f} / 1857.50 blocks (100% LEVEL COMPLETION)")
-    print(f"  Hazard Evasion Rate:       {res.hazard_evasion_rate_pct:.2f}%")
-    print(f"  Closed-Loop Free Energy F: {res.closed_loop_free_energy_F:.6f} nats")
-    print(f"  Intrinsic Order Integrity: {res.intrinsic_order_integrity_O:.6f}")
+    print("  Active Parallel Universes:", res.active_universes)
+    print("  GPU Execution Time (ms):  ", f"{res.gpu_execution_time_ms:.2f}")
+    print("  Mean Navigated Distance:  ", f"{res.mean_navigated_distance_x:.2f} / 1857.50 blocks")
+    print("  Hazard Evasion Rate (%):  ", f"{res.hazard_evasion_rate_pct:.2f}")
+    print("  Closed-Loop Free Energy F:", f"{res.closed_loop_free_energy_F:.6f}")
+    print("  Intrinsic Order Integrity:", f"{res.intrinsic_order_integrity_O:.6f}")
     
-    print("
-FINAL_LOSS:", f"{res.closed_loop_free_energy_F:.6f}")
-    print("VERDICT: POSITIVE")
+    print("FINAL_LOSS:", f"{res.closed_loop_free_energy_F:.6f}")
 
 if __name__ == "__main__":
     main()
