@@ -80,8 +80,7 @@ class CausalAutopoieticPlasticityEngine(nn.Module):
         g_t = torch.sigmoid(self.W_g(xi_t)) * 0.9 + 0.1 # [B, D]
         alpha_t = torch.sigmoid(self.W_alpha(xi_t)) * 0.199 + 0.80 # [B, D]
         
-        # 4. Continuous Wavefield Step with Epigenetically Protected Coupling
-        # W_effective = W_rec * (1.0 - epigenetic_locks) + W_rec_frozen * epigenetic_locks
+        # 4. Continuous Wavefield Step
         h_norm = self.norm(h_prev)
         rec_flux = torch.matmul(h_norm, self.W_rec)
         dh = g_t * torch.tanh(self.W_in(x_t) + rec_flux)
@@ -99,12 +98,17 @@ class CausalAutopoieticPlasticityEngine(nn.Module):
             "g_t": g_t
         }
         
+    @torch.no_grad()
     def update_causal_plasticity(self, h_norm, dh, current_F, lr_causal=1e-3):
         """
         Endogenous Causal Plasticity Update (KEP Principles 5 & 6):
         Updates eligibility traces, evaluates causal contribution Delta F,
         locks successful invariants, and updates W_rec without external backprop.
+        Fully detached from Autograd computation graph.
         """
+        h_norm_d = h_norm.detach().squeeze(0)
+        dh_d = dh.detach().squeeze(0)
+        
         # Delta Free Energy (Delta F = F_curr - F_prev)
         if self.prev_free_energy.item() == 0.0:
             delta_F = 0.0
@@ -112,32 +116,25 @@ class CausalAutopoieticPlasticityEngine(nn.Module):
             delta_F = current_F - self.prev_free_energy.item()
         self.prev_free_energy.fill_(current_F)
         
-        # Outer product of pre-synaptic h_norm and post-synaptic dh (local Hebbian/physical flux)
-        local_flux = torch.matmul(h_norm.squeeze(0).unsqueeze(1), dh.squeeze(0).unsqueeze(0)) # [D, D]
+        # Outer product of pre-synaptic h_norm and post-synaptic dh
+        local_flux = torch.matmul(h_norm_d.unsqueeze(1), dh_d.unsqueeze(0)) # [D, D]
         
         # 1. Update Eligibility Trace: e_t = lambda * e_{t-1} + flux
-        self.eligibility_trace = self.trace_decay * self.eligibility_trace + (1.0 - self.trace_decay) * local_flux
+        self.eligibility_trace.mul_(self.trace_decay).add_(local_flux, alpha=1.0 - self.trace_decay)
         
         # 2. Update Causal Credit: C_t = gamma * C_{t-1} + Delta F * e_t
-        # If delta_F < 0 (Free Energy decreased), C_t becomes strongly negative (validated success)
-        self.causal_credit = self.causal_decay * self.causal_credit + delta_F * self.eligibility_trace
+        self.causal_credit.mul_(self.causal_decay).add_(self.eligibility_trace, alpha=delta_F)
         
         # 3. Epigenetic Invariant Locking (Principle 6)
-        # Proven success: C_t < threshold -> lock invariant against destruction
-        # Threshold: causal_credit < -0.01 indicates consistent causal contribution to energy drop
         proven_efficacy = (self.causal_credit < -0.005).float()
-        # Epigenetic accumulation: locks cannot be easily dissolved (smooth hysteresis)
-        self.epigenetic_locks = torch.clamp(self.epigenetic_locks + 0.1 * proven_efficacy, 0.0, 1.0)
+        self.epigenetic_locks.add_(proven_efficacy, alpha=0.1).clamp_(0.0, 1.0)
         
         # 4. Endogenous Plasticity Step:
-        # Plasticity is directed by negative causal credit (-C_t) only on unlocked synapses!
-        # Delta W = -lr * C_t * (1.0 - epigenetic_locks)
         plasticity_mask = 1.0 - self.epigenetic_locks
         endogenous_delta_W = -lr_causal * self.causal_credit * plasticity_mask
         
-        # Apply endogenous structural update to W_rec directly
-        with torch.no_grad():
-            self.W_rec.add_(torch.clamp(endogenous_delta_W, -0.05, 0.05))
+        # Apply endogenous structural update directly
+        self.W_rec.add_(endogenous_delta_W.clamp(-0.02, 0.02))
 
 
 def run_experiment():
@@ -169,7 +166,7 @@ def run_experiment():
     model = CausalAutopoieticPlasticityEngine(d_model=256).to(device)
     model.reset_causal_state(device)
     
-    # Outer optimizer handles embeddings and readouts, while W_rec is updated by endogenous causal autopoiesis
+    # Outer optimizer handles embeddings and readouts; W_rec is updated by endogenous causal autopoiesis
     optimizer = torch.optim.AdamW([
         {"params": model.emb.parameters(), "lr": 2e-3},
         {"params": model.W_in.parameters(), "lr": 2e-3},
@@ -213,7 +210,7 @@ def run_experiment():
             total_F = loss_t.item() + step_out["F_self"].item()
             
             # Endogenous Causal Update on recurrent physical field
-            model.update_causal_plasticity(step_out["h_norm"], step_out["dh"], total_F, lr_causal=5e-3)
+            model.update_causal_plasticity(step_out["h_norm"], step_out["dh"], total_F, lr_causal=2e-3)
             
             h_curr = step_out["h_next"]
             err_prev = loss_t.detach().repeat(B)
