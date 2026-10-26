@@ -1,0 +1,12 @@
+{
+  "loss": 4.586526870727539,
+  "ppl": 98.15293963701838,
+  "initial_loss": 6.083909511566162,
+  "adaptation_delta": 1.497382640838623,
+  "active_universes": 1,
+  "epigenetic_lock_pct": 21.96063995361328,
+  "baseline_loss": 2.7608,
+  "delta_loss": -1.825726870727539,
+  "execution_time_sec": 534.1032493114471,
+  "verdict": "REJECTED"
+}
