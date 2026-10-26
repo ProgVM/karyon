@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-732",
+  "final_loss": 2.9259,
+  "mean_loss": 3.5434,
+  "ppl": 18.65,
+  "tok_per_sec": 106.91,
+  "elapsed_time": 38.31,
+  "num_universes": 128,
+  "mechanism": "Dirichlet Action Wavefield Superposition (DAWS)"
+}
