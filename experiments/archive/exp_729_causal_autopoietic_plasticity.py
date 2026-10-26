@@ -54,12 +54,14 @@ class CausalAutopoieticPlasticityEngine(nn.Module):
         self.register_buffer("causal_credit", torch.zeros(d_model, d_model))
         self.register_buffer("epigenetic_locks", torch.zeros(d_model, d_model))
         self.register_buffer("prev_free_energy", torch.zeros(1))
+        self.register_buffer("pending_delta_W", torch.zeros(d_model, d_model))
         
     def reset_causal_state(self, device):
         self.eligibility_trace.zero_()
         self.causal_credit.zero_()
         self.epigenetic_locks.zero_()
         self.prev_free_energy.zero_()
+        self.pending_delta_W.zero_()
         
     def forward_step(self, x_t, h_prev, prev_error):
         """
@@ -99,12 +101,11 @@ class CausalAutopoieticPlasticityEngine(nn.Module):
         }
         
     @torch.no_grad()
-    def update_causal_plasticity(self, h_norm, dh, current_F, lr_causal=1e-3):
+    def accumulate_causal_plasticity(self, h_norm, dh, current_F, lr_causal=1e-3):
         """
-        Endogenous Causal Plasticity Update (KEP Principles 5 & 6):
-        Updates eligibility traces, evaluates causal contribution Delta F,
-        locks successful invariants, and updates W_rec without external backprop.
-        Fully detached from Autograd computation graph.
+        Endogenous Causal Plasticity Accumulation (KEP Principles 5 & 6):
+        Accumulates eligibility traces and causal delta_W in pending buffer
+        without modifying in-place parameters during forward graph execution.
         """
         h_norm_d = h_norm.detach().squeeze(0)
         dh_d = dh.detach().squeeze(0)
@@ -129,12 +130,18 @@ class CausalAutopoieticPlasticityEngine(nn.Module):
         proven_efficacy = (self.causal_credit < -0.005).float()
         self.epigenetic_locks.add_(proven_efficacy, alpha=0.1).clamp_(0.0, 1.0)
         
-        # 4. Endogenous Plasticity Step:
+        # 4. Accumulate Endogenous Plasticity Step:
         plasticity_mask = 1.0 - self.epigenetic_locks
         endogenous_delta_W = -lr_causal * self.causal_credit * plasticity_mask
-        
-        # Apply endogenous structural update directly
-        self.W_rec.add_(endogenous_delta_W.clamp(-0.02, 0.02))
+        self.pending_delta_W.add_(endogenous_delta_W.clamp(-0.02, 0.02))
+
+    @torch.no_grad()
+    def apply_pending_causal_updates(self):
+        """
+        Applies accumulated causal plasticity directly to W_rec after backward().
+        """
+        self.W_rec.add_(self.pending_delta_W)
+        self.pending_delta_W.zero_()
 
 
 def run_experiment():
@@ -209,8 +216,8 @@ def run_experiment():
             # Variational Free Energy F = prediction_error + F_self
             total_F = loss_t.item() + step_out["F_self"].item()
             
-            # Endogenous Causal Update on recurrent physical field
-            model.update_causal_plasticity(step_out["h_norm"], step_out["dh"], total_F, lr_causal=2e-3)
+            # Accumulate Endogenous Causal Update in pending buffer
+            model.accumulate_causal_plasticity(step_out["h_norm"], step_out["dh"], total_F, lr_causal=2e-3)
             
             h_curr = step_out["h_next"]
             err_prev = loss_t.detach().repeat(B)
@@ -219,6 +226,9 @@ def run_experiment():
         avg_chunk_loss = chunk_loss / chunk_size
         avg_chunk_loss.backward()
         optimizer.step()
+        
+        # Apply accumulated endogenous causal updates to W_rec safely after backward()
+        model.apply_pending_causal_updates()
         
         # Detach state for continuous recurrent time flow
         h_curr = h_curr.detach()
@@ -252,6 +262,8 @@ def run_experiment():
     delta_vs_baseline = baseline_loss - final_loss
     print(f"  Delta vs EXP-728 Baseline (2.7608): {delta_vs_baseline:.4f} nats/byte")
     
+    verdict = "POSITIVE" if delta_vs_baseline >= 0.08 else ("NEUTRAL" if delta_vs_baseline >= 0 else "REJECTED")
+    
     metrics = {
         "loss": final_loss,
         "ppl": math.exp(min(final_loss, 50.0)),
@@ -260,7 +272,8 @@ def run_experiment():
         "locked_channels_pct": final_locked_ratio,
         "baseline_loss": baseline_loss,
         "delta_loss": delta_vs_baseline,
-        "execution_time_sec": total_time
+        "execution_time_sec": total_time,
+        "verdict": verdict
     }
     
     with open("experiments/exp_729_results.json", "w") as f:

@@ -1,0 +1,11 @@
+{
+  "loss": 2.9307632446289062,
+  "ppl": 18.74192971626876,
+  "initial_loss": 5.524153232574463,
+  "adaptation_delta": 2.5933899879455566,
+  "locked_channels_pct": 100.0,
+  "baseline_loss": 2.7608,
+  "delta_loss": -0.1699632446289061,
+  "execution_time_sec": 9.015081882476807,
+  "verdict": "REJECTED"
+}
