@@ -119,7 +119,8 @@ def run_experiment():
     print("==========================================================================")
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"[*] Compute Device: {device} ({torch.cuda.get_device_name(0)})")
+    device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "Host CPU"
+    print(f"[*] Compute Device: {device} ({device_name})")
     
     # Large continuous 8192-byte stream (Processed strictly ONCE, ZERO dataset looping/epochs)
     stream_text = (

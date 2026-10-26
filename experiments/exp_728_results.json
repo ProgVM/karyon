@@ -1,0 +1,10 @@
+{
+  "loss": 2.760770797729492,
+  "ppl": 15.812026126110963,
+  "initial_loss": 5.554431438446045,
+  "adaptation_gain": 2.7936606407165527,
+  "baseline_loss": 0.6474,
+  "delta_loss": -2.113370797729492,
+  "execution_time_sec": 12.014387369155884,
+  "total_bytes_streamed": 8192
+}
