@@ -1,12 +1,12 @@
 {
-  "loss": 3.1427,
-  "mean_loss": 5.5226,
-  "ppl": 23.17,
-  "delta_loss": 0.4007,
+  "loss": 3.0432,
+  "mean_loss": 3.4116,
+  "ppl": 20.97,
+  "delta_loss": 0.5002,
   "baseline_loss": 3.5434,
-  "tok_per_sec": 210.98,
-  "elapsed_time": 19.41,
+  "tok_per_sec": 213.37,
+  "elapsed_time": 19.2,
   "active_universes": 64,
-  "epigenetic_locks_pct": 94.55,
+  "epigenetic_locks_pct": 25.4,
   "verdict": "POSITIVE"
 }
