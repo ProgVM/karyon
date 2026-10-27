@@ -1,0 +1,12 @@
+{
+  "loss": 3.4784,
+  "mean_loss": 4.867,
+  "ppl": 32.41,
+  "delta_loss": 0.065,
+  "baseline_loss": 3.5434,
+  "tok_per_sec": 209.71,
+  "elapsed_time": 19.53,
+  "active_universes": 64,
+  "epigenetic_locks_pct": 99.61,
+  "verdict": "NEUTRAL"
+}
