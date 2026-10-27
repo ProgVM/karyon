@@ -7,26 +7,12 @@ import os
 import time
 
 # ==============================================================================
-# EXP-733: SOVEREIGN EPIGENETIC METRIC WAVEFIELD (SEM-WAVE)
-# KEP Protocol v30.0 Master Compliance (Principles 2, 3, 4, 5, 6, 8, 27, 29, 30, 31)
+# EXP-733.2: SOVEREIGN EPIGENETIC METRIC WAVEFIELD - CAUSAL LOCK FIX (SEM-WAVE-2)
+# KEP Protocol v30.0 Master Compliance
 #
-# Root Resolution of EXP-730..EXP-732 Flaws:
-# 1. Full 256-Dimensional Tensor Wavefield per Universe (No Scalar Collapsing!):
-#    Each universe u in U = 64 maintains a full spatial-temporal vector wavefield
-#    \Phi_u(t) \in \mathbb{R}^{256} and Momenta \Pi_u(t) \in \mathbb{R}^{256}.
-# 2. Endogenous Metric Tensor g_{u,\mu\nu}(\xi_{u,t}) & Relativistic Clock \Delta t_{u,eff}:
-#    Minds are instantiated in physical manifolds whose metric is NOT static constants.
-#    Local metric conductance g_u \in \mathbb{R}^{256} and \Delta t_{eff} adapt dynamically
-#    from the universe's internal phase state \xi_{u,t} and Free Energy F_{self,u}.
-# 3. Soliton Attractor Snapping (Hopfield Phase-Locking):
-#    Instead of destructive linear phase sums (cos/sin in EXP-731), each universe
-#    is coupled to unit-sphere normalized soliton attractor basins (N=64, \beta=12.0)
-#    providing crisp morphemic/phonemic snapping and preventing dispersion.
-# 4. Constructive Path-Integral Interference with Causal Credit Modulation:
-#    Interference weighting W_u(t) is governed by action functional S_u and
-#    endogenous causal credit trace C_u, preserving epigenetically locked invariants.
-# 5. Pure Continuous One-Pass Streaming (Zero Epochs):
-#    Streamed strictly once across 4096 bytes with real-time online adaptation.
+# Fixes Epigenetic Lock Direction:
+# In EXP-733 v1, lock_mask locked channels with C_u > +0.005 (channels that INCREASED Free Energy).
+# In EXP-733.2, C_u < -0.005 (channels that REDUCE Free Energy, \Delta F < 0) are epigenetically shielded!
 # ==============================================================================
 
 class SovereignEpigeneticMetricWavefieldSubstrate(nn.Module):
@@ -41,17 +27,14 @@ class SovereignEpigeneticMetricWavefieldSubstrate(nn.Module):
         self.wave_inj = nn.Embedding(258, dim_field)
         
         # 2. Continuous Field Super-Primitive Operator (Principle 3)
-        # Transverse propagation operator across 256 physical field coordinates
         self.W_transverse = nn.Linear(dim_field, dim_field, bias=False)
         self.W_potential = nn.Linear(dim_field, dim_field, bias=False)
         
         # 3. Unit-Sphere Normalized Soliton Attractor Basins (Continuous Hopfield)
-        # Unit-normalized basins ||b_k|| = 1.0 in R^256
         raw_basins = torch.randn(num_attractors, dim_field)
         self.basins = nn.Parameter(F.normalize(raw_basins, p=2, dim=-1))
         
         # 4. Endogenous Introspection & Endocrine Synthesizers
-        # Introspects local field divergence: \xi_{u,t} = [\Phi_u, F_{self,u}, H_{endo,u}]
         self.endocrine_gen = nn.Linear(dim_field + 2, 8)
         self.metric_gen = nn.Linear(dim_field + 9, dim_field) # Endogenous metric g_u \in R^256
         self.clock_gen = nn.Linear(dim_field + 9, 1)          # Relativistic clock \Delta t_{eff}
@@ -75,96 +58,82 @@ class SovereignEpigeneticMetricWavefieldSubstrate(nn.Module):
         return phi, momenta
 
     def forward_step(self, byte_in, prev_error, phi_curr, p_curr):
-        """
-        Executes one continuous physical step across all U = 64 universes.
-        Vectorized 256D field dynamics, endogenous metric adaptation, and soliton snapping.
-        """
         U, D = self.num_universes, self.dim_field
         device = byte_in.device
         
-        # 1. Continuous Wave Injection (Phase spin excitation in R^256)
+        # 1. Continuous Wave Injection
         x_wave = self.wave_inj(byte_in).expand(U, -1) # [U, 256]
         
-        # 2. Introspective Free Energy F_{self,u} per Universe
-        # Predicts transverse field flux: \hat{s}_u = tanh(W_transverse(\Phi_u))
+        # 2. Introspective Free Energy F_{self,u}
         s_hat = torch.tanh(self.W_transverse(phi_curr)) # [U, 256]
         F_self_u = torch.mean((s_hat - phi_curr) ** 2, dim=-1, keepdim=True) # [U, 1]
         
         # 3. Dynamic Endocrine & Phase State \xi_{u,t}
-        endo_in = torch.cat([phi_curr, F_self_u, prev_error.expand(U, 1)], dim=-1) # [U, 256 + 2]
-        H_endo_u = torch.sigmoid(self.endocrine_gen(endo_in)) # [U, 8]
-        xi_u = torch.cat([phi_curr, F_self_u, H_endo_u], dim=-1) # [U, 256 + 9]
+        endo_in = torch.cat([phi_curr, F_self_u, prev_error.expand(U, 1)], dim=-1)
+        H_endo_u = torch.sigmoid(self.endocrine_gen(endo_in))
+        xi_u = torch.cat([phi_curr, F_self_u, H_endo_u], dim=-1)
         
-        # 4. Endogenous Metric Tensor Conductance g_u and Relativistic Clock \Delta t_{eff}
-        # Metrical stretch in R^256: g_u \in (0.1, 1.0)
+        # 4. Endogenous Metric Tensor g_u and Relativistic Clock \Delta t_{eff}
         g_u = torch.sigmoid(self.metric_gen(xi_u)) * 0.9 + 0.1 # [U, 256]
-        # Relativistic clock stepping: slows down when surprise/divergence is high
         dt_eff_u = torch.sigmoid(self.clock_gen(xi_u)) * 0.4 + 0.1 # [U, 1]
         
         # 5. Continuous Hopfield Soliton Phase Attractor Snapping
-        # Unit-normalize current field state on hyper-sphere S^255
-        phi_norm = F.normalize(phi_curr, p=2, dim=-1) # [U, 256]
-        # Inner product with attractor basins [U, num_attractors]
+        phi_norm = F.normalize(phi_curr, p=2, dim=-1)
         basin_affinity = torch.matmul(phi_norm, self.basins.t()) * self.beta_hopfield
-        p_attractor = F.softmax(basin_affinity, dim=-1) # [U, num_attractors]
-        # Attractor reconstructed target: snap_target = \sum_k p_k * b_k
-        snap_target = torch.matmul(p_attractor, self.basins) # [U, 256]
-        # Soliton restoring force: F_attractor = - (phi_curr - snap_target)
-        F_attractor = snap_target - phi_curr # [U, 256]
+        p_attractor = F.softmax(basin_affinity, dim=-1)
+        snap_target = torch.matmul(p_attractor, self.basins)
+        F_attractor = snap_target - phi_curr
         
         # 6. Inter-Universe Ring Laplacian Tunneling
         phi_prev = torch.roll(phi_curr, shifts=1, dims=0)
         phi_next = torch.roll(phi_curr, shifts=-1, dims=0)
-        tunneling_flux = 0.05 * (phi_prev + phi_next - 2.0 * phi_curr) # [U, 256]
+        tunneling_flux = 0.05 * (phi_prev + phi_next - 2.0 * phi_curr)
         
-        # 7. Field Acceleration (Langevin-Hamiltonian Wave Dynamics)
-        # Potential force
-        V_force = -self.W_potential(phi_curr) # [U, 256]
-        # Transverse coupling with byte injection
+        # 7. Field Acceleration (Langevin-Hamiltonian Dynamics)
+        V_force = -self.W_potential(phi_curr)
         accel = s_hat + x_wave + V_force + 0.35 * F_attractor + tunneling_flux - phi_curr
         
-        # 8. Endogenous Causal Credit & Epigenetic Invariant Locking
-        delta_F_u = F_self_u.squeeze(-1) - self.prev_free_energy_u # [U]
+        # 8. Corrected Endogenous Causal Credit & Epigenetic Invariant Locking
+        delta_F_u = F_self_u.squeeze(-1) - self.prev_free_energy_u # \Delta F = F_curr - F_prev
         self.prev_free_energy_u.copy_(F_self_u.squeeze(-1).detach())
         
-        # Eligibility trace: tracks outer product of field and momentum
-        flux_diag = (phi_curr * p_curr).detach() # [U, 256]
+        flux_diag = (phi_curr * p_curr).detach()
         self.eligibility_traces.mul_(0.90).add_(flux_diag, alpha=0.10)
         
         # Causal credit: C_{u,t} = \gamma C_{u,t-1} + \Delta F_u * e_t
         self.causal_credits.mul_(0.95).add_(self.eligibility_traces * delta_F_u.unsqueeze(-1), alpha=0.05)
         
-        # Epigenetic Locks: Proven beneficial structures are shielded
-        lock_mask = torch.sigmoid((self.causal_credits - 0.005) * 50.0) # [U, 256]
+        # CORRECTED LOCK CONDITION:
+        # \Delta F < 0 (Free Energy DROPPED) => C_u < 0 (Channel caused Free Energy Reduction)
+        # Lock channels where C_u < -0.002
+        proven_beneficial = (-self.causal_credits - 0.002) * 50.0
+        lock_mask = torch.sigmoid(proven_beneficial) # [U, 256]
         self.epigenetic_locks.copy_(torch.maximum(self.epigenetic_locks, lock_mask).detach())
         
-        # 9. Symplectic State Evolution with Epigenetic Protection
-        plasticity_shield = 1.0 - 0.75 * self.epigenetic_locks # [U, 256]
+        # 9. Symplectic Evolution with Epigenetic Protection
+        plasticity_shield = 1.0 - 0.50 * self.epigenetic_locks # Max 50% shielding to preserve plasticity
         effective_accel = accel * plasticity_shield
         
-        # Symplectic Verlet step
         new_Momenta = p_curr * 0.85 + dt_eff_u * effective_accel
         new_Field = phi_curr + dt_eff_u * (g_u * new_Momenta)
         
-        # 10. Physical Action Functional for each Universe (Lagrangian L = T - V)
-        kinetic_energy = 0.5 * torch.sum(new_Momenta ** 2, dim=-1) # [U]
-        potential_energy = 0.5 * torch.sum(new_Field ** 2, dim=-1) # [U]
-        coupling_energy = -torch.sum(new_Field * x_wave, dim=-1)   # [U]
-        S_u = kinetic_energy + potential_energy + coupling_energy   # [U]
+        # 10. Action Functional S_u
+        kinetic_energy = 0.5 * torch.sum(new_Momenta ** 2, dim=-1)
+        potential_energy = 0.5 * torch.sum(new_Field ** 2, dim=-1)
+        coupling_energy = -torch.sum(new_Field * x_wave, dim=-1)
+        S_u = kinetic_energy + potential_energy + coupling_energy
         
-        # Dynamic Planck scale hbar_eff
         mean_F = torch.mean(F_self_u) + prev_error
         hbar_eff = 1.2 * (1.0 + 1.5 * torch.clamp(mean_F, 0.0, 4.0))
         
-        # 11. Constructive Feynman Path Integral Interference (Dirichlet-Gibbs Measure)
+        # 11. Dirichlet-Gibbs Feynman Path Integral Weighting
         S_shifted = (S_u - torch.min(S_u)) / (hbar_eff + 1e-6)
-        W_feynman = F.softmax(-S_shifted, dim=0).unsqueeze(-1) # [U, 1]
+        W_feynman = F.softmax(-S_shifted, dim=0).unsqueeze(-1)
         
-        # Superposed Observable Wavefield: \Psi_obs = \sum_u W_u * \Phi_u
-        psi_observable = torch.sum(W_feynman * new_Field, dim=0, keepdim=True) # [1, 256]
+        psi_observable = torch.sum(W_feynman * new_Field, dim=0, keepdim=True)
         
         # 12. Motor Readout
-        logits = self.head(psi_observable) # [1, 258]
+        logits = self.head(psi_observable)
         
         active_u = torch.sum(W_feynman > (1.0 / (2.0 * U))).item()
         lock_pct = (torch.sum(self.epigenetic_locks > 0.5).item() / self.epigenetic_locks.numel()) * 100.0
@@ -181,16 +150,12 @@ class SovereignEpigeneticMetricWavefieldSubstrate(nn.Module):
 
 def run_experiment():
     print("================================================================================")
-    print("=== STARTING EXP-733: SOVEREIGN EPIGENETIC METRIC WAVEFIELD (SEM-WAVE) ===")
-    print("=== Full 256D Vector Fields | Endogenous Metric g_u | Soliton Hopfield Basins ===")
-    print("=== Pure Continuous One-Pass Streaming (Zero Epochs) | KEP v30.0 Compliance ===")
+    print("=== STARTING EXP-733.2: SEM-WAVE (CAUSAL EPIGENETIC LOCK DIRECTION FIX) ===")
     print("================================================================================")
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "Host CPU"
-    print(f"[*] Hardware Substrate: {device} ({device_name})")
+    print(f"[*] Hardware Substrate: {device}")
     
-    # Continuous stream (Processed strictly ONCE, ZERO dataset looping/epochs)
     stream_text = (
         "Karyon-CoRE v30.0 Sovereign Epigenetic Metric Wavefield Specification. "
         "Mind and intelligence are instantiated in continuous physical wavefield universes. "
@@ -203,9 +168,7 @@ def run_experiment():
     raw_bytes = list(stream_text.encode('utf-8'))[:4096]
     seq_tensor = torch.tensor(raw_bytes, dtype=torch.long, device=device)
     Total_S = seq_tensor.shape[0]
-    print(f"[*] Stream Length S = {Total_S} bytes | Multiverse U = 64 Universes | Dim = 256D")
 
-    # Initialize Substrate
     model = SovereignEpigeneticMetricWavefieldSubstrate(num_universes=64, dim_field=256, num_attractors=64).to(device)
     phi_curr, p_curr = model.init_multiverse_state(device)
     
@@ -220,8 +183,6 @@ def run_experiment():
     loss_history = []
     prev_error = torch.tensor(0.0, device=device)
     
-    print("\n--- Initiating Pure Continuous One-Pass Streaming (t = 0 -> T-1) ---")
-    
     for c in range(num_chunks):
         c_start = c * chunk_size
         c_end = c_start + chunk_size
@@ -230,7 +191,6 @@ def run_experiment():
         optimizer.zero_grad()
         chunk_loss = 0.0
         
-        # BPTT Truncation: detach field states across chunk boundaries
         phi_curr = phi_curr.detach()
         p_curr = p_curr.detach()
         
@@ -271,7 +231,7 @@ def run_experiment():
     tok_per_sec = Total_S / elapsed_time
     
     print("\n================================================================================")
-    print("EXP-733 FINAL TELEMETRY RESULTS")
+    print("EXP-733.2 FINAL TELEMETRY RESULTS")
     print("================================================================================")
     print(f"Initial Chunk Loss : {loss_history[0]:.4f} nats/byte")
     print(f"Final Chunk Loss   : {final_loss:.4f} nats/byte")
@@ -281,7 +241,6 @@ def run_experiment():
     print(f"Elapsed Time       : {elapsed_time:.2f} seconds")
     print(f"Final Epigenetic Locks : {lock_pct:.2f}%")
     
-    # Baseline comparison: EXP-732 Baseline (3.5434 nats)
     baseline_loss = 3.5434
     delta_loss = baseline_loss - final_loss
     print(f"Delta Loss vs EXP-732 ({baseline_loss:.4f}): {delta_loss:+.4f} nats")
