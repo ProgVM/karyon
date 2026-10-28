@@ -1,0 +1,9 @@
+{
+  "exp_id": "EXP-749",
+  "loss": 5.58258,
+  "initial_loss": 5.73961,
+  "delta_loss": 0.157029,
+  "ppl": 265.757,
+  "throughput_bytes_per_sec": 571.351,
+  "epigenetic_locks_pct": 79.9229
+}
