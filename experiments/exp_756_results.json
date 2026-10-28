@@ -1,0 +1,9 @@
+{
+  "exp_id": "EXP-756",
+  "initial_loss": 5.44013,
+  "final_loss": 1.75019,
+  "avg_loss": 4.85462,
+  "ppl": 128.332,
+  "throughput_bytes_per_sec": 16.6046,
+  "verdict": "POSITIVE"
+}
