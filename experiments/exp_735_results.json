@@ -1,0 +1,8 @@
+{
+  "exp_id": "EXP-735",
+  "initial_loss": 5.29266,
+  "final_loss": 3.01962,
+  "delta_loss": 2.27304,
+  "ppl": 20.4835,
+  "throughput_bytes_per_sec": 662.857
+}
