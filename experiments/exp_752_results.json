@@ -1,10 +1,8 @@
 {
   "exp_id": "EXP-752",
-  "loss": 3.20048,
-  "initial_loss": 4.71268,
-  "mean_loss": 3.92064,
-  "delta_loss": -0.454246,
-  "ppl": 24.5442,
-  "throughput_bytes_per_sec": 24.934,
-  "epigenetic_locks_pct": 15.625
+  "initial_loss": 5.55296,
+  "final_loss": 12.133,
+  "ppl": 185910,
+  "throughput_bytes_per_sec": 16864.3,
+  "verdict": "REJECTED"
 }
