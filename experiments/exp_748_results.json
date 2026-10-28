@@ -1,9 +1,8 @@
 {
   "exp_id": "EXP-748",
-  "loss": 4.85517,
-  "initial_loss": 5.55321,
-  "delta_loss": 0.698038,
-  "ppl": 128.402,
-  "throughput_bytes_per_sec": 573.225,
-  "epigenetic_locks_pct": 59.78
+  "initial_loss": 5.87808,
+  "final_loss": 4.69895,
+  "ppl": 109.832,
+  "throughput_bytes_per_sec": 256290,
+  "verdict": "POSITIVE"
 }
