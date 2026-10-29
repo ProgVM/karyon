@@ -1,0 +1,9 @@
+{
+  "exp_id": "EXP-766",
+  "initial_loss": 6.39561,
+  "final_loss": 117.755,
+  "avg_loss": 101.584,
+  "ppl": inf,
+  "throughput_bytes_per_sec": 4.45431,
+  "verdict": "REJECTED"
+}
