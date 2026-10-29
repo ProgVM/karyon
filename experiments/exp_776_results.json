@@ -1,0 +1,17 @@
+{
+  "exp_id": "EXP-776",
+  "processed_bytes": 100000,
+  "final_active_dim": 256,
+  "final_memory_depth": 5,
+  "final_gamma": 1.07171,
+  "total_dim_sprouts": 15,
+  "total_mem_sprouts": 4,
+  "initial_free_energy": 1,
+  "final_free_energy": 0.00191337,
+  "avg_free_energy": 0.104325,
+  "top1_accuracy_percent": 90.0299,
+  "mean_target_rank": 7.57068,
+  "execution_time_sec": 2.22289,
+  "throughput_bytes_per_sec": 44986.5,
+  "verdict": "POSITIVE"
+}
