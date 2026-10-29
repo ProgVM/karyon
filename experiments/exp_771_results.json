@@ -1,0 +1,14 @@
+{
+  "exp_id": "EXP-771",
+  "initial_active_dim": 16,
+  "final_active_dim": 256,
+  "total_sprouts": 15,
+  "final_endogenous_eta": 0.14909,
+  "initial_free_energy": 1,
+  "final_free_energy": 0.990904,
+  "avg_free_energy": 0.400741,
+  "top1_accuracy_percent": 65.5433,
+  "mean_target_rank": 5.46642,
+  "throughput_bytes_per_sec": 1010.63,
+  "verdict": "POSITIVE"
+}
