@@ -1,7 +1,7 @@
 // ============================================================================
-// Karyon-CoRE v45.0 Sovereign Architecture (Master C-ABI Shared Library)
+// Karyon-CoRE v50.0 Sovereign Architecture (Master C-ABI Shared Library)
 // libkaryon_core.so Export Implementation with Instance & Telemetry Support
-// KEP v30.0 Standard Compliant
+// KEP v30.0 Standard Compliant (Autopoietic Dynamic Layer Morphogenesis Core)
 // ============================================================================
 
 #include "karyon_core.h"
@@ -47,7 +47,7 @@ float karyon_get_free_energy_instance(void* handle) {
 [[gnu::visibility("default")]]
 size_t karyon_get_active_modes_instance(void* handle) {
     if (!handle) return 0;
-    return static_cast<karyon::SovereignFullPlasticityOrganism*>(handle)->get_telemetry().active_modes;
+    return static_cast<karyon::SovereignFullPlasticityOrganism*>(handle)->get_telemetry().active_dim;
 }
 
 [[gnu::visibility("default")]]
@@ -93,7 +93,7 @@ float karyon_get_free_energy() {
 [[gnu::visibility("default")]]
 size_t karyon_get_active_modes() {
     karyon_init();
-    return g_default_core->get_telemetry().active_modes;
+    return g_default_core->get_telemetry().active_dim;
 }
 
 [[gnu::visibility("default")]]
