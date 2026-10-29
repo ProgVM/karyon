@@ -1,0 +1,17 @@
+{
+  "exp_id": "EXP-779",
+  "processed_bytes": 100000,
+  "final_active_dim": 256,
+  "final_active_layers": 6,
+  "total_layer_sprouts": 5,
+  "total_dim_sprouts": 15,
+  "total_mem_sprouts": 4,
+  "initial_free_energy": 1,
+  "final_free_energy": 0.000821292,
+  "avg_free_energy": 0.0140635,
+  "top1_accuracy_percent": 99.585,
+  "mean_target_rank": 0.234742,
+  "execution_time_sec": 2.49244,
+  "throughput_bytes_per_sec": 40121.3,
+  "verdict": "POSITIVE"
+}
