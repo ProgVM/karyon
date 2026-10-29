@@ -1,0 +1,12 @@
+{
+  "exp_id": "EXP-780",
+  "combined_avg_acc": 98.4846,
+  "combined_avg_free_energy": 0.0351443,
+  "binary_code_acc": 99.968,
+  "binary_code_rank": 0.00792016,
+  "chess_pgn_acc": 99.542,
+  "chess_pgn_rank": 0.213224,
+  "audio_pcm_acc": 95.9439,
+  "audio_pcm_rank": 1.87486,
+  "verdict": "POSITIVE"
+}
