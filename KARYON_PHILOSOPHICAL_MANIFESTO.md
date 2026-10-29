@@ -29,7 +29,22 @@
 
 ---
 
-## 2. Principle of Absolute Self-Generation (Autopoiesis & Open-Ended Genesis)
+## 2. Universal Bit-Spin Substrate ($V = 2$) and Absolute Unboundedness
+
+**Complete Abolition of Human Boundary Dictatorship:**
+
+1. **The Binary Spin Primitive ($V = 2$):**  
+   The fundamental substrate primitive of Karyon is strictly the binary bit stream $b_t \in \{0, 1\}$, injected into continuous physical space as wave spins $s_t \in \{-1.0, +1.0\}$. All human-imposed artificial boundaries—including subword tokenizers, BPE dictionaries, 8-bit ASCII/UTF-8 byte containers, and rigid matrix declarations—are completely abolished.
+
+2. **Absolute Universal Unboundedness:**  
+   Operating at $V = 2$ grants Karyon complete, boundless universality over any information modality in existence. Text, executable machine bytecode, raw audio, video frames, chess PGNs, or sensorimotor pulses are all unified into a single, continuous stream of binary spins.
+
+3. **Bottom-Up Structural Emergence:**  
+   Karyon possesses zero pre-baked matrices, zero discrete entity structs, and zero hardcoded operator tables. Any higher-order structural representation (characters, UNICODE symbols, machine instructions, contextual trees, or attractor basins) emerges autonomously **BOTTOM-UP** from the continuous bit field under causal Free Energy minimization.
+
+---
+
+## 3. Principle of Absolute Self-Generation (Autopoiesis & Open-Ended Genesis)
 
 **Karyon must build itself via continuous evolution during learning:**
 
@@ -54,8 +69,8 @@
 
 ---
 
-## 3. Engineering Directives for KEP and AI Collaborators
+## 4. Engineering Directives for KEP and AI Collaborators
 
 1. **Terminological Decontamination:** Complete eradication of anthropomorphic and zoomorphic terms (synapses, cortical layers, neurotransmitters) in favor of rigorous physical, mathematical, and field-theoretic terms: *dynamic field operators, metric tensors, phase manifolds, associative attractors, autopoietic structures*.
 2. **Dynamic Synthesis of Formulas and Structures:** Architectural evolution occurs continuously on-the-fly inside the forward/backward flow via functional maturation (genesis, mutation, pruning).
-3. **Equivalence of All Modalities:** Executable bytecode, raw audio streams, text, and sensory fields are treated equally on a single, continuous, self-organizing representation substrate.
+3. **Equivalence of All Modalities:** Executable bytecode, raw audio streams, text, and sensory fields are treated equally on a single, continuous, self-organizing representation substrate operating at $V = 2$.
