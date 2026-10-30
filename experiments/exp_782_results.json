@@ -1,0 +1,10 @@
+{
+  "exp_id": "EXP-782",
+  "top1_acc": 95.7726,
+  "mean_rank": 2.3181,
+  "avg_free_energy": 0.111287,
+  "final_free_energy": 0.0171802,
+  "throughput_bytes_per_sec": 30713.7,
+  "active_layers": 6,
+  "verdict": "REJECTED"
+}
