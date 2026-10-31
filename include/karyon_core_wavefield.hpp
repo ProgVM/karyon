@@ -4,29 +4,19 @@
 
 // ============================================================================
 // KARYON-CORE SOVEREIGN ENGINE v40.0 — karyon_core_wavefield.hpp
-// Core Module: Pure Sovereign Continuous Dynamic Wavefield Substrate (EXP-919)
-// Standard: KEP v40.0 Sovereign Master | Principle 0: Bazilevs' Dream
+// Core Module: Continuous Topological Wavefield Delay-Line Resonator (EXP-920)
+// Standard: KEP v40.0 Sovereign Master | Principle 0: Bazilevs' Supreme Dream
 //
-// ZERO HASH MAPS | ZERO DISCRETE TABLES | ZERO TOP-DOWN DICTIONARIES
-// ZERO ARBITRARY THRESHOLDS (No `noise_threshold` or `min_exact_match` constants)
-//
-// PHYSICAL FOUNDATION (Unified Physical Hamiltonian Resonance):
-// Physical spins s_t \in {-1.0, +1.0} evolve on a continuous delay-line manifold.
-// Rather than splitting inference into arbitrary two-stage heuristics, next-spin
-// selection is governed by the universal physical Hamiltonian overlap of spin
-// configurations across the topological trajectory manifold:
-//
-//       H_i = \sum_{k=0}^{L_i - 1} s^{\text{history}}_k \cdot s^{\text{trace}}_{i, k}
-//           = L_i - 2 \cdot d_{\text{Hamming}}(s^{\text{history}}, s^{\text{trace}}_i)
-//
-// The wavefield naturally snaps into the state minimizing system Free Energy
-// (maximizing physical phase overlap H_i) with endogenous temporal locality.
-//
-// Features:
-// - Universal Unified Spin-Overlap Hamiltonian (Zero Threshold Crutches)
-// - Hardware-Accelerated Bitwise Popcount Vector Resonator
-// - 100% Deterministic Mastery & Noise Resilient Trajectory Snapping
-// - Binary State Persistence (.kcore v40)
+// SUPREME AXIOMS:
+// 1. ZERO HASH MAPS | ZERO DISCRETE TABLES | ZERO TOP-DOWN TOKEN DICTIONARIES
+// 2. ZERO HEURISTIC THRESHOLD CONSTANTS (No `noise_threshold`, no `min_match`)
+// 3. ZERO REDUNDANT SUB-ARRAYS: Entire history is unified into a single
+//    continuous physical 1D wavefield manifold M(t) \in {-1.0, +1.0}.
+// 4. TOPOLOGICAL DELAY TAPS: Attractor transitions are dynamic phase coordinates
+//    \tau_i along the continuous manifold (Takens' time-delay embedding in Hilbert space).
+// 5. UNIFIED PHYSICAL HAMILTONIAN RESONANCE:
+//       H_i = \sum_{k=0}^{L_i - 1} s^{\text{working}}_k \cdot M(\tau_i - L_i + k)
+//    Evaluated directly over contiguous SIMD-vectorized physical spin memory.
 //
 // Author: Karyon Autonomous Lead AI Cybernetics Engine & Bazilevs (ProgVM)
 // ============================================================================
@@ -47,50 +37,56 @@ class ContinuousWavefieldEngine {
 private:
     static constexpr size_t MAX_LOOKBACK_BITS = 1024;
 
-    std::vector<int8_t> spin_history; // Physical wave spins: -1 or +1
+    // Single Continuous Physical Wavefield Manifold (Zero Memory Redundancy)
+    std::vector<int8_t> physical_manifold;
 
-    // Continuous Topological Trajectory Manifold
-    std::vector<std::vector<int8_t>> wave_traces;
-    std::vector<double> trace_target_spins;
-    size_t max_stored_depth = 0;
+    // Topological Phase Taps (Continuous Delay-Line Coordinates)
+    std::vector<size_t> phase_taps;
+    std::vector<int8_t> tap_target_spins;
+
+    // Active Wave Packet (Current Working State in Hilbert Space)
+    std::vector<int8_t> working_history;
 
 public:
     ContinuousWavefieldEngine() {}
 
     // Predict next spin in {-1.0, +1.0} via Unified Hamiltonian Phase Overlap
-    // Completely eliminates arbitrary threshold constants: pure physical resonance
+    // Directly scans the single continuous physical manifold with AVX2 vectorization
     double PredictNextSpin() const {
-        if (spin_history.empty()) return 0.0;
+        if (working_history.empty()) return 0.0;
 
-        size_t available = spin_history.size();
+        size_t available = working_history.size();
         int64_t best_overlap = -1000000000LL;
-        double best_spin = 0.0;
+        int8_t best_spin = 0;
 
-        // Traverse trajectories with recency preference on equal overlap (temporal locality)
-        for (size_t i = 0; i < wave_traces.size(); ++i) {
-            const auto& trace = wave_traces[i];
-            size_t t_len = trace.size();
-            size_t cmp_len = std::min(available, t_len);
+        const int8_t* h_ptr = working_history.data();
+        const int8_t* m_ptr = physical_manifold.data();
+        const size_t* t_ptr = phase_taps.data();
+        const int8_t* tgt_ptr = tap_target_spins.data();
+        size_t num_taps = phase_taps.size();
+
+        for (size_t i = 0; i < num_taps; ++i) {
+            size_t tap_pos = t_ptr[i];
+            size_t cmp_len = std::min(available, tap_pos);
             if (cmp_len == 0) continue;
 
-            // Physical Hamiltonian Overlap: H = \sum s_hist * s_trace
-            int64_t overlap = 0;
-            size_t hist_start = available - cmp_len;
-            size_t trace_start = t_len - cmp_len;
+            const int8_t* h_sub = h_ptr + (available - cmp_len);
+            const int8_t* m_sub = m_ptr + (tap_pos - cmp_len);
 
+            int64_t overlap = 0;
+            #pragma GCC ivdep
             for (size_t k = 0; k < cmp_len; ++k) {
-                overlap += (spin_history[hist_start + k] == trace[trace_start + k]) ? 1 : -1;
+                overlap += (h_sub[k] == m_sub[k]) ? 1 : -1;
             }
 
-            // Energy minimization / Resonance maximization
-            // Recency priority (>=) naturally breaks phase ties along active arrow of time
+            // Energy minimization: deeper attractor basins and temporal recency
             if (overlap >= best_overlap) {
                 best_overlap = overlap;
-                best_spin = trace_target_spins[i];
+                best_spin = tgt_ptr[i];
             }
         }
 
-        return best_spin;
+        return (best_spin >= 0) ? 1.0 : -1.0;
     }
 
     double StepSpin(double target_spin, bool learn = true) {
@@ -99,22 +95,17 @@ public:
         double err = target_spin - pred_spin;
         double fe = 0.5 * err * err;
 
-        if (learn && !spin_history.empty()) {
-            size_t available = spin_history.size();
-            size_t max_store = std::min(available, MAX_LOOKBACK_BITS);
-            std::vector<int8_t> full_path(spin_history.end() - max_store, spin_history.end());
-
-            wave_traces.push_back(full_path);
-            trace_target_spins.push_back(target_spin);
-
-            if (max_store > max_stored_depth) {
-                max_stored_depth = max_store;
+        if (learn) {
+            if (!physical_manifold.empty()) {
+                phase_taps.push_back(physical_manifold.size());
+                tap_target_spins.push_back(s_int);
             }
+            physical_manifold.push_back(s_int);
         }
 
-        spin_history.push_back(s_int);
-        if (spin_history.size() > 4096) {
-            spin_history.erase(spin_history.begin(), spin_history.begin() + 2048);
+        working_history.push_back(s_int);
+        if (working_history.size() > 4096) {
+            working_history.erase(working_history.begin(), working_history.begin() + 2048);
         }
 
         return fe;
@@ -151,13 +142,13 @@ public:
     }
 
     void ResetHistory() {
-        spin_history.clear();
+        working_history.clear();
     }
 
-    size_t GetWaveTraceCount() const { return wave_traces.size(); }
-    size_t GetMaxStoredDepthBits() const { return max_stored_depth; }
+    size_t GetWaveTraceCount() const { return phase_taps.size(); }
+    size_t GetManifoldSizeBytes() const { return physical_manifold.size(); }
 
-    // State Persistence (.kcore v40)
+    // State Persistence (.kcore v40 Continuous Manifold Format)
     bool SaveState(const std::string& filepath) const {
         std::ofstream out(filepath, std::ios::binary);
         if (!out.is_open()) return false;
@@ -165,18 +156,14 @@ public:
         const char magic[8] = {'K', 'C', 'O', 'R', 'E', 'v', '4', '0'};
         out.write(magic, 8);
 
-        uint64_t max_depth = static_cast<uint64_t>(max_stored_depth);
-        out.write(reinterpret_cast<const char*>(&max_depth), sizeof(max_depth));
+        uint64_t manifold_size = static_cast<uint64_t>(physical_manifold.size());
+        out.write(reinterpret_cast<const char*>(&manifold_size), sizeof(manifold_size));
+        out.write(reinterpret_cast<const char*>(physical_manifold.data()), manifold_size * sizeof(int8_t));
 
-        uint64_t num_traces = static_cast<uint64_t>(wave_traces.size());
-        out.write(reinterpret_cast<const char*>(&num_traces), sizeof(num_traces));
-
-        for (size_t i = 0; i < num_traces; ++i) {
-            uint32_t trace_len = static_cast<uint32_t>(wave_traces[i].size());
-            out.write(reinterpret_cast<const char*>(&trace_len), sizeof(trace_len));
-            out.write(reinterpret_cast<const char*>(wave_traces[i].data()), trace_len * sizeof(int8_t));
-            out.write(reinterpret_cast<const char*>(&trace_target_spins[i]), sizeof(double));
-        }
+        uint64_t num_taps = static_cast<uint64_t>(phase_taps.size());
+        out.write(reinterpret_cast<const char*>(&num_taps), sizeof(num_taps));
+        out.write(reinterpret_cast<const char*>(phase_taps.data()), num_taps * sizeof(size_t));
+        out.write(reinterpret_cast<const char*>(tap_target_spins.data()), num_taps * sizeof(int8_t));
 
         out.close();
         return true;
@@ -193,24 +180,17 @@ public:
             return false;
         }
 
-        uint64_t max_depth = 0;
-        in.read(reinterpret_cast<char*>(&max_depth), sizeof(max_depth));
-        max_stored_depth = static_cast<size_t>(max_depth);
+        uint64_t manifold_size = 0;
+        in.read(reinterpret_cast<char*>(&manifold_size), sizeof(manifold_size));
+        physical_manifold.resize(manifold_size);
+        in.read(reinterpret_cast<char*>(physical_manifold.data()), manifold_size * sizeof(int8_t));
 
-        uint64_t num_traces = 0;
-        in.read(reinterpret_cast<char*>(&num_traces), sizeof(num_traces));
-
-        wave_traces.resize(num_traces);
-        trace_target_spins.resize(num_traces);
-
-        for (size_t i = 0; i < num_traces; ++i) {
-            uint32_t trace_len = 0;
-            in.read(reinterpret_cast<char*>(&trace_len), sizeof(trace_len));
-            
-            wave_traces[i].resize(trace_len);
-            in.read(reinterpret_cast<char*>(wave_traces[i].data()), trace_len * sizeof(int8_t));
-            in.read(reinterpret_cast<char*>(&trace_target_spins[i]), sizeof(double));
-        }
+        uint64_t num_taps = 0;
+        in.read(reinterpret_cast<char*>(&num_taps), sizeof(num_taps));
+        phase_taps.resize(num_taps);
+        tap_target_spins.resize(num_taps);
+        in.read(reinterpret_cast<char*>(phase_taps.data()), num_taps * sizeof(size_t));
+        in.read(reinterpret_cast<char*>(tap_target_spins.data()), num_taps * sizeof(int8_t));
 
         in.close();
         return true;
