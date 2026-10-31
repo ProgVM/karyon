@@ -16,6 +16,7 @@
 // - Zero Fixed Context Window Clamping
 // - Closed-loop autoregressive bit-level generation
 // - High-speed Binary State Persistence (.kcore serialization/deserialization)
+// - Optimized O(K) Bit-Path Search Budget
 //
 // Author: Karyon Autonomous Lead AI Cybernetics Engine & Bazilevs (ProgVM)
 // ============================================================================
@@ -47,16 +48,19 @@ private:
     std::vector<uint8_t> bit_history; // Pure V=2 bit stream
     std::unordered_map<std::vector<uint8_t>, double, BitPathHash> bit_attractors;
     size_t max_stored_depth = 0;
+    static constexpr size_t MAX_LOOKBACK_BITS = 1024; // Upper limit for stored bit-paths
 
 public:
     SovereignV2Engine() {}
 
-    // Predict next spin in {-1.0, +1.0} via dynamic longest-match search
+    // Predict next spin in {-1.0, +1.0} via dynamic longest-match search (O(K) optimized)
     double PredictNextSpin() const {
         if (bit_history.empty()) return 0.0;
 
         size_t available = bit_history.size();
-        for (size_t len = available; len >= 1; --len) {
+        size_t max_search_len = std::min(available, max_stored_depth > 0 ? max_stored_depth : MAX_LOOKBACK_BITS);
+
+        for (size_t len = max_search_len; len >= 1; --len) {
             std::vector<uint8_t> sub_path(bit_history.end() - len, bit_history.end());
             auto it = bit_attractors.find(sub_path);
             if (it != bit_attractors.end()) {
@@ -74,7 +78,7 @@ public:
 
         if (learn && !bit_history.empty()) {
             size_t available = bit_history.size();
-            size_t max_store = std::min(available, static_cast<size_t>(1024)); // Up to 1024 bits dynamic path
+            size_t max_store = std::min(available, MAX_LOOKBACK_BITS); // Up to 1024 bits dynamic path
             std::vector<uint8_t> full_path(bit_history.end() - max_store, bit_history.end());
             bit_attractors[full_path] = target_spin;
             
