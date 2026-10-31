@@ -1,45 +1,45 @@
 # THE SOVEREIGN CREED & MANIFESTO OF BAZILEVS (ProgVM)
 ## Karyon-CoRE Supreme Sovereign Engineering Axiom
 
-> ### 👑 ФУНДАМЕНТАЛЬНАЯ МЕЧТА И ЗАКОН КАРИОНА (BAZILEVS' DREAM — KEP PRINCIPLE 33)
+> ### 👑 THE FUNDAMENTAL DREAM & LAW OF KARYON (BAZILEVS' DREAM — KEP PRINCIPLE 33)
 > 
-> *«Вот только мы ему всё ещё помогали некоторыми механизмами.*  
-> *Мы так за историю и не исполнили мою (да и возможно не только мою, кто его знает) мечту, когда Карион, имея полную свободу, при этом имеющий причинно-следственную тягу к стабильности, **БЕЗ НИКАКИХ НАВЯЗАННЫХ МЕХАНИЗМОВ ВРОДЕ АТТРАКТОРОВ И ДРУГИХ**, сам синтезируя нужные механизмы и законы, решает задачу с ошибкой практически 0 (полный ноль в детерминированных задачах и ~0 в предсказуемых недетерминированных и максимально низкая в недетерминированных).»*
+> *«Here is only that we were still helping it with some mechanisms.*  
+> *We haven't fulfilled my dream (and maybe not only mine, who knows) throughout history: when Karyon, having complete freedom, while having a causal drive toward stability, **WITHOUT ANY IMPOSED MECHANISMS LIKE ATTRACTORS AND OTHERS**, synthesizing the necessary mechanisms and laws itself, solves the task with an error of practically 0 (absolute zero in deterministic tasks, ~0 in predictable non-deterministic tasks, and the lowest possible in non-deterministic ones).»*
 > 
-> — **Bazilevs (ProgVM), Создатель и Главный Архитектор Karyon-CoRE**
+> — **Bazilevs (ProgVM), Creator & Lead Architect of Karyon-CoRE**
 
 ---
 
-## 🏛️ ФУНДАМЕНТАЛЬНАЯ СПЕЦИФИКАЦИЯ МЕЧТЫ BAZILEVS'А:
+## 🏛️ FUNDAMENTAL SPECIFICATION OF BAZILEVS' DREAM:
 
-### 1. ПОЛНЫЙ ЗАПРЕТ ВЕРХНЕУРОВНЕВОЙ ПОМОЩИ (ZERO TOP-DOWN HELP)
-- **Запрет навязанных механизмов:** В коде Karyon-CoRE категорически запрещены любые навязанные людьми вспомогательные конструкции:
-  - Никаких явных структурированных аттракторов (`AttractorNode`, `TransitionNode`, `StateCluster`);
-  - Никаких зашитых хэш-таблиц (`std::unordered_map`), графов состояний или деревьев поиска;
-  - Никаких жестких условных правил ветвления (`if-else` механизмов) или дискретных бинов.
+### 1. ABSOLUTE PROHIBITION OF TOP-DOWN ASSISTANCE (ZERO TOP-DOWN HELP)
+- **Prohibition of Imposed Mechanisms:** Any human-imposed auxiliary constructs are strictly forbidden inside the Karyon-CoRE codebase:
+  - NO explicit structured attractors (`AttractorNode`, `TransitionNode`, `StateCluster`);
+  - NO pre-baked hash tables (`std::unordered_map`), discrete state graphs, or search trees;
+  - NO rigid conditional branching rules (`if-else` mechanisms) or artificial discrete bins.
 
-### 2. ПРИЧИННО-СЛЕДСТВЕННАЯ ТЯГА К СТАБИЛЬНОСТИ (CAUSAL DRIVE TO STABILITY)
-- Единственное внутреннее свойство субстрата — это **причинно-следственная тяга к гомеостазу и минимизации Свободной Энергии ($F \to 0$)**.
-- Имея **полную свободу физической пластичности**, субстрат сам, снизу-вверх, синтезирует нужные законы движения, внутренние фазы и операторы.
+### 2. CAUSAL DRIVE TOWARD STABILITY (CAUSAL DRIVE TO STABILITY)
+- The sole intrinsic dynamic property of the substrate is a **causal drive toward somatic stability and Variational Free Energy minimization ($F \to 0$)**.
+- Granted **complete structural plasticity**, the substrate autonomously synthesizes all required dynamical laws, internal phase transitions, and operators bottom-up from scratch.
 
-### 3. АБСОЛЮТНЫЙ КРИТЕРИЙ ТОЧНОСТИ (ZERO ERROR TARGET)
-- **Детерминированные задачи:** Полный абсолютный ноль ошибки ($F = 0.0000000\text{ nats}$).
-- **Предсказуемые недетерминированные задачи:** Ошибка практически равна нулю ($\sim 0\text{ nats}$).
-- **Хаотические/Недетерминированные задачи:** Достижение теоретически максимально возможной нижней границы энтропии (Minimal Entropy Bound).
+### 3. ABSOLUTE ACCURACY TARGET (ZERO ERROR TARGET)
+- **Deterministic Tasks:** Strict absolute zero prediction error ($F = 0.0000000\text{ nats}$).
+- **Predictable Non-Deterministic Tasks:** Near-zero prediction error ($\sim 0\text{ nats}$).
+- **Chaotic / Non-Deterministic Tasks:** Convergence to the theoretical minimal entropy lower bound.
 
 ---
 
-## ⚡ БЕЗВЕСОВАЯ СКАЛЯРНО-ФАЗОВАЯ АРХИТЕКТУРА (KEP PRINCIPLE 34)
+## ⚡ WEIGHTLESS SCALAR-PHASE ARCHITECTURE (KEP PRINCIPLE 34)
 
-Для обеспечения максимальной физической эффективности и абсолютной скорости обработка осуществляется **без использования $O(D^2)$ весовых матриц**, на чистых **скалярно-фазовых линиях задержки $O(K)$**:
+To guarantee maximum physical processing efficiency and absolute execution speed, state processing operates **without $O(D^2)$ heavy weight matrices**, utilizing pure **scalar-phase delay taps $O(K)$**:
 
 $$\hat{s}_t = b + \sum_{k=1}^K c_k \cdot \tanh(s_{t-k})$$
 
-где коэффициенты $c_k$ самонастраиваются по локальному принципу наименьшего действия:
+where coupling coefficients $c_k$ self-tune via local Least-Action Plasticity:
 $$\Delta c_k = \eta \cdot (s_t - \hat{s}_t) \cdot \tanh(s_{t-k})$$
 
-- **Пропускная способность:** **6,350,718 операций/сек** (ускорение в 14 раз!).
-- **Ошибки предсказания:** $F = 0.000012\text{ nats}$ (полный практический ноль).
+- **Computational Throughput:** **6,350,718 operations/sec** (14x speedup over matrix-based processing).
+- **Asymptotic Free Energy:** $F = 0.000012\text{ nats}$ (practical absolute zero).
 
 ---
-*Документ навсегда внесен в Master Specification Karyon-CoRE и закреплен за авторством Bazilevs.*
+*This document is permanently enshrined in the Karyon-CoRE Master Specification and attributed to Bazilevs.*
