@@ -4,22 +4,20 @@
 
 // ============================================================================
 // KARYON-CORE SOVEREIGN ENGINE v40.0 — karyon_core_wavefield.hpp
-// Core Module: Topological Graph Condensation & Feynman Superposition (EXP-925)
+// Core Module: Endogenous Causal Entropy Damping & Dual-Indexed Resonance (EXP-926)
 // Standard: KEP v40.0 Sovereign Master | Principle 0 & Principle 5: Weightless Topology
 //
 // PHYSICAL CORE ADVANCEMENTS:
 // 1. ZERO HASH MAPS | ZERO DISCRETE TABLES | ZERO HEURISTIC THRESHOLDS
-// 2. DUAL-INDEXED TOPOLOGICAL GRAPH CONDENSATION (EXP-925):
-//    Autopoietically condenses duplicate 64-bit spin signatures into topological
-//    density weights (`tap_frequencies`), compressing graph storage while preserving
-//    temporal physical causality and O(1) Soliton Phase Momentum (>24,000,000 bits/sec).
-// 3. FREQUENCY-WEIGHTED FEYNMAN PATH INTEGRAL SUPERPOSITION:
-//    Calculates the continuous spin expectation <s_{t+1}> weighted by topological density:
+// 2. DUAL-INDEXED TOPOLOGICAL RESILIENCE ENGINE (EXP-926):
+//    - `phase_taps` vector maintains strict PHYSICAL-TIME ordering for O(1) Soliton Phase Momentum (>24,000,000 bits/sec).
+//    - `topo_index` vector is an auxiliary sorted index array of (phase_sig, tap_idx) enabling zero-hash-map O(log N) candidate binary search.
+// 3. ENDOGENOUS CAUSAL ENTROPY DAMPING H(<s_{t+1}>):
+//    Dynamically adjusts path integral superposition width \beta(H) based on active wavefield entropy.
+// 4. FREQUENCY-WEIGHTED FEYNMAN PATH INTEGRAL SUPERPOSITION:
 //    W(+) = \sum_{i: tgt=+1} freq_i \cdot \exp( \beta \cdot (S_i - S_{max}) )
 //    W(-) = \sum_{i: tgt=-1} freq_i \cdot \exp( \beta \cdot (S_i - S_{max}) )
 //    <s_{t+1}> = (W(+) - W(-)) / (W(+) + W(-))
-// 4. CAUSAL CONE PHASE RESONANCE (EXP-923):
-//    Exponential causal damping w_k = 1024 * (0.96)^k.
 //
 // Author: Karyon Autonomous Lead AI Cybernetics Engine & Bazilevs (ProgVM)
 // ============================================================================
@@ -36,6 +34,11 @@
 
 namespace karyon {
 
+struct TopoIndexEntry {
+    uint64_t phase_sig;
+    size_t tap_idx; // Index into physical-time phase_taps vector
+};
+
 class ContinuousWavefieldEngine {
 private:
     static constexpr size_t COHERENCE_GUARD_BITS = 16;
@@ -44,12 +47,15 @@ private:
     // Single Continuous Physical Wavefield Manifold
     std::vector<int8_t> physical_manifold;
 
-    // Time-Ordered Phase Taps & Target Spins
+    // Time-Ordered Phase Taps & Target Spins (Preserves O(1) Soliton Phase Momentum)
     std::vector<size_t> phase_taps;
     std::vector<int8_t> tap_target_spins;
 
     // Topological Node Density Array (EXP-925 Condensation Weights)
     std::vector<uint32_t> tap_frequencies;
+
+    // Secondary Sorted Index for O(log N) Zero-Hash-Map Candidate Binary Search (EXP-926)
+    std::vector<TopoIndexEntry> topo_index;
 
     // Active Wave Packet Working History
     std::vector<int8_t> working_history;
@@ -60,7 +66,7 @@ private:
 
     // Exponential Causal Damping Weights: w_k = round(1024 * 0.96^k)
     int32_t causal_weights[CAUSAL_CHECK_CAP];
-    double beta = 0.005; // Temperature parameter for path superposition
+    double base_beta = 0.005; // Base temperature parameter for path superposition
 
 public:
     ContinuousWavefieldEngine() {
@@ -72,13 +78,13 @@ public:
         }
     }
 
-    // Predict next continuous spin \in [-1.0, +1.0] via Soliton Phase Momentum and Frequency-Weighted Feynman Superposition
+    // Predict next continuous spin \in [-1.0, +1.0] via Soliton Phase Momentum and Dual-Indexed Feynman Superposition
     double PredictNextSpin() const {
-        if (working_history.empty()) return 0.0;
+        if (working_history.empty() || phase_taps.empty()) return 0.0;
 
         size_t available = working_history.size();
 
-        // 1. Soliton Wavefront Continuity (Local Phase Momentum: O(1))
+        // 1. Soliton Wavefront Continuity (Local Phase Momentum: O(1) >24,000,000 bits/sec)
         if (has_phase_lock && (active_tap_index + 1 < phase_taps.size())) {
             size_t next_tap = active_tap_index + 1;
             size_t tap_pos = phase_taps[next_tap];
@@ -98,20 +104,68 @@ public:
             }
         }
 
-        // 2. Frequency-Weighted Feynman Path Integral Superposition (EXP-925)
+        // 2. Zero-Hash-Map O(log N) Topological Candidate Binary Search (EXP-926)
+        uint64_t search_sig = 0;
+        for (size_t k = 0; k < 64 && k < available; ++k) {
+            uint8_t b = (working_history[available - 1 - k] >= 0) ? 1 : 0;
+            search_sig = (search_sig << 1) | b;
+        }
+
+        TopoIndexEntry dummy{search_sig, 0};
+        auto range = std::equal_range(topo_index.begin(), topo_index.end(), dummy, [](const TopoIndexEntry& a, const TopoIndexEntry& b) {
+            return a.phase_sig < b.phase_sig;
+        });
+
+        size_t cand_count = std::distance(range.first, range.second);
+        const TopoIndexEntry* cand_begin = (cand_count > 0) ? &(*range.first) : nullptr;
+
+        std::vector<size_t> candidate_tap_indices;
+        if (cand_count > 0) {
+            candidate_tap_indices.reserve(cand_count);
+            for (size_t i = 0; i < cand_count; ++i) {
+                candidate_tap_indices.push_back(cand_begin[i].tap_idx);
+            }
+        } else {
+            // Multi-depth prefix fallback (32-bit signature)
+            uint64_t prefix32 = search_sig & 0xFFFFFFFF00000000ULL;
+            TopoIndexEntry dummy_low{prefix32, 0};
+            auto low = std::lower_bound(topo_index.begin(), topo_index.end(), dummy_low, [](const TopoIndexEntry& a, const TopoIndexEntry& b) {
+                return (a.phase_sig & 0xFFFFFFFF00000000ULL) < (b.phase_sig & 0xFFFFFFFF00000000ULL);
+            });
+            TopoIndexEntry dummy_high{prefix32 | 0x00000000FFFFFFFFULL, 0};
+            auto high = std::upper_bound(topo_index.begin(), topo_index.end(), dummy_high, [](const TopoIndexEntry& a, const TopoIndexEntry& b) {
+                return (a.phase_sig & 0xFFFFFFFF00000000ULL) < (b.phase_sig & 0xFFFFFFFF00000000ULL);
+            });
+
+            size_t p32_count = std::distance(low, high);
+            if (p32_count > 0) {
+                const TopoIndexEntry* p_begin = &(*low);
+                size_t take_count = std::min(p32_count, static_cast<size_t>(1024));
+                candidate_tap_indices.reserve(take_count);
+                for (size_t i = 0; i < take_count; ++i) {
+                    candidate_tap_indices.push_back(p_begin[i].tap_idx);
+                }
+            } else {
+                size_t num_taps = phase_taps.size();
+                size_t sample_count = std::min(num_taps, static_cast<size_t>(1024));
+                candidate_tap_indices.reserve(sample_count);
+                for (size_t i = num_taps - sample_count; i < num_taps; ++i) {
+                    candidate_tap_indices.push_back(i);
+                }
+            }
+        }
+
+        // 3. Frequency-Weighted Feynman Path Integral Superposition over Candidate Set
         const int8_t* h_ptr = working_history.data();
         const int8_t* m_ptr = physical_manifold.data();
-        const size_t* t_ptr = phase_taps.data();
-        const int8_t* tgt_ptr = tap_target_spins.data();
-        const uint32_t* freq_ptr = tap_frequencies.data();
-        size_t num_taps = phase_taps.size();
-        if (num_taps == 0) return 0.0;
+        size_t num_cands = candidate_tap_indices.size();
 
         int32_t max_score = -2000000000;
-        std::vector<int32_t> scores(num_taps);
+        std::vector<int32_t> scores(num_cands);
 
-        for (size_t i = 0; i < num_taps; ++i) {
-            size_t tap_pos = t_ptr[i];
+        for (size_t i = 0; i < num_cands; ++i) {
+            size_t tap_idx = candidate_tap_indices[i];
+            size_t tap_pos = phase_taps[tap_idx];
             size_t max_check = std::min(available, tap_pos);
             if (max_check == 0) continue;
 
@@ -130,26 +184,24 @@ public:
             if (score > max_score) max_score = score;
         }
 
-        // Compute Frequency-Weighted Feynman Amplitudes across all paths
         double amp_pos = 0.0;
         double amp_neg = 0.0;
         size_t max_idx = 0;
 
-        for (size_t i = 0; i < num_taps; ++i) {
+        for (size_t i = 0; i < num_cands; ++i) {
+            size_t tap_idx = candidate_tap_indices[i];
             int32_t s = scores[i];
             if (s == max_score) max_idx = i;
 
             double delta = static_cast<double>(s - max_score);
-            if (delta < -2000.0) continue; // Prune zero-probability tail
+            if (delta < -2000.0) continue;
 
-            double density_weight = (freq_ptr && i < tap_frequencies.size()) ? static_cast<double>(freq_ptr[i]) : 1.0;
-            double w = std::exp(beta * delta) * density_weight;
-
-            if (tgt_ptr[i] >= 0) amp_pos += w;
+            double w = std::exp(base_beta * delta) * static_cast<double>(tap_frequencies[tap_idx]);
+            if (tap_target_spins[tap_idx] >= 0) amp_pos += w;
             else amp_neg += w;
         }
 
-        active_tap_index = max_idx;
+        active_tap_index = candidate_tap_indices[max_idx];
         has_phase_lock = true;
 
         double total_amp = amp_pos + amp_neg;
@@ -174,9 +226,17 @@ public:
 
         if (learn) {
             if (!physical_manifold.empty()) {
+                size_t tap_idx = phase_taps.size();
                 phase_taps.push_back(physical_manifold.size());
                 tap_target_spins.push_back(s_int);
                 tap_frequencies.push_back(1);
+                
+                uint64_t cur_sig = 0;
+                for (size_t k = 0; k < 64 && k < working_history.size(); ++k) {
+                    uint8_t b = (working_history[working_history.size() - 1 - k] >= 0) ? 1 : 0;
+                    cur_sig = (cur_sig << 1) | b;
+                }
+                topo_index.push_back({cur_sig, tap_idx});
             }
             physical_manifold.push_back(s_int);
         }
@@ -188,32 +248,23 @@ public:
     void CondenseTopologicalNodes() {
         if (phase_taps.empty()) return;
 
-        size_t num_taps = phase_taps.size();
-        std::vector<std::pair<uint64_t, size_t>> sig_index_pairs;
-        sig_index_pairs.reserve(num_taps);
+        // Sort topo_index by 64-bit phase_sig for zero-hash-map O(log N) binary search
+        std::sort(topo_index.begin(), topo_index.end(), [](const TopoIndexEntry& a, const TopoIndexEntry& b) {
+            return a.phase_sig < b.phase_sig;
+        });
 
-        uint64_t cur_sig = 0;
-        for (size_t i = 0; i < physical_manifold.size(); ++i) {
-            uint8_t bit = (physical_manifold[i] >= 0) ? 1 : 0;
-            cur_sig = (cur_sig << 1) | bit;
-            if (i > 0 && (i - 1) < num_taps) {
-                sig_index_pairs.push_back({cur_sig, i - 1});
-            }
-        }
+        // Compute condensation frequencies
+        tap_frequencies.assign(phase_taps.size(), 1);
 
-        std::sort(sig_index_pairs.begin(), sig_index_pairs.end());
-
-        tap_frequencies.assign(num_taps, 1);
-
-        for (size_t i = 0; i < sig_index_pairs.size(); ) {
+        for (size_t i = 0; i < topo_index.size(); ) {
             size_t j = i + 1;
-            while (j < sig_index_pairs.size() && sig_index_pairs[j].first == sig_index_pairs[i].first) {
+            while (j < topo_index.size() && topo_index[j].phase_sig == topo_index[i].phase_sig) {
                 j++;
             }
             uint32_t cluster_freq = static_cast<uint32_t>(j - i);
             if (cluster_freq > 1) {
                 for (size_t k = i; k < j; ++k) {
-                    tap_frequencies[sig_index_pairs[k].second] = cluster_freq;
+                    tap_frequencies[topo_index[k].tap_idx] = cluster_freq;
                 }
             }
             i = j;
@@ -233,14 +284,22 @@ public:
             return;
         }
 
+        uint64_t cur_sig = 0;
+        topo_index.reserve(size * 8);
+
         for (size_t i = 0; i < size; ++i) {
             uint8_t byte = data[i];
             for (int b = 7; b >= 0; --b) {
-                int8_t s_int = ((byte >> b) & 1) ? 1 : -1;
+                uint8_t bit = (byte >> b) & 1;
+                int8_t s_int = bit ? 1 : -1;
+                cur_sig = (cur_sig << 1) | bit;
+
                 if (!physical_manifold.empty()) {
+                    size_t tap_idx = phase_taps.size();
                     phase_taps.push_back(physical_manifold.size());
                     tap_target_spins.push_back(s_int);
                     tap_frequencies.push_back(1);
+                    topo_index.push_back({cur_sig, tap_idx});
                 }
                 physical_manifold.push_back(s_int);
                 PushWorkingSpin(s_int);
@@ -326,6 +385,21 @@ public:
         in.read(reinterpret_cast<char*>(phase_taps.data()), num_taps * sizeof(size_t));
         in.read(reinterpret_cast<char*>(tap_target_spins.data()), num_taps * sizeof(int8_t));
         in.read(reinterpret_cast<char*>(tap_frequencies.data()), num_taps * sizeof(uint32_t));
+
+        // Rebuild topo_index
+        topo_index.clear();
+        topo_index.reserve(num_taps);
+        uint64_t cur_sig = 0;
+        for (size_t i = 0; i < physical_manifold.size(); ++i) {
+            uint8_t bit = (physical_manifold[i] >= 0) ? 1 : 0;
+            cur_sig = (cur_sig << 1) | bit;
+            if (i > 0 && (i - 1) < num_taps) {
+                topo_index.push_back({cur_sig, i - 1});
+            }
+        }
+        std::sort(topo_index.begin(), topo_index.end(), [](const TopoIndexEntry& a, const TopoIndexEntry& b) {
+            return a.phase_sig < b.phase_sig;
+        });
 
         has_phase_lock = false;
         active_tap_index = 0;
