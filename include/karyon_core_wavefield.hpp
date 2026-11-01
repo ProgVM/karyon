@@ -352,6 +352,103 @@ public:
         active_tap_index = 0;
     }
 
+    // ============================================================================
+    // BINARY .kcore CONTAINER SERIALIZATION / DESERIALIZATION (EXP-933 - KEP Principle 5)
+    // Stores strictly Topology (phase taps, targets, frequencies, scores) and Manifold bits.
+    // Zero static weight matrices. Ultra-fast cold-boot deserialization.
+    // ============================================================================
+    static constexpr uint32_t KCORE_MAGIC = 0x45524F43; // 'CORE' in Little Endian
+    static constexpr uint32_t KCORE_VERSION = 40;
+
+    bool SaveKcoreContainer(const std::string& filepath) const {
+        std::ofstream out(filepath, std::ios::binary);
+        if (!out.is_open()) return false;
+
+        // 1. Header
+        out.write(reinterpret_cast<const char*>(&KCORE_MAGIC), sizeof(KCORE_MAGIC));
+        out.write(reinterpret_cast<const char*>(&KCORE_VERSION), sizeof(KCORE_VERSION));
+        out.write(reinterpret_cast<const char*>(&base_beta), sizeof(base_beta));
+
+        // 2. Physical Manifold (int8_t physical spins)
+        uint64_t manifold_size = physical_manifold.size();
+        out.write(reinterpret_cast<const char*>(&manifold_size), sizeof(manifold_size));
+        if (manifold_size > 0) {
+            out.write(reinterpret_cast<const char*>(physical_manifold.data()), manifold_size * sizeof(int8_t));
+        }
+
+        // 3. Topology: Phase Taps
+        uint64_t tap_count = phase_taps.size();
+        out.write(reinterpret_cast<const char*>(&tap_count), sizeof(tap_count));
+        if (tap_count > 0) {
+            out.write(reinterpret_cast<const char*>(phase_taps.data()), tap_count * sizeof(size_t));
+            out.write(reinterpret_cast<const char*>(tap_target_spins.data()), tap_count * sizeof(int8_t));
+            out.write(reinterpret_cast<const char*>(tap_frequencies.data()), tap_count * sizeof(uint32_t));
+            out.write(reinterpret_cast<const char*>(causal_efficacy_score.data()), tap_count * sizeof(double));
+        }
+
+        out.close();
+        return true;
+    }
+
+    bool LoadKcoreContainer(const std::string& filepath) {
+        std::ifstream in(filepath, std::ios::binary);
+        if (!in.is_open()) return false;
+
+        uint32_t magic = 0, version = 0;
+        in.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+        in.read(reinterpret_cast<char*>(&version), sizeof(version));
+
+        if (magic != KCORE_MAGIC || version != KCORE_VERSION) {
+            in.close();
+            return false;
+        }
+
+        in.read(reinterpret_cast<char*>(&base_beta), sizeof(base_beta));
+
+        // Read Physical Manifold
+        uint64_t manifold_size = 0;
+        in.read(reinterpret_cast<char*>(&manifold_size), sizeof(manifold_size));
+        physical_manifold.resize(manifold_size);
+        if (manifold_size > 0) {
+            in.read(reinterpret_cast<char*>(physical_manifold.data()), manifold_size * sizeof(int8_t));
+        }
+
+        // Read Phase Taps & Dynamics
+        uint64_t tap_count = 0;
+        in.read(reinterpret_cast<char*>(&tap_count), sizeof(tap_count));
+        phase_taps.resize(tap_count);
+        tap_target_spins.resize(tap_count);
+        tap_frequencies.resize(tap_count);
+        causal_efficacy_score.resize(tap_count);
+
+        if (tap_count > 0) {
+            in.read(reinterpret_cast<char*>(phase_taps.data()), tap_count * sizeof(size_t));
+            in.read(reinterpret_cast<char*>(tap_target_spins.data()), tap_count * sizeof(int8_t));
+            in.read(reinterpret_cast<char*>(tap_frequencies.data()), tap_count * sizeof(uint32_t));
+            in.read(reinterpret_cast<char*>(causal_efficacy_score.data()), tap_count * sizeof(double));
+        }
+
+        in.close();
+
+        // Reconstruct TopoIndex
+        topo_index.clear();
+        topo_index.reserve(phase_taps.size());
+
+        for (size_t i = 0; i < phase_taps.size(); ++i) {
+            size_t tap_pos = phase_taps[i];
+            uint64_t sig = 0;
+            size_t lookback = std::min(tap_pos, static_cast<size_t>(64));
+            for (size_t k = 0; k < lookback; ++k) {
+                uint8_t bit = (physical_manifold[tap_pos - lookback + k] >= 0) ? 1 : 0;
+                sig = (sig << 1) | bit;
+            }
+            topo_index.push_back({sig, i});
+        }
+
+        CondenseTopologicalNodes();
+        ResetHistory();
+        return true;
+    }
     size_t GetWaveTraceCount() const { return phase_taps.size(); }
     size_t GetManifoldSizeBytes() const { return physical_manifold.size(); }
 };
