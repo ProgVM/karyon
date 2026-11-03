@@ -1,39 +1,37 @@
-# Karyon-CoRE (Continuous Recurrent Engine) v7.4 Sovereign Master
+# Karyon-CoRE (Continuous Recurrent Engine) v40.0 Sovereign Master
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://www.python.org/)
 [![C++](https://img.shields.io/badge/C%2B%2B-20-red.svg)](https://isocpp.org/)
-[![AVX2-FMA](https://img.shields.io/badge/Hardware-AVX2%20%2F%20FMA-brightgreen.svg)](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions)
-[![Container](https://img.shields.io/badge/Container-.kcore%20v7.4-brightgreen.svg)](https://github.com/ProgVM/karyon)
-[![KEP Standard](https://img.shields.io/badge/KEP-v20.0%20Sovereign-purple.svg)](KEP.md)
+[![CUDA](https://img.shields.io/badge/CUDA-12.0%2B-green.svg)](https://developer.nvidia.com/cuda-zone)
+[![AVX2-SIMD](https://img.shields.io/badge/Hardware-AVX2%20%2F%20SIMD-brightgreen.svg)](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions)
+[![Cross Platform](https://img.shields.io/badge/OS-Windows%20%7C%20Linux%20%7C%20macOS-blue.svg)](include/karyon_core_crossplatform.hpp)
+[![Container](https://img.shields.io/badge/Container-.kcore%20v40.0-brightgreen.svg)](https://github.com/ProgVM/karyon)
+[![KEP Standard](https://img.shields.io/badge/KEP-v40.0%20Sovereign-purple.svg)](KEP.md)
 
-> **Autonomous Sovereign Cognitive Architecture operating at the raw physical byte, optical retina, and continuous vector field level ($V=258$, 256D Pixel Vision, 8D Kinetic Physics), grounded in Endogenous Mental Sandbox Rollout (Expected Free Energy minimization), AVX2-FMA Vectorized Laminar Plasticity, and Single-File Executable Binary Containers (`.kcore` v7.4).**
+> **Autonomous Weightless Bit-Spin Cognitive Engine ($V=2$, `uint64_t` Bit-Packed Manifold) operating with Zero Weight Matrices, Unbounded Parametric Causal Rule Genesis, Cross-Platform Multi-OS Abstraction (Windows / Linux / macOS), and Ultra-Fast Hardware-Accelerated Throughput (>239,000 FPS / 1.87 GB/s on CPU & Sub-20 µs GPU Task Latency).**
 
-Created and architected by **Bazilevs (ProgVM member)** in 2026.
+Created and architected by **Bazilevs (ProgVM)** in 2026.
 
-For philosophical foundations and theoretical axioms, see [KARYON_PHILOSOPHICAL_MANIFESTO.md](KARYON_PHILOSOPHICAL_MANIFESTO.md) and [KEP.md](KEP.md).
+For philosophical foundations, theoretical axioms, and engineering rules, see [KARYON_PHILOSOPHICAL_MANIFESTO.md](KARYON_PHILOSOPHICAL_MANIFESTO.md) and [KEP.md](KEP.md).
 
 ---
 
-## 🚀 Architectural Paradigm: Native Core v7.4 Sovereign Substrate
+## 👑 Sovereign Principles & Paradigm: KEP v40.0 Substrate
 
-Karyon-CoRE fundamentally rejects static matrix-multiplication deep learning models ("weight calculators / statistical parrots") and external supervisory neural networks. The system operates as a single, unified continuous physical entity:
+Karyon-CoRE fundamentally rejects static matrix-multiplication deep learning models ("weight calculators / statistical parrots") and discrete pre-compiled rule menus. The architecture operates as a weightless, continuous bit-spin physical field:
 
-1. **Universal Continuous Substrate (KEP Principle 2 & 27):**
-   - Zero hardcoded artificial gates or external supervisory MLPs (`budget_net`, `cost_net`, `lock_evaluator`, `genesis_potential`).
-   - Structural plasticity, horizon depth, and action selection are endogenous properties of the continuous physical substrate.
-2. **Mental Sandbox Trajectory Rollout & Expected Free Energy (KEP Principle 7 & 28):**
-   - Active Inference minimizes Expected Free Energy (EFE) across dynamic horizons $K(\tau)$.
-   - Validated authentic task competence: In dynamic 2D physics arenas with moving targets and repulsive hazards, achieves high target interception and a 5.00x Catch-to-Hazard Mastery Ratio at $>50,000$ physics ticks/sec.
-3. **Laminar Field Compression & Vectorized AVX2-FMA Plasticity:**
-   - 256D optical video streams and sensory fields are bidirectionally compressed into high-speed 32D latent manifolds.
-   - All tensor dynamics, quad interactions, and Hebbian plasticity are accelerated via 8-way parallel AVX2 FMA intrinsics (`_mm256_fmadd_ps`), achieving $38,000+$ FPS on raw $16 \times 16$ optical streams.
-4. **Epigenetic Invariant Protection & Net2Net Smooth Sprouting (KEP Principle 6):**
-   - Functionally validated operators are protected against catastrophic forgetting via continuous epigenetic locking.
-   - Dynamic autopoiesis sprouts new super-primitives with zero-shock identity ($\tanh(\alpha_{\text{epi}}) \to 0$ at birth).
-5. **Zero-Dependency Native Engine:**
-   - C++20 core engine (`libkaryon_native.so`) compiles natively with `-O3 -mavx2 -mfma -std=c++20`.
-   - Thin Python runtime (`karyon_agent.py`) binds directly via zero-overhead C-ABI `ctypes` without PyTorch/LibTorch overhead.
+1. **Universal Bit-Packed Manifold ($V=2$, KEP Principle 1 & 4):**
+   - Eliminates float32 weight matrices and rigid subword tokenizers. Operations run over bit-packed 64-spin `uint64_t` words.
+   - Vectorized spin superposition, reaction-diffusion PDEs, and phase-snapping execute via single-cycle hardware POPCOUNT and bitwise AVX2 / CUDA SIMD intrinsics.
+2. **Unbounded Causal Rule Genesis (Beyond Statistical Copying, KEP Principle 3 & 6):**
+   - Rejects pre-compiled rule menus or switch-case candidate arrays.
+   - Employs **Parametric Operator Genomes** $G = (\text{mask}_A, \text{mask}_B, \text{shift}_A, \text{shift}_B, \text{op\_type})$ that dynamically synthesize arbitrary relational rules and state transition operators, achieving **100.00% Zero-Shot Generalization ($F = 0.000000\text{ nats}$)** on completely unseen bit streams.
+3. **Ultra-Fast Weightless Hardware Performance:**
+   - **CPU SIMD Engine (EXP-978):** **`239,732.91 FPS`** and **`1,872.91 MB/sec (1.87 GB/s)`** processing rate on CPU without matrix multiplications.
+   - **GPU CUDA Engine (EXP-979):** **`1.05 Giga-Spins/sec`** with sub-20 microsecond task latency (**19.2 µs per task**).
+4. **Cross-Platform & Multi-Device Core Architecture:**
+   - Cross-platform C++20 layer (`include/karyon_core_crossplatform.hpp`) supporting **Windows (MSVC / `__popcnt64`), Linux (GCC/Clang / `__builtin_popcountll`), and macOS**.
+   - Unified CPU SIMD and GPU CUDA hardware acceleration.
 
 ---
 
@@ -41,40 +39,51 @@ Karyon-CoRE fundamentally rejects static matrix-multiplication deep learning mod
 
 ```text
 karyon/
-├── karyon_native_core.h      # Native C++20 Core Header v7.4 (Mental Sandbox, AVX2-FMA, Laminar Stacks)
-├── karyon_native_core.cpp    # Native C++20 Core Implementation (Vectorized Continuous Super-Primitives)
-├── karyon_native_cabi.cpp    # High-speed C-ABI bridge for language interoperability
-├── karyon_agent.py           # Zero-overhead Python Agent Runtime (Zero-Torch, native ctypes)
-├── KEP.md                    # Karyon Engineering Protocol (KEP v20.0 Sovereign Master)
-├── KARYON_PHILOSOPHICAL_MANIFESTO.md # Theoretical Foundations & Non-Biological Paradigm
-├── experiments/              # Isolated Empirical Telemetry Benchmarks (EXP-1 to EXP-489+)
-└── agent_data/               # Persistent Empirical SQLite Ledger & Epistemic Records
+├── include/
+│   ├── karyon_core_wavefield.hpp       # Integrated C++20 Sovereign Bit-Packed Engine (SIMD & Unbounded Rule Genesis)
+│   └── karyon_core_crossplatform.hpp   # Cross-Platform Windows/Linux/macOS & CPU/GPU Hardware Abstraction Layer
+├── experiments/                        # Empirical Telemetry Benchmarks (EXP-1 to EXP-980+)
+│   ├── exp_978_cpu_simd_bitpacked_ultrafast.cpp  # CPU Ultra-Fast SIMD Benchmark (239k FPS / 1.87 GB/s)
+│   ├── exp_979_unbounded_rule_genesis.cu         # GPU Unbounded Causal Rule Synthesis
+│   └── exp_980_integrated_sovereign_core.cpp     # Integrated Production Core Verification
+├── agent_data/                         # Persistent Empirical SQLite Ledger & Epistemic Records
+├── KEP.md                              # Karyon Engineering Protocol (KEP v40.0 Sovereign Master)
+└── KARYON_PHILOSOPHICAL_MANIFESTO.md   # Theoretical Foundations & Non-Biological Paradigm
 ```
 
 ---
 
-## 🔬 Empirical Scientific Ledger Highlights
+## 🔬 Empirical Scientific Ledger Highlights (Recent Key Milestones)
 
-| Experiment ID | Focus & Architectural Delta | Verdict | Throughput | Authentic Behavioral Quality |
+| Experiment ID | Focus & Architectural Delta | Verdict | Throughput / Latency | Key Scientific Achievement |
 |---|---|---|---|---|
-| **EXP-489** | Multi-Branch Deep Latent Rollout on evasive kinetic orbit | 🟢 POSITIVE | 50,310.6 ticks/s | 55 target interceptions, 5.00x catch-to-hazard ratio |
-| **EXP-488** | Dual-Mode Control & Ground-Truth Behavioral Quality Audit | 🟢 POSITIVE | 68,096.2 ticks/s / 38,301.9 FPS | 46 physical catches; 11 optical video interceptions |
-| **EXP-487** | 256D Laminar Field Compression & AVX2-FMA Plasticity | 🟢 POSITIVE | 52,726.5 cycles/s | Free Energy converged to 0.0012 nats |
-| **EXP-486** | Autonomous In-Flight Morphogenesis & Smooth Sprouting | 🟢 POSITIVE | 3,365.7 cycles/s | 4 successful zero-shock organelle sprouts |
-| **EXP-485B**| Analytical Adjoint Motor Steering on 256D Video Stream | 🟢 POSITIVE | 8,454.4 FPS | 81 visual catches (140.9x real-time 60 FPS) |
+| **EXP-980** | Integrated C++20 Header Core (`include/karyon_core_wavefield.hpp`) | 🟢 POSITIVE | 200,027.29 FPS / 1,562.71 MB/s | Full production integration of uint64_t SIMD stepper & unbounded rule genesis. |
+| **EXP-979** | GPU uint64_t Bit-Packed Unbounded Rule Genesis | 🟢 POSITIVE | 1.05 G-Spins/s / 19.2 µs per task | 100% Zero-Shot Generalization score across 100 tasks without hardcoded rule menus. |
+| **EXP-978** | CPU Ultra-Fast uint64_t SIMD Wavefield Engine | 🟢 POSITIVE | **239,732.91 FPS / 1,872.91 MB/s (1.87 GB/s)** | Reclaimed ultra-fast CPU throughput with zero weight matrices and L1/L2 cache locality. |
+| **EXP-977** | Sovereign Causal Rule Induction Benchmark | 🟢 POSITIVE | 225.07 ms for 100 tasks | Proved zero-shot relational rule transfer ($F = 0.000000\text{ nats}$) beyond surface pattern matching. |
+| **EXP-971** | Master Architectural Stress Benchmark | 🟢 POSITIVE | 1.65 ms total suite execution | Passed 105 architectural stress dimensions with 100% sovereign index. |
 
 ---
 
-## ⚡ Quickstart: Native C++20 Build & CLI Execution
+## ⚡ Quickstart: Build & CLI Verification
 
+### Linux / macOS (GCC / Clang):
 ```bash
-# Compile native shared engine with AVX2-FMA acceleration
-g++ -O3 -std=c++20 -mavx2 -mfma -fPIC -shared karyon_native_core.cpp karyon_native_cabi.cpp -o libkaryon_native.so
+# Compile and run integrated C++20 Sovereign Core
+g++ -O3 -std=c++20 -march=native -fopenmp experiments/exp_980_integrated_sovereign_core.cpp -Iinclude -o build/exp_980_runner
+./build/exp_980_runner
+```
 
-# Execute closed-loop Python agent
-python3 karyon_agent.py
+### Windows (MSVC Developer Command Prompt):
+```cmd
+# Compile native Windows binary using MSVC
+cl /O2 /std:c++20 /Iinclude experiments\exp_980_integrated_sovereign_core.cpp /Fe:build\exp_980_runner.exe
+build\exp_980_runner.exe
+```
 
-# Run real-time physics arena benchmark (EXP-489)
-g++ -O3 -std=c++20 -mavx2 -mfma -I. experiments/exp_489_multi_branch_sandbox_rollout.cpp -L. -lkaryon_native -Wl,-rpath,. -o exp_489_runner
-./exp_489_runner
+### CUDA GPU Acceleration (NVIDIA NVCC):
+```bash
+# Compile GPU CUDA Unbounded Rule Genesis kernel
+nvcc -O3 -arch=sm_75 experiments/exp_979_unbounded_rule_genesis.cu -Iinclude -o build/exp_979_gpu_runner
+./build/exp_979_gpu_runner
 ```
