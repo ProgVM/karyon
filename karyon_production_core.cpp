@@ -14,6 +14,7 @@
 // KEP v40.0 Sovereign Master | Principle 0, 1, 3, 4, 5, 8 & 9
 //
 // ZERO DYNAMIC ALLOCATIONS IN LOOP -> 1.5+ GB/SEC ULTRA-SPEED
+// CLOSED-LOOP S_env x S_self PROPRIOCEPTION & ACTION WAVEFIELD EMISSION
 // ============================================================================
 
 struct KaryonProprioception {
@@ -83,7 +84,7 @@ public:
         }
     }
 
-    // High-speed step with ZERO dynamic dynamic allocation
+    // High-speed step with ZERO dynamic allocation
     double FastStepWavefield() {
         size_t total_words = env_manifold.size();
         if (total_words == 0) return 1.0;
@@ -128,6 +129,19 @@ public:
         return current_F;
     }
 
+    // Emits action wavefield output (e.g. response or motor byte stream) without heap allocation
+    void EmitActionWavefieldStream(uint8_t* out_buffer, size_t output_bytes = 64) {
+        size_t total_words = env_manifold.size();
+        size_t words_to_emit = std::min(output_bytes / 8, total_words);
+
+        for (size_t w = 0; w < words_to_emit; ++w) {
+            uint64_t word = env_manifold[w] ^ self_manifold[w];
+            for (int b = 0; b < 8; ++b) {
+                out_buffer[w * 8 + b] = static_cast<uint8_t>((word >> (b * 8)) & 0xFF);
+            }
+        }
+    }
+
     const KaryonProprioception& GetProprioception() const { return proprio_state; }
     NativeMultiModalCrawler& GetCrawler() { return crawler; }
 };
@@ -136,7 +150,7 @@ int main(int argc, char** argv) {
     std::cout << "===================================================================\n";
     std::cout << " KARYON-CORE: PRODUCTION ULTRA-FAST SELF-AWARE PRE-TRAINING CORE\n";
     std::cout << " KEP v40.0 Sovereign Master | Zero Heap Allocations | Max SIMD Speed\n";
-    std::cout << " Goal: Zero Free Energy (F = 0.000000 nats) | Unshackled Throughput\n";
+    std::cout << " Goal: Zero Free Energy (F = 0.000000 nats) | Action Wavefield Emission\n";
     std::cout << "===================================================================\n\n";
 
     SovereignSelfAwareEngine engine("data/continuous_stream");
@@ -158,6 +172,8 @@ int main(int argc, char** argv) {
     int max_cycles = (argc > 1 && std::string(argv[1]) == "--daemon") ? 1000000 : 5;
     auto global_start = std::chrono::high_resolution_clock::now();
 
+    uint8_t action_buffer[64] = {0};
+
     for (int cycle = 1; cycle <= max_cycles; ++cycle) {
         std::cout << "-------------------------------------------------------------------\n";
         std::cout << " 🔄 [Cycle #" << cycle << "] Ingesting Sensory Data & Self-Awareness Update\n";
@@ -173,6 +189,10 @@ int main(int argc, char** argv) {
         for (int step = 0; step < RELAXATION_STEPS; ++step) {
             F = engine.FastStepWavefield();
         }
+        
+        // Emit spontaneous action wavefield stream into pre-allocated stack buffer
+        engine.EmitActionWavefieldStream(action_buffer, 64);
+
         auto compute_end = std::chrono::high_resolution_clock::now();
 
         double elapsed_ms = std::chrono::duration<double, std::milli>(compute_end - compute_start).count();
@@ -188,7 +208,13 @@ int main(int argc, char** argv) {
         std::cout << "[+] Spin Throughput Rate     : " << std::setprecision(2) << giga_spins << " Giga-Spins/sec\n";
         std::cout << "[+] Variational Free Energy F: " << std::setprecision(6) << F << " nats\n";
         std::cout << "[+] Action Integral S        : " << std::setprecision(4) << proprio.action_integral_S << "\n";
+        std::cout << "[+] Proprioceptive dPhi/dTau : " << std::setprecision(6) << proprio.phase_velocity_dPhi << "\n";
         std::cout << "[+] Zero-Error Convergence   : " << (proprio.zero_error_achieved ? "ACHIEVED (F = 0.000000 nats) 🎯" : "Snapping to Attractor...") << "\n";
+        std::cout << "[+] Emitted Action Wavefield : [";
+        for (size_t i = 0; i < 16; ++i) {
+            std::cout << std::hex << std::setw(2) << std::setfill('0') << (int)action_buffer[i] << " ";
+        }
+        std::cout << std::dec << "...]\n";
     }
 
     auto global_end = std::chrono::high_resolution_clock::now();
