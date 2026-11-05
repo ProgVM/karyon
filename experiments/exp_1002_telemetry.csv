@@ -1,2 +1,2 @@
-exp_id,early_avg_ticks,late_avg_ticks,peak_ticks,growth_factor,causal_rules,verdict
-EXP-1002,14.9,91.7,207,6.15436,422,POSITIVE
+exp_id,early_avg_ticks,late_avg_ticks,peak_ticks,early_fe,late_fe,growth_factor,causal_rules,verdict
+EXP-1002,14.9,91.7,207,0.186241,0.109929,6.15436,422,POSITIVE
