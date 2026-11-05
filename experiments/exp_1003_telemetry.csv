@@ -1,0 +1,2 @@
+exp_id,initial_stress,final_stress,initial_fe,final_fe,final_kuramoto_r,sprouts,locks,prunes,verdict
+EXP-1003,0.711232,0.491265,0.864684,0.50443,0.49557,100,0,0,POSITIVE
