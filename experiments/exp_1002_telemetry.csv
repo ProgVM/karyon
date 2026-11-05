@@ -1,0 +1,2 @@
+exp_id,early_avg_ticks,late_avg_ticks,peak_ticks,growth_factor,causal_rules,verdict
+EXP-1002,14.9,91.7,207,6.15436,422,POSITIVE
