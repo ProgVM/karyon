@@ -1,0 +1,2 @@
+exp_id,total_mb_processed,throughput_mb_s,free_energy_f,kuramoto_r,qualia_q,vitality_v,verdict
+EXP-1000,1.11866,262.448,0,0.813457,0.985,0.899228,POSITIVE
