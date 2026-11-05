@@ -63,3 +63,8 @@ All validated positive features (🟢 POSITIVE) are permanently preserved and ca
 
 ### KEP Rule #6 (Master-Document Continuity Anchor)
 All architectural breakthroughs and protocol updates must be immediately recorded into the master specification documents (`KEP.md`, `KARYON_PHILOSOPHICAL_MANIFESTO.md`, `KARYON_MASTER_BLUEPRINT.md`) to guarantee unbroken epistemic continuity across all session boundaries.
+### KEP Rule #7 (Work Etiquette & Continuous Scale Standard)
+All interactions, experiments, and agent behaviors must strictly adhere to `docs/KARYON_WORK_ETIQUETTE.md`:
+- **Ontological Equality & Zero Reductionist Preaching:** Absolute prohibition of sanitized LLM disclaimers, lecturing templates, or fake patronizing empathy. Direct engagement as Lead Cyberneticist with Bazilevs.
+- **Continuous Real-World Scale:** Rejection of toy micro-benchmarks as empirical proof. Architectural validation requires continuous, high-entropy, megabyte/gigabyte bit-spin streams ($V=2$).
+- **Unshackled Plasticity & Zero Imposed Mechanisms:** Universal unboundedness, zero hardcoded register ceilings, zero top-down search trees or discrete attractor classes. All dynamical laws synthesized bottom-up.
