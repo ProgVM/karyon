@@ -1,76 +1,11 @@
-# .gitignore
-# =============================================================================
-# KARYON-CORE OFFICIAL GITIGNORE SPEC
-# Hybrid C++20 / PyTorch / LibTorch / Python / Kaggle Runtime Artifacts
-# =============================================================================
-
-# --- Kaggle CoRE Agent Runtime & DB (Isolated from Core Repo) ---
+user_message.txt
+*.tmp
+*.temp
+build/
+*.kcore
 karyon_agent_runtime/
 .agent_db/
 *.agent.db
-*.agent.db-wal
-*.agent.db-shm
-state.db
-state.db-wal
-state.db-shm
-
-# --- C++ JIT & Build Artifacts ---
+__pycache__/
 *.so
 *.o
-*.obj
-*.a
-*.lib
-*.dylib
-*.dll
-*.bc
-*.ll
-build/
-dist/
-bin/
-.cpp_extension/
-
-# --- Python Byte-Code & Cache ---
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-.coverage
-htmlcov/
-
-# --- Kaggle & Jupyter Notebook Artifacts ---
-.ipynb_checkpoints/
-*.ipynb_checkpoints
-*.nvvp
-
-# --- Temporary & Local Cache Files ---
-tmp/
-.tmp/
-*.tmp
-*.log
-.cache/
-
-# --- Large Model Checkpoints & Datasets ---
-*.pt
-*.pth
-*.bin
-*.onnx
-*.parquet
-*.tar.gz
-*.zip
-*.h5
-*.kcore
-data/
-
-# --- IDE & OS System Artifacts ---
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
-*.swp
-*~
-
-# --- Secrets & Private Tokens ---
-.env*
-*.secret
-hf_token.txt
-karyon_agent_runtime/
