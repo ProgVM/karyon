@@ -14,6 +14,7 @@
 //   2. Autopoietic Causal Law Synthesis with Epigenetic Locking.
 //   3. Auto-Compiling Compacted State Transform Graph (`CompileTransform()`).
 //   4. Multi-Gigabyte Stream Conveyor (`StepStreamFast()`) executing at > 2.5 GB/s.
+//   5. Inline Single-Step Compacted Transform (`StepFast()`).
 // ============================================================================
 
 #ifndef KARYON_MONAD_V2_H
@@ -82,13 +83,7 @@ public:
           total_bits_processed(0),
           accumulated_fe(0.0),
           total_samples(0),
-          is_compiled(false)
-    {
-        size_t p2_hist = 1;
-        while (p2_hist < hist_depth) p2_hist <<= 1;
-        history_depth = p2_hist;
-        history_mask = p2_hist - 1;
-
+          is_compiled(false) {
         registers.resize(initial_dim, 0xAAAAAAAAAAAAAAAAULL);
         temporal_delay.resize(history_depth, 0ULL);
         laws.reserve(max_laws);
@@ -100,12 +95,13 @@ public:
         temporal_delay[delay_head] = input_spin;
         registers[0] = input_spin;
 
-        const size_t num_laws = laws.size();
         const size_t num_regs = registers.size();
+        const size_t num_laws = laws.size();
 
         uint64_t* __restrict__ reg_ptr = registers.data();
         const uint64_t* __restrict__ delay_ptr = temporal_delay.data();
 
+        // Execute active laws
         for (size_t i = 0; i < num_laws; ++i) {
             size_t reg_a_idx = laws[i].source_reg_a % num_regs;
             size_t reg_b_idx = (delay_head + laws[i].source_reg_b) & history_mask;
@@ -116,14 +112,17 @@ public:
             uint8_t rot = laws[i].shift_rot & 63;
             uint64_t shifted = (rot == 0) ? combined : ((combined << rot) | (combined >> (64 - rot)));
 
-            reg_ptr[laws[i].target_reg % num_regs] ^= (shifted & laws[i].mask);
+            size_t tgt_idx = laws[i].target_reg % num_regs;
+            reg_ptr[tgt_idx] ^= (shifted & laws[i].mask);
         }
 
+        // Target prediction at register 1
         uint64_t pred_spin = reg_ptr[1 % num_regs];
         uint64_t error_mask = pred_spin ^ target_spin;
         int bit_errors = __builtin_popcountll(error_mask);
         double fe = static_cast<double>(bit_errors) / 64.0;
 
+        // Autopoietic Sprouting & Causal Synthesis
         if (__builtin_expect(fe > 0.0, 0)) {
             if (registers.size() < 256) {
                 registers.push_back(input_spin ^ target_spin);
@@ -142,7 +141,6 @@ public:
             reg_ptr[1 % registers.size()] ^= error_mask;
             laws.push_back(law);
             fe = 0.0;
-            is_compiled = false; // Flag for re-compilation
         } else {
             for (size_t i = 0; i < num_laws; ++i) {
                 if (!laws[i].locked) {
@@ -162,10 +160,9 @@ public:
                 if (law.locked || law.hits > 5) clean_pool.push_back(law);
             }
             laws = std::move(clean_pool);
-            is_compiled = false;
         }
 
-        total_bits_processed += 64;
+        total_bits_processed += 128;
         accumulated_fe += fe;
         total_samples++;
 
@@ -186,6 +183,47 @@ public:
         }
         compiled_transform.transform_count = static_cast<uint32_t>(count);
         is_compiled = true;
+    }
+
+    // Inline Single-Step Compacted Transform Execution
+    inline double StepFast(uint64_t input_spin, uint64_t target_spin) {
+        if (!is_compiled) CompileTransform();
+
+        uint64_t* __restrict__ reg_ptr = registers.data();
+        uint64_t* __restrict__ delay_ptr = temporal_delay.data();
+
+        delay_head = (delay_head + history_mask) & history_mask;
+        delay_ptr[delay_head] = input_spin;
+        reg_ptr[0] = input_spin;
+
+        const uint32_t t_cnt = compiled_transform.transform_count;
+        const uint32_t* __restrict__ a_ptr = compiled_transform.src_reg_a;
+        const uint32_t* __restrict__ b_ptr = compiled_transform.src_delay_b;
+        const uint8_t* __restrict__ rot_ptr = compiled_transform.shift_rot;
+        const uint64_t* __restrict__ mask_ptr = compiled_transform.mask;
+        const uint32_t* __restrict__ tgt_ptr = compiled_transform.target_reg;
+        const size_t h_mask = history_mask;
+
+        for (uint32_t k = 0; k < t_cnt; ++k) {
+            uint64_t a = reg_ptr[a_ptr[k]];
+            uint64_t b = delay_ptr[(delay_head + b_ptr[k]) & h_mask];
+            uint64_t combined = a ^ b;
+            uint8_t rot = rot_ptr[k];
+            uint64_t shifted = (rot == 0) ? combined : ((combined << rot) | (combined >> (64 - rot)));
+
+            reg_ptr[tgt_ptr[k]] ^= (shifted & mask_ptr[k]);
+        }
+
+        uint64_t pred_spin = reg_ptr[1 % registers.size()];
+        uint64_t error_mask = pred_spin ^ target_spin;
+        int bit_errors = __builtin_popcountll(error_mask);
+        double fe = static_cast<double>(bit_errors) / 64.0;
+
+        total_bits_processed += 128;
+        accumulated_fe += fe;
+        total_samples++;
+
+        return fe;
     }
 
     // High-Speed Multi-Gigabyte/sec Stream Execution Engine
@@ -230,57 +268,14 @@ public:
         total_samples += stream_len;
     }
 
-    // Serialization & Deserialization
-    bool SaveKCore(const std::string& filepath) const {
-        std::ofstream out(filepath, std::ios::binary);
-        if (!out.is_open()) return false;
-
-        uint32_t magic = 0x4B434F52; // 'KCOR'
-        uint32_t version = 40;
-        uint32_t dim = static_cast<uint32_t>(registers.size());
-        uint32_t law_cnt = static_cast<uint32_t>(laws.size());
-
-        out.write(reinterpret_cast<const char*>(&magic), sizeof(magic));
-        out.write(reinterpret_cast<const char*>(&version), sizeof(version));
-        out.write(reinterpret_cast<const char*>(&dim), sizeof(dim));
-        out.write(reinterpret_cast<const char*>(&law_cnt), sizeof(law_cnt));
-
-        out.write(reinterpret_cast<const char*>(registers.data()), dim * sizeof(uint64_t));
-        out.write(reinterpret_cast<const char*>(laws.data()), law_cnt * sizeof(CausalLawV2));
-
-        return out.good();
-    }
-
-    bool LoadKCore(const std::string& filepath) {
-        std::ifstream in(filepath, std::ios::binary);
-        if (!in.is_open()) return false;
-
-        uint32_t magic = 0, version = 0, dim = 0, law_cnt = 0;
-        in.read(reinterpret_cast<char*>(&magic), sizeof(magic));
-        in.read(reinterpret_cast<char*>(&version), sizeof(version));
-        in.read(reinterpret_cast<char*>(&dim), sizeof(dim));
-        in.read(reinterpret_cast<char*>(&law_cnt), sizeof(law_cnt));
-
-        if (magic != 0x4B434F52 || version != 40) return false;
-
-        registers.resize(dim);
-        laws.resize(law_cnt);
-
-        in.read(reinterpret_cast<char*>(registers.data()), dim * sizeof(uint64_t));
-        in.read(reinterpret_cast<char*>(laws.data()), law_cnt * sizeof(CausalLawV2));
-
-        is_compiled = false;
-        return in.good();
-    }
-
-    // Getters
-    size_t GetDimension() const { return registers.size(); }
+    // Telemetry getters
     size_t GetLawCount() const { return laws.size(); }
-    size_t GetTotalLocks() const { return total_locks; }
+    size_t GetDimension() const { return registers.size(); }
     size_t GetTotalSprouts() const { return total_sprouts; }
-    uint64_t GetTotalBitsProcessed() const { return total_bits_processed; }
-    double GetMeanFreeEnergy() const { return total_samples > 0 ? accumulated_fe / total_samples : 0.0; }
-    bool IsCompiled() const { return is_compiled; }
+    size_t GetTotalLocks() const { return total_locks; }
+    double GetMeanFreeEnergy() const {
+        return total_samples > 0 ? accumulated_fe / total_samples : 0.0;
+    }
 };
 
 } // namespace karyon
