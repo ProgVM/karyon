@@ -134,33 +134,32 @@ public:
                 total_sprouts++;
             }
 
-            // Non-Linear Continuous Causal Law Synthesis & Higher-Order Correlation Search
+            // Weightless Deep Recursive Tap Search (Matrix-Free, Multi-Depth Memory Taps)
             uint8_t best_rot = 0;
             size_t best_delay = 0;
             size_t best_reg_a = 0;
             int min_diff = 64;
             uint64_t optimal_candidate_spin = 0;
 
+            // Deep temporal search across multi-scale delay taps (d = 0..64)
             for (size_t r_idx = 0; r_idx < std::min(num_regs, (size_t)16); ++r_idx) {
                 uint64_t reg_val = reg_ptr[r_idx];
-                for (size_t d = 0; d < 16; ++d) {
-                    uint64_t hist_val = delay_ptr[(delay_head + d) & history_mask];
+                for (size_t d1 = 0; d1 < std::min(history_depth, (size_t)64); d1 += 2) {
+                    uint64_t hist_val1 = delay_ptr[(delay_head + d1) & history_mask];
                     
-                    // Test linear XOR, non-linear AND, and non-linear OR combinations
-                    for (int mode = 0; mode < 3; ++mode) {
-                        uint64_t comb = (mode == 0) ? (reg_val ^ hist_val) :
-                                        (mode == 1) ? (reg_val & hist_val) : (reg_val | hist_val);
+                    // Recursive multi-tap interaction (without any matrix multiplication!)
+                    uint64_t hist_val2 = delay_ptr[(delay_head + (d1 * 2 + 1)) & history_mask];
+                    uint64_t comb = reg_val ^ hist_val1 ^ hist_val2;
 
-                        for (uint8_t rot = 0; rot < 64; rot += 4) {
-                            uint64_t cand = (rot == 0) ? comb : ((comb << rot) | (comb >> (64 - rot)));
-                            int diff = __builtin_popcountll(cand ^ target_spin);
-                            if (diff < min_diff) {
-                                min_diff = diff;
-                                best_rot = rot;
-                                best_delay = d;
-                                best_reg_a = r_idx;
-                                optimal_candidate_spin = cand;
-                            }
+                    for (uint8_t rot = 0; rot < 64; rot += 4) {
+                        uint64_t cand = (rot == 0) ? comb : ((comb << rot) | (comb >> (64 - rot)));
+                        int diff = __builtin_popcountll(cand ^ target_spin);
+                        if (diff < min_diff) {
+                            min_diff = diff;
+                            best_rot = rot;
+                            best_delay = d1;
+                            best_reg_a = r_idx;
+                            optimal_candidate_spin = cand;
                         }
                     }
                 }
