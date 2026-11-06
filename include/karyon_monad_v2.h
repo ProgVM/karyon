@@ -105,18 +105,21 @@ public:
         uint64_t* __restrict__ reg_ptr = registers.data();
         const uint64_t* __restrict__ delay_ptr = temporal_delay.data();
 
-        for (size_t i = 0; i < num_laws; ++i) {
-            size_t reg_a_idx = laws[i].source_reg_a % num_regs;
-            size_t reg_b_idx = (delay_head + laws[i].source_reg_b) & history_mask;
+        // Multi-Pass Internal Field Relaxation (Hopfield/Soliton Attractor Convergence)
+        for (size_t pass = 0; pass < 3; ++pass) {
+            for (size_t i = 0; i < num_laws; ++i) {
+                size_t reg_a_idx = laws[i].source_reg_a % num_regs;
+                size_t reg_b_idx = (delay_head + laws[i].source_reg_b) & history_mask;
 
-            uint64_t a = reg_ptr[reg_a_idx];
-            uint64_t b = delay_ptr[reg_b_idx];
-            uint64_t combined = a ^ b;
-            uint8_t rot = laws[i].shift_rot & 63;
-            uint64_t shifted = (rot == 0) ? combined : ((combined << rot) | (combined >> (64 - rot)));
+                uint64_t a = reg_ptr[reg_a_idx];
+                uint64_t b = delay_ptr[reg_b_idx];
+                uint64_t combined = a ^ b;
+                uint8_t rot = laws[i].shift_rot & 63;
+                uint64_t shifted = (rot == 0) ? combined : ((combined << rot) | (combined >> (64 - rot)));
 
-            size_t tgt_idx = laws[i].target_reg % num_regs;
-            reg_ptr[tgt_idx] ^= (shifted & laws[i].mask);
+                size_t tgt_idx = laws[i].target_reg % num_regs;
+                reg_ptr[tgt_idx] ^= (shifted & laws[i].mask);
+            }
         }
 
         uint64_t pred_spin = reg_ptr[1 % num_regs];
@@ -131,25 +134,33 @@ public:
                 total_sprouts++;
             }
 
-            // Autonomously search over history and registered topological space
+            // Non-Linear Continuous Causal Law Synthesis & Higher-Order Correlation Search
             uint8_t best_rot = 0;
             size_t best_delay = 0;
             size_t best_reg_a = 0;
             int min_diff = 64;
+            uint64_t optimal_candidate_spin = 0;
 
-            for (size_t r_idx = 0; r_idx < std::min(num_regs, (size_t)8); ++r_idx) {
+            for (size_t r_idx = 0; r_idx < std::min(num_regs, (size_t)16); ++r_idx) {
                 uint64_t reg_val = reg_ptr[r_idx];
-                for (size_t d = 0; d < 8; ++d) {
+                for (size_t d = 0; d < 16; ++d) {
                     uint64_t hist_val = delay_ptr[(delay_head + d) & history_mask];
-                    uint64_t comb = reg_val ^ hist_val;
-                    for (uint8_t rot = 0; rot < 64; rot += 8) {
-                        uint64_t cand = (rot == 0) ? comb : ((comb << rot) | (comb >> (64 - rot)));
-                        int diff = __builtin_popcountll(cand ^ target_spin);
-                        if (diff < min_diff) {
-                            min_diff = diff;
-                            best_rot = rot;
-                            best_delay = d;
-                            best_reg_a = r_idx;
+                    
+                    // Test linear XOR, non-linear AND, and non-linear OR combinations
+                    for (int mode = 0; mode < 3; ++mode) {
+                        uint64_t comb = (mode == 0) ? (reg_val ^ hist_val) :
+                                        (mode == 1) ? (reg_val & hist_val) : (reg_val | hist_val);
+
+                        for (uint8_t rot = 0; rot < 64; rot += 4) {
+                            uint64_t cand = (rot == 0) ? comb : ((comb << rot) | (comb >> (64 - rot)));
+                            int diff = __builtin_popcountll(cand ^ target_spin);
+                            if (diff < min_diff) {
+                                min_diff = diff;
+                                best_rot = rot;
+                                best_delay = d;
+                                best_reg_a = r_idx;
+                                optimal_candidate_spin = cand;
+                            }
                         }
                     }
                 }
@@ -164,9 +175,8 @@ public:
             law.hits = 1;
             law.locked = false;
 
-            uint64_t comb = reg_ptr[best_reg_a] ^ delay_ptr[(delay_head + best_delay) & history_mask];
-            uint64_t best_cand = (best_rot == 0) ? comb : ((comb << best_rot) | (comb >> (64 - best_rot)));
-            reg_ptr[1 % registers.size()] = best_cand;
+            // Direct causal state replacement along minimum entropy gradient
+            reg_ptr[1 % registers.size()] = (pred_spin & ~error_mask) | (optimal_candidate_spin & error_mask);
             laws.push_back(law);
         } else {
             for (size_t i = 0; i < num_laws; ++i) {
@@ -180,11 +190,12 @@ public:
             }
         }
 
-        if (laws.size() > max_law_capacity) {
+        // Autonomous Causal Credit Pruning (Remove destructive laws)
+        if (laws.size() > 64) {
             std::vector<CausalLawV2> clean_pool;
-            clean_pool.reserve(max_law_capacity);
+            clean_pool.reserve(64);
             for (const auto& law : laws) {
-                if (law.locked || law.hits > 5) clean_pool.push_back(law);
+                if (law.locked || law.hits > 2) clean_pool.push_back(law);
             }
             laws = std::move(clean_pool);
         }
