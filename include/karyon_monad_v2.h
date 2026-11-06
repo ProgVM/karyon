@@ -131,16 +131,42 @@ public:
                 total_sprouts++;
             }
 
+            // Autonomously search over history and registered topological space
+            uint8_t best_rot = 0;
+            size_t best_delay = 0;
+            size_t best_reg_a = 0;
+            int min_diff = 64;
+
+            for (size_t r_idx = 0; r_idx < std::min(num_regs, (size_t)8); ++r_idx) {
+                uint64_t reg_val = reg_ptr[r_idx];
+                for (size_t d = 0; d < 8; ++d) {
+                    uint64_t hist_val = delay_ptr[(delay_head + d) & history_mask];
+                    uint64_t comb = reg_val ^ hist_val;
+                    for (uint8_t rot = 0; rot < 64; rot += 8) {
+                        uint64_t cand = (rot == 0) ? comb : ((comb << rot) | (comb >> (64 - rot)));
+                        int diff = __builtin_popcountll(cand ^ target_spin);
+                        if (diff < min_diff) {
+                            min_diff = diff;
+                            best_rot = rot;
+                            best_delay = d;
+                            best_reg_a = r_idx;
+                        }
+                    }
+                }
+            }
+
             CausalLawV2 law;
             law.target_reg = 1;
-            law.source_reg_a = static_cast<uint32_t>(step_idx);
-            law.source_reg_b = static_cast<uint32_t>(step_idx * 7 + 3);
-            law.shift_rot = static_cast<uint8_t>((step_idx * 13 + bit_errors) & 63);
+            law.source_reg_a = static_cast<uint32_t>(best_reg_a);
+            law.source_reg_b = static_cast<uint32_t>(best_delay);
+            law.shift_rot = best_rot;
             law.mask = error_mask;
             law.hits = 1;
             law.locked = false;
 
-            reg_ptr[1 % registers.size()] ^= error_mask;
+            uint64_t comb = reg_ptr[best_reg_a] ^ delay_ptr[(delay_head + best_delay) & history_mask];
+            uint64_t best_cand = (best_rot == 0) ? comb : ((comb << best_rot) | (comb >> (64 - best_rot)));
+            reg_ptr[1 % registers.size()] = best_cand;
             laws.push_back(law);
         } else {
             for (size_t i = 0; i < num_laws; ++i) {
