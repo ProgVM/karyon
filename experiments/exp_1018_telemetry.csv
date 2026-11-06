@@ -1,0 +1,2 @@
+exp_id,total_words,duration_sec,throughput_mb_s,throughput_gb_s,mean_fe,verdict
+EXP-1018,10000000,12.2133,12.4935,0.0122007,0,POSITIVE

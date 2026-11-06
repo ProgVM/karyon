@@ -1,0 +1,2 @@
+exp_id,total_steps,duration_sec,throughput_mb_s,latency_ns,mean_fe,dim,laws,verdict
+EXP-1016,50000000,37.7592,20.2054,755.183,0,256,116,REJECTED
