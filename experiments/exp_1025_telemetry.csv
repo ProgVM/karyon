@@ -1,0 +1,2 @@
+exp_id,total_frames,simulated_days,mean_fe,duration_sec,realtime_multiplier,throughput_mb_s,throughput_gb_s,verdict
+EXP-1025,500000000,96.4506,0,1.63017,5.11195e+06,4680.13,4.57044,POSITIVE
