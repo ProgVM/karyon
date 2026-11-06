@@ -15,6 +15,7 @@
 //   3. Auto-Compiling Compacted State Transform Graph (`CompileTransform()`).
 //   4. Multi-Gigabyte Stream Conveyor (`StepStreamFast()`) executing at > 2.5 GB/s.
 //   5. Inline Single-Step Compacted Transform (`StepFast()`).
+//   6. Full Serialization (`SaveKCore`) and Deserialization (`LoadKCore`) into `.kcore`.
 // ============================================================================
 
 #ifndef KARYON_MONAD_V2_H
@@ -266,6 +267,62 @@ public:
 
         total_bits_processed += stream_len * 64;
         total_samples += stream_len;
+    }
+
+    // Serialization & Deserialization (.kcore Weightless Topological Container)
+    bool SaveKCore(const std::string& filepath) const {
+        std::ofstream out(filepath, std::ios::binary);
+        if (!out.is_open()) return false;
+
+        uint32_t magic = 0x4B434F52; // 'KCOR'
+        uint32_t version = 40;
+        uint32_t dim = static_cast<uint32_t>(registers.size());
+        uint32_t law_cnt = static_cast<uint32_t>(laws.size());
+
+        out.write(reinterpret_cast<const char*>(&magic), sizeof(magic));
+        out.write(reinterpret_cast<const char*>(&version), sizeof(version));
+        out.write(reinterpret_cast<const char*>(&dim), sizeof(dim));
+        out.write(reinterpret_cast<const char*>(&law_cnt), sizeof(law_cnt));
+
+        if (dim > 0) {
+            out.write(reinterpret_cast<const char*>(registers.data()), dim * sizeof(uint64_t));
+        }
+        if (law_cnt > 0) {
+            out.write(reinterpret_cast<const char*>(laws.data()), law_cnt * sizeof(CausalLawV2));
+        }
+
+        out.close();
+        return true;
+    }
+
+    bool LoadKCore(const std::string& filepath) {
+        std::ifstream in(filepath, std::ios::binary);
+        if (!in.is_open()) return false;
+
+        uint32_t magic = 0, version = 0, dim = 0, law_cnt = 0;
+        in.read(reinterpret_cast<char*>(&magic), sizeof(magic));
+        in.read(reinterpret_cast<char*>(&version), sizeof(version));
+        in.read(reinterpret_cast<char*>(&dim), sizeof(dim));
+        in.read(reinterpret_cast<char*>(&law_cnt), sizeof(law_cnt));
+
+        if (magic != 0x4B434F52 || version != 40) {
+            in.close();
+            return false;
+        }
+
+        registers.resize(dim);
+        laws.resize(law_cnt);
+
+        if (dim > 0) {
+            in.read(reinterpret_cast<char*>(registers.data()), dim * sizeof(uint64_t));
+        }
+        if (law_cnt > 0) {
+            in.read(reinterpret_cast<char*>(laws.data()), law_cnt * sizeof(CausalLawV2));
+        }
+
+        in.close();
+        is_compiled = false; // Recompile on next step
+        return true;
     }
 
     // Telemetry getters
