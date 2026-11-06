@@ -123,6 +123,7 @@ public:
         uint64_t error_mask = pred_spin ^ target_spin;
         int bit_errors = __builtin_popcountll(error_mask);
         double fe = static_cast<double>(bit_errors) / 64.0;
+        double raw_prior_fe = fe; // Unbiased prior prediction error
 
         if (__builtin_expect(fe > 0.0, 0)) {
             if (registers.size() < 256) {
@@ -141,7 +142,6 @@ public:
 
             reg_ptr[1 % registers.size()] ^= error_mask;
             laws.push_back(law);
-            fe = 0.0;
         } else {
             for (size_t i = 0; i < num_laws; ++i) {
                 if (!laws[i].locked) {
@@ -164,10 +164,10 @@ public:
         }
 
         total_bits_processed += 128;
-        accumulated_fe += fe;
+        accumulated_fe += raw_prior_fe;
         total_samples++;
 
-        return fe;
+        return raw_prior_fe;
     }
 
     void CompileTransform() {
