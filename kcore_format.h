@@ -1,18 +1,20 @@
 // kcore_format.h
 /*
 ===============================================================================
-KARYON KCORE BINARY CONTAINER SPECIFICATION v6.0 SOVEREIGN
-Weightless Native Hardware & Topological Substrate Specification (.kcore)
-Standard: KEP v40.0 Sovereign Master | Principle 0, 1, 4, 5, 8, 9 & 13
+KARYON KCORE BINARY CONTAINER SPECIFICATION v7.0 SOVEREIGN
+Native Hardware Bit Substrate & Code Architecture Specification (.kcore)
+Standard: KEP v40.0 Sovereign Master | Principle 0, 1, 3, 4, 5, 8, 9 & 13
 Author: Bazilevs (ProgVM member) & Autonomous AI Cyberneticist (2026)
 
-SUPREME AXIOM & PRINCIPLE 5 (WEIGHTLESS TOPOLOGICAL SUBSTRATE):
-Karyon containers store NO static weight matrices ($O(D^2)$ weights are completely abolished).
-The container stores strictly:
-1. MANIFEST (JSON DNA Genome & Epistemic Records)
-2. LOGIC_CODE_BUNDLE (Native C++20 / CUDA Hardware Kernels)
-3. TOPOLOGY (Dynamic Hardware Scalar-Phase Delay Taps, Structural Wiring O(K))
-4. DYNAMIC_MEMORY (Working Register States, Phase Traces & Endogenous Nodes)
+SOVEREIGN AXIOM (BAZILEVS' SPECIFICATION):
+The `.kcore` container encapsulates strictly the essence of the entity:
+1. MANIFEST           (0x01): JSON DNA Genome, Hardware Limits & Empirical Records
+2. BIT_SUBSTRATE      (0x02): Pure Native Bit Substrate (V=2, Hardware Bit-Taps & Topological Registers)
+3. LOGIC_CODE_BUNDLE  (0x03): Native C++20 / CUDA Hardware Execution Kernels & Bytecode
+4. STORAGE            (0x04): Optional Auxiliary Artifact/Knowledge Storage (Decoupled from Substrate)
+
+NOTE: Memory logic and dynamic node sprouting reside 100% INSIDE the substrate execution loop
+itself (endogenous memory morphogenesis), decoupled from static container schemas.
 ===============================================================================
 */
 #pragma once
@@ -20,15 +22,14 @@ The container stores strictly:
 
 #pragma pack(push, 1)
 
-// Magic Bytes: "KCORE" + Version 6.0 Sovereign (8 bytes total)
-constexpr uint8_t KCORE_MAGIC_V6[8] = {'K', 'C', 'O', 'R', 'E', 0x06, 0x00, 0x00};
+// Magic Bytes: "KCORE" + Version 7.0 Sovereign (8 bytes total)
+constexpr uint8_t KCORE_MAGIC_V7[8] = {'K', 'C', 'O', 'R', 'E', 0x07, 0x00, 0x00};
 
 enum class KcoreSectionType : uint32_t {
     MANIFEST           = 0x01, // JSON DNA Genome, hardware parameters, epistemic telemetry
-    LOGIC_CODE_BUNDLE  = 0x02, // Native C++20 / CUDA kernel source code & bytecode
-    TOPOLOGY           = 0x03, // Weightless structural wiring, dynamic bit-taps O(K)
-    DYNAMIC_MEMORY     = 0x04, // Dynamic register states, working pages & sprouted nodes
-    EPIGENETIC_LOCK    = 0x05  // Epigenetic invariant masks protecting proven capabilities
+    BIT_SUBSTRATE      = 0x02, // Pure Native Bit Substrate (V=2), Bit-Tap Configurations
+    LOGIC_CODE_BUNDLE  = 0x03, // Native C++20 / CUDA Execution Kernel Sources & Bytecode
+    STORAGE            = 0x04  // Optional Auxiliary External Storage (Knowledge/Artifacts, Decoupled)
 };
 
 enum class KcoreSectionFlags : uint32_t {
@@ -38,11 +39,11 @@ enum class KcoreSectionFlags : uint32_t {
 };
 
 struct KcoreHeader {
-    uint8_t  magic[8];        // "KCORE\x06\x00\x00"
+    uint8_t  magic[8];        // "KCORE\x07\x00\x00"
     uint32_t header_size;     // Size of header struct (32 Bytes)
     uint32_t num_sections;    // Number of binary sections
     uint64_t total_file_size; // Total container size in bytes
-    uint64_t flags;           // Execution flags (Bit 0: Weightless Substrate Active)
+    uint64_t flags;           // Execution flags (Bit 0: Native Bit Substrate Active)
 };
 
 struct KcoreSectionHeader {
