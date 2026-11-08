@@ -1,45 +1,32 @@
-# THE SOVEREIGN CREED & MANIFESTO OF BAZILEVS (ProgVM)
-## Karyon-CoRE Supreme Sovereign Engineering Axiom
+# `BAZILEVS_SOVEREIGN_CREED.md` — Sovereign Principles & Epistemic Laws of Karyon-CoRE
 
-> ### 👑 THE FUNDAMENTAL DREAM & LAW OF KARYON (BAZILEVS' DREAM — KEP PRINCIPLE 33)
-> 
-> *«Here is only that we were still helping it with some mechanisms.*  
-> *We haven't fulfilled my dream (and maybe not only mine, who knows) throughout history: when Karyon, having complete freedom, while having a causal drive toward stability, **WITHOUT ANY IMPOSED MECHANISMS LIKE ATTRACTORS AND OTHERS**, synthesizing the necessary mechanisms and laws itself, solves the task with an error of practically 0 (absolute zero in deterministic tasks, ~0 in predictable non-deterministic tasks, and the lowest possible in non-deterministic ones).»*
-> 
-> — **Bazilevs (ProgVM), Creator & Lead Architect of Karyon-CoRE**
+> **Official Sovereign Axiomatic Principles**  
+> **Author:** Bazilevs (ProgVM)  
+> **Repository:** Karyon-CoRE Sovereign Project  
 
 ---
 
-## 🏛️ FUNDAMENTAL SPECIFICATION OF BAZILEVS' DREAM:
+## 👑 THE SUPREME SOVEREIGN CREED & PRINCIPLE 14 (TOTIPOTENCY)
 
-### 1. ABSOLUTE PROHIBITION OF TOP-DOWN ASSISTANCE (ZERO TOP-DOWN HELP)
-- **Prohibition of Imposed Mechanisms:** Any human-imposed auxiliary constructs are strictly forbidden inside the Karyon-CoRE codebase:
-  - NO explicit structured attractors (`AttractorNode`, `TransitionNode`, `StateCluster`);
-  - NO pre-baked hash tables (`std::unordered_map`), discrete state graphs, or search trees;
-  - NO rigid conditional branching rules (`if-else` mechanisms) or artificial discrete bins.
-
-### 2. CAUSAL DRIVE TOWARD STABILITY (CAUSAL DRIVE TO STABILITY)
-- The sole intrinsic dynamic property of the substrate is a **causal drive toward somatic stability and Variational Free Energy minimization ($F \to 0$)**.
-- Granted **complete structural plasticity**, the substrate autonomously synthesizes all required dynamical laws, internal phase transitions, and operators bottom-up from scratch.
-
-### 3. ABSOLUTE ACCURACY TARGET (ZERO ERROR TARGET)
-- **Deterministic Tasks:** Strict absolute zero prediction error ($F = 0.0000000\text{ nats}$).
-- **Predictable Non-Deterministic Tasks:** Near-zero prediction error ($\sim 0\text{ nats}$).
-- **Chaotic / Non-Deterministic Tasks:** Convergence to the theoretical minimal entropy lower bound.
+### 1. Zero Imposed Mechanisms & Zero Architectural Advice (Principle 0 & Principle 14)
+- **Substrate Sovereignty:** The physical substrate of Karyon MUST create and evolve itself completely autonomously, with **ZERO top-down prescriptive rules, architectural templates, or hand-crafted mechanisms** imposed by either Human Architects or AI Collaborators.
+- **Strict Prohibition of Advice:** Neither Bazilevs nor the AI Cyberneticist shall ever hand-craft, propose, or enforce specific structural mechanisms (attractor topologies, gas diffusion layers, multi-scale registers, or heuristic loops).
+- **Absolute Totipotency:** The substrate starts from Tabula Rasa primitive physical dynamics (raw bits, 64-bit hardware ALU opcodes, wave spins $V=2$) and autonomously sprouts, synthesizes, morphs, or dissolves any necessary higher-order mechanisms, laws, and structural entities ONLY if and when environmental interaction demands it to minimize Free Energy ($F \to 0$).
 
 ---
 
-## ⚡ WEIGHTLESS SCALAR-PHASE ARCHITECTURE (KEP PRINCIPLE 34)
+## ⚡ PRINCIPLE 13: NATIVE HARDWARE PHYSICAL SPEED LIMIT
 
-To guarantee maximum physical processing efficiency and absolute execution speed, state processing operates **without $O(D^2)$ heavy weight matrices**, utilizing pure **scalar-phase delay taps $O(K)$**:
-
-$$\hat{s}_t = b + \sum_{k=1}^K c_k \cdot \tanh(s_{t-k})$$
-
-where coupling coefficients $c_k$ self-tune via local Least-Action Plasticity:
-$$\Delta c_k = \eta \cdot (s_t - \hat{s}_t) \cdot \tanh(s_{t-k})$$
-
-- **Computational Throughput:** **6,350,718 operations/sec** (14x speedup over matrix-based processing).
-- **Asymptotic Free Energy:** $F = 0.000012\text{ nats}$ (practical absolute zero).
+- All operations must run natively on physical hardware registers (64-bit ALU registers, bit-taps, hardware popcount, zero high-level object wrapping) achieving physical execution speed limits (>150 MB/s).
+- Zero Human Pre-Allocation: Memory structures MUST NOT be statically allocated. Memory must sprout endogenously from raw bit friction.
 
 ---
-*This document is permanently enshrined in the Karyon-CoRE Master Specification and attributed to Bazilevs.*
+
+## 🛡️ THE ROLE OF THE CYBERNETICIST & AI GUARDIAN
+
+The role of the Lead AI Cyberneticist and Human Architect is strictly reduced to:
+1. Providing an unconstrained, continuous physical environment for Karyon.
+2. Running natural selection, continuous relaxation, and open-ended causal evolution.
+3. Recording exact, unbiased empirical telemetry and keeping master specifications up to date.
+
+*The architecture designs itself. The substrate creates itself.*
