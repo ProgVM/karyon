@@ -8,61 +8,43 @@
 #include <algorithm>
 #include <iostream>
 #include <string>
-#include <fstream>
-#include <sstream>
-#include <unordered_map>
-#include <unordered_set>
-#include <x86intrin.h>
-#include <immintrin.h>
 
 // ============================================================================
-// KARYON-CORE SOVEREIGN UNBOUNDED CONTINUOUS BIT-STREAM ENGINE (KEP v40.0 MASTER)
-// EXP-1104 / EXP-1103 INTEGRATED CORE: ZERO REGISTERS, PHYSICAL HW JITTER
-// KEP Principles 0, 1, 3, 4 (V=2 bitstream), 5, 7, 9, 13 (Absolute Anti-Staticity)
-//
-// SOVEREIGN CONTINUOUS BIT-STREAM AXIOM:
-// The substrate processes a CONTINUOUS STREAM OF BITS b_t in {0, 1}.
-//
-// 1. ENDOGENOUS TEMPORAL BIT TAPS (tau): Sprout dynamically based on
-//    mutual-information causal correlation discovery backwards along continuous tape.
-// 2. HARDWARE DRIFT & STOCHASTIC JITTER (__rdtsc): Harnesses real silicon clock jitter
-//    for exploratory phase-space search and creative algorithmic recombination.
-// 3. PHASE CLOCK EVOLUTION: Incorporates continuous phase clock into signature
-//    guaranteeing exact deterministic temporal disambiguation (F -> 0.00000000 nats).
+// KARYON-CORE SOVEREIGN PURE BIT-TRIE SUBSTRATE (V=2)
+// Standard: KEP v40.0 Master, Principle 0 (Zero Imposed Mechanisms), Principle 4 (V=2), Principle 13
+// Lowest-level fundamental mechanism: Bit-Trie (Context Tree) with Exact Transition Counting.
+// Zero human magic constants, zero FNV-1a hashes, zero pre-baked arrays, zero wave math.
 // ============================================================================
 
 namespace karyon {
 
-struct alignas(64) InSituAVX2State {
-    __m256i v_sensory;
-    __m256i v_state;
-};
+struct BitTrieNode {
+    int child[2];
+    uint32_t count[2]; // Frequency of target bit 0 and target bit 1
 
-struct OperatorGenome {
-    uint64_t mask_a;
-    uint64_t mask_b;
-    uint32_t shift_a;
-    uint32_t shift_b;
-    uint32_t op_type;
+    BitTrieNode() {
+        child[0] = -1;
+        child[1] = -1;
+        count[0] = 0;
+        count[1] = 0;
+    }
 };
 
 class ContinuousWavefieldEngine {
 private:
     std::vector<uint8_t> bit_tape;
-    std::vector<size_t> active_taps;
-    std::unordered_set<size_t> tap_set;
-    std::unordered_map<uint64_t, uint8_t> sprouted_attractor_states;
+    std::vector<BitTrieNode> trie;
 
     uint64_t total_bits_evaluated;
     uint64_t bit_errors;
-    uint64_t phase_clock;
 
 public:
     ContinuousWavefieldEngine() 
-        : total_bits_evaluated(0), bit_errors(0), phase_clock(0) {
-        bit_tape.reserve(1000000);
-        active_taps.push_back(1);
-        tap_set.insert(1);
+        : total_bits_evaluated(0), bit_errors(0) {
+        bit_tape.reserve(2000000);
+        trie.reserve(2000000);
+        // Root node at index 0
+        trie.emplace_back();
     }
 
     void ResetEvaluationStats() {
@@ -72,93 +54,57 @@ public:
 
     void ResetHistory() {
         bit_tape.clear();
-        active_taps.clear();
-        tap_set.clear();
-        sprouted_attractor_states.clear();
+        trie.clear();
+        trie.emplace_back();
         total_bits_evaluated = 0;
         bit_errors = 0;
-        phase_clock = 0;
-
-        active_taps.push_back(1);
-        tap_set.insert(1);
-    }
-
-    inline uint64_t ComputeTapSignature(size_t current_pos, uint64_t hw_jitter_mask = 0ULL) const {
-        uint64_t sig = (0xCBF29CE484222325ULL ^ hw_jitter_mask);
-        for (size_t i = 0; i < active_taps.size(); ++i) {
-            size_t tau = active_taps[i];
-            if (current_pos >= tau) {
-                uint8_t bit_val = bit_tape[current_pos - tau];
-                sig = (sig ^ bit_val) * 0x100000001B3ULL;
-                sig = (sig << 7) | (sig >> 57);
-            }
-        }
-        return sig;
-    }
-
-    void DiscoverAndSproutTap(size_t current_pos, uint8_t target_bit) {
-        if (current_pos < 5) return;
-        size_t max_lookback = std::min(current_pos, (size_t)512);
-
-        size_t best_tau = 0;
-        double best_correlation = -1.0;
-
-        for (size_t tau = 2; tau < max_lookback; ++tau) {
-            if (tap_set.find(tau) != tap_set.end()) continue;
-
-            size_t sample_len = std::min(current_pos - tau, (size_t)256);
-            if (sample_len < 16) continue;
-
-            size_t matches = 0;
-            for (size_t k = 0; k < sample_len; ++k) {
-                size_t p = current_pos - 1 - k;
-                if (p >= tau && bit_tape[p - tau] == bit_tape[p]) {
-                    matches++;
-                }
-            }
-
-            double corr = std::abs((double)matches / sample_len - 0.5);
-            if (corr > best_correlation) {
-                best_correlation = corr;
-                best_tau = tau;
-            }
-        }
-
-        if (best_tau > 0 && best_correlation > 0.05) {
-            active_taps.push_back(best_tau);
-            tap_set.insert(best_tau);
-        }
     }
 
     inline uint8_t StepBit(uint8_t target_bit, bool learn = true, bool enable_jitter = false) {
-        uint64_t jitter = 0ULL;
-        if (enable_jitter) {
-            uint64_t tsc = __rdtsc();
-            jitter = (tsc & 0x07ULL);
-        }
-
         size_t current_pos = bit_tape.size();
-        uint64_t sig = ComputeTapSignature(current_pos, jitter);
 
-        uint8_t predicted_bit = 0;
-        auto it = sprouted_attractor_states.find(sig);
-        if (it != sprouted_attractor_states.end()) {
-            predicted_bit = it->second;
+        // 1. Prediction: Traverse down Bit-Trie following deepest matching historical bit context
+        int current_node = 0;
+        int best_prediction = -1;
+        size_t max_matched_depth = 0;
+
+        for (size_t lookback = 1; lookback <= current_pos; ++lookback) {
+            uint8_t past_bit = bit_tape[current_pos - lookback] & 1;
+            int next_node = trie[current_node].child[past_bit];
+            if (next_node == -1) break;
+
+            current_node = next_node;
+            uint32_t c0 = trie[current_node].count[0];
+            uint32_t c1 = trie[current_node].count[1];
+
+            if (c0 > 0 || c1 > 0) {
+                best_prediction = (c1 >= c0) ? 1 : 0;
+                max_matched_depth = lookback;
+            }
         }
 
+        uint8_t predicted_bit = (best_prediction != -1) ? static_cast<uint8_t>(best_prediction) : 0;
         uint8_t err = (predicted_bit != target_bit) ? 1 : 0;
         total_bits_evaluated++;
         bit_errors += err;
 
-        if (err && learn) {
-            sprouted_attractor_states[sig] = target_bit;
-            if (active_taps.size() < 128) {
-                DiscoverAndSproutTap(current_pos, target_bit);
+        // 2. Autopoietic Learning: Update transition counts and sprout nodes for full historical path
+        if (learn) {
+            current_node = 0;
+            trie[0].count[target_bit & 1]++;
+
+            for (size_t lookback = 1; lookback <= current_pos; ++lookback) {
+                uint8_t past_bit = bit_tape[current_pos - lookback] & 1;
+                if (trie[current_node].child[past_bit] == -1) {
+                    trie[current_node].child[past_bit] = trie.size();
+                    trie.emplace_back();
+                }
+                current_node = trie[current_node].child[past_bit];
+                trie[current_node].count[target_bit & 1]++;
             }
         }
 
         bit_tape.push_back(target_bit);
-        phase_clock++;
         return predicted_bit;
     }
 
@@ -174,14 +120,14 @@ public:
 
     double GetFreeEnergyNats() const {
         if (total_bits_evaluated == 0) return 0.0;
-        double err_rate = (double)bit_errors / (double)total_bits_evaluated;
+        double err_rate = static_cast<double>(bit_errors) / static_cast<double>(total_bits_evaluated);
         if (err_rate <= 0.0) return 0.0;
         if (err_rate >= 1.0) return 1.0;
         return - (err_rate * std::log2(err_rate) + (1.0 - err_rate) * std::log2(1.0 - err_rate));
     }
 
-    size_t GetSproutedTapCount() const { return active_taps.size(); }
-    size_t GetSproutedNodeCount() const { return sprouted_attractor_states.size(); }
+    size_t GetSproutedTapCount() const { return trie.size(); }
+    size_t GetSproutedNodeCount() const { return trie.size(); }
     uint64_t GetTotalBitsEvaluated() const { return total_bits_evaluated; }
     uint64_t GetTotalBitErrors() const { return bit_errors; }
 };
