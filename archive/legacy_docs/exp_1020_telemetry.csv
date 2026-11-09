@@ -1,2 +1,0 @@
-exp_id,total_words,clean_fe,noisy_fe,noise_rate,duration_sec,throughput_mb_s,verdict
-EXP-1020,10000000,0,0,0.15,30.9279,4.93366,POSITIVE

@@ -1,2 +1,0 @@
-exp_id,total_mb,total_sec,throughput_mb_s,mean_fe,sprouts,final_dim,laws,locked,verdict
-EXP-1008,300,46.3138,6.47755,0,39321597,39321605,263,0,POSITIVE

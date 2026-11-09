@@ -1,2 +1,0 @@
-exp_id,nodes,total_words,collective_fe,duration_sec,throughput_mb_s,throughput_gb_s,verdict
-EXP-1022,16,160000000,0,129.343,18.8755,0.0184331,POSITIVE

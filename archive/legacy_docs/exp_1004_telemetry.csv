@@ -1,2 +1,0 @@
-exp_id,initial_stress,final_stress,initial_fe,final_fe,final_kuramoto_r,law_count,sprouts,mutations,locks,prunes,verdict
-EXP-1004,0.133217,0.152406,0.159961,0.178125,0.821875,15,0,0,12,0,POSITIVE

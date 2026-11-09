@@ -1,8 +1,0 @@
-# EXP-351 — Self-Organizing Criticality & Diffusive Soliton Wavefields with Retrograde Gasiform Epigenetics (SOC-DSW)
-
-In true biological cortex:
-1. Non-Local Volume Transmission (NO/CO Gas): Neurons and operators release retrograde gaseous messengers diffusing through intercellular space governing reaction-diffusion equation (Fick/Turing):
-   dG/dt = D_g grad^2 G - gamma_g G + Source(x, h)
-2. PAC Soliton Wavefield: Information is encoded as travelling non-linear wave packets (solitons) on continuous manifold.
-3. Self-Organized Criticality (SOC): Branching ratio sigma = <S_{t+1}> / <S_t> naturally seeks 1.0 (phase boundary between order and chaos).
-4. Variational Free Energy: F = Accuracy Error + Complexity.

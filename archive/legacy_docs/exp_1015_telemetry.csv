@@ -1,2 +1,0 @@
-exp_id,total_frames,duration_sec,latency_us,realtime_mult,mean_fe,dim,laws,verdict
-EXP-1015,100000,0.371189,3.71189,4490.08,0,256,128,POSITIVE

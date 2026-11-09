@@ -1,2 +1,0 @@
-exp_id,total_frames,duration_sec,throughput_mb_s,throughput_gb_s,mean_fe,sprouted_dim,synthesized_laws,verdict
-EXP-1029,2000000000,1.71265,17819,17.4013,0,256,59,POSITIVE

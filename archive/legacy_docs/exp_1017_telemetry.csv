@@ -1,2 +1,0 @@
-exp_id,total_steps,lanes,duration_sec,throughput_mb_s,throughput_gb_s,mean_fe,verdict
-EXP-1017,1000000,64,46.4764,21.012,0.0205195,0,REJECTED

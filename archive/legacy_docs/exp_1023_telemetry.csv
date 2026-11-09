@@ -1,2 +1,0 @@
-exp_id,total_frames,simulated_seconds,mean_fe,duration_sec,realtime_multiplier,throughput_mb_s,verdict
-EXP-1023,10000000,166667,0,0.662876,251430,230.191,POSITIVE

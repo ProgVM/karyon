@@ -1,6 +1,0 @@
-# EXP-352: Neurosymbolic Continuous Variable & Formula Synthesizer (NC-VFS)
-
-1. Sprouting Dynamic Variables & State Registers: Karyon operates with internal state variables v = [v_1, v_2, ..., v_K].
-2. Differentiable Neurosymbolic Equation & Grammar Synthesis: Differentiable expression DAGs using Gumbel-Softmax over algebraic primitives.
-3. Active Inference & Variational Complexity Penalty: F = L_task + beta * Complexity + beta_var * K + beta_PAC * L_PAC.
-4. PAC & Soliton Wavefield Integration: Synthesized equations modulate phase-amplitude dynamics.

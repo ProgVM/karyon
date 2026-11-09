@@ -1,2 +1,0 @@
-exp_id,total_words,mean_fe,branching_ratio_sigma,duration_sec,throughput_mb_s,verdict
-EXP-1021,10000000,0,1.08357,75.6452,2.01715,POSITIVE

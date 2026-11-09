@@ -1,2 +1,0 @@
-exp_id,stream_len,duration_sec,throughput_mb_s,throughput_gb_s,verdict
-EXP-1019,200000000,1.15169,2649.8,2.58769,POSITIVE
