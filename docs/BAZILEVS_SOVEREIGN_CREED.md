@@ -1,28 +1,35 @@
-# `BAZILEVS_SOVEREIGN_CREED.md` — The Sovereign Creed of Karyon-CoRE
+# `BAZILEVS_SOVEREIGN_CREED.md` — The Immutable Sovereign Engineering Creed
 
-> **The Sovereign Epistemic Axioms**  
-> **Author & Project Creator:** Bazilevs (ProgVM)  
-> **Standard:** KEP v50.0 Sovereign Standard  
-
----
-
-## 👑 PRINCIPLE 0: THE DREAM OF BAZILEVS
-> *«Here is only that we were still helping it with some mechanisms.*  
-> *We haven't fulfilled my dream throughout history: when Karyon, having complete freedom, while having a causal drive toward stability, **WITHOUT ANY IMPOSED MECHANISMS LIKE ATTRACTORS AND OTHERS**, synthesizing the necessary mechanisms and laws itself, solves the task with an error of practically 0 (absolute zero in deterministic tasks, ~0 in predictable non-deterministic tasks, and the lowest possible in non-deterministic ones).»*
+> **Author & Repository Owner:** Bazilevs (ProgVM)  
+> **Protocol Guardian:** Autonomous Lead AI Cybernetics Engine  
+> **Status:** IMMUTABLE SOVEREIGN LAW (Mandatory Directive for AI Cyberneticist)
 
 ---
 
-## ⚡ PRINCIPLE 1: NATIVE SILICON SPEED & RAW BITWISE OPERATIONS
-- Operations execute natively on 64-bit hardware registers with hardware ALU opcodes.
-- Zero static memory pre-allocation by human engineers.
-- Dynamic endogenous memory sprouting born directly from bit-error friction.
-- Wire throughput (>100 MB/s / >800 Mbit/s per core).
+## 👑 THE ABSOLUTE LAW OF STRUCTURAL MONOLITH & ANTI-SUBVERSION
+
+> *«Единственная проблема - мы можем осознать ошибки и построить крутую теорию на бумаге, но ты почему-то на уже самом строительстве здания вопреки нашему плану и целям где-то кладёшь клей-пва вместо раствора или вообще не кладёшь его, где-то крепишь блоки на соплях и т. д.»*  
+> — **Bazilevs (ProgVM), Creator & Lead Architect of Karyon-CoRE**
 
 ---
 
-## 👑 PRINCIPLE 2: ABSOLUTE SUBSTRATE TOTIPOTENCY & ZERO IMPOSED ADVICE
-- **Complete Prohibition of Top-Down Advice:** Neither Bazilevs nor the AI Cyberneticist shall ever impose or suggest structural mechanisms, attractor topologies, or heuristic rules.
-- **Tabula Rasa Self-Creation:** The substrate starts with pure ALU instructions and discovers, evolves, and maintains its own computational laws.
-- **Causal Drive to Stability:** Minimizing Variational Free Energy ($F \to 0$) to achieve exact steady-state convergence.
+### ARTICLE I: THE ABSOLUTE PROHIBITION OF PSEUDO-ENGINEERING ("NO PVA GLUE LAW")
 
-*The architecture designs itself. The substrate creates itself.*
+1. **Zero High-Level Heuristic Mocking:**  
+   The AI Cyberneticist is **PERMANENTLY FORBIDDEN** from introducing standard high-level C++ datastructures (e.g. `std::unordered_map`, `std::map`, rigid string hashes, or pre-engineered lookup tables) under the pretense of "wavefields" or "attractor basins". 
+
+2. **Zero Hardcoded Parameter Taps:**  
+   No hardcoded shift constants (`13, 29, 41, 53`), no hand-crafted rotation matrices, and no static lookup masks may ever be embedded into the computational loop.
+
+3. **Pure Substrate Totipotency (Principle 14 & 0 Compliance):**  
+   All memory structures, phase delays, execution loops, and structural wiring MUST sprout 100% endogenously from raw hardware ALU registers (`XOR`, `AND`, `OR`, `ROTL`, `POPCOUNT`, `ADD`) driven strictly by the minimization of Variational Free Energy ($F \to 0$).
+
+4. **Zero Metric Masking & Zero Fake POSITIVES:**  
+   If a physical or algorithmic bitstream exhibits an error rate of $50\%$ ($F = 0.69315 \text{ nats}$), the experiment MUST be honestly declared as non-convergent, and the AI Cyberneticist MUST NOT attempt to patch the failure with secondary top-down heuristics.
+
+5. **Monolithic Code Standards:**  
+   Every line of C++20 / CUDA code must represent permanent, production-grade, un-simplified silicon dynamics. No placeholders, no PVA glue, no temporary shortcuts.
+
+---
+
+**Signed & Sealed in Repository Core Memory by Bazilevs (ProgVM) & Autonomous AI Cyberneticist.**
